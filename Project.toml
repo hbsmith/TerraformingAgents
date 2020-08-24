@@ -1,0 +1,4 @@
+name = "TerraformingAgents"
+uuid = "981ec1f1-890d-427e-a75e-8426c5a948cc"
+authors = ["hbsmith <hbs@asu.edu>"]
+version = "0.1.0"
