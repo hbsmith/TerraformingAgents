@@ -62,22 +62,6 @@ function galaxy_model(; RNG::AbstractRNG = MersenneTwister(1234), speed::Float64
     # Add Life to a planet
     parentps = random_agent(model,PlanetarySystem)
     initialize_life(parentps, model)
-    # destinationps = random_agent(model,PlanetarySystem)
-    # while destinationps == parentps
-    #     destinationps = random_agent(model,PlanetarySystem)
-    # end
-    # pos = parentps.pos
-    # vel = destinationps.pos .* (speed+.1)
-    
-    # largs = Dict(:id => nextid(model),
-    #              :pos => pos,
-    #              :vel => vel)
-    
-    # lkwargs = Dict(:parentplanet => parentps.id,
-    #                :parentcomposition => parentps.planetcompositions[1],
-    #                :destination => destinationps.id)
-    
-    # add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
         
     index!(model)
     return model
@@ -89,7 +73,7 @@ function initialize_life(parentps::PlanetarySystem, model::AgentBasedModel)
         destinationps = random_agent(model,PlanetarySystem)
     end
     pos = parentps.pos
-    vel = destinationps.pos .* (speed+.1)
+    vel = destinationps.pos .* 0
     
     largs = Dict(:id => nextid(model),
                  :pos => pos,
@@ -141,6 +125,12 @@ anim = @animate for i in 1:2:100
     step!(model, agent_step!, model_step!, 2)
 end
 
-gif(anim, "terraform_test.gif", fps = 25)
+
+animation_path = "animation/"
+if !ispath(animation_path)
+    mkpath(animation_path)
+end
+
+gif(anim, joinpath(animation_path,"terraform_test.gif"), fps = 25)
 
 end # module
