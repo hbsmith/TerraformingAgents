@@ -44,8 +44,8 @@ function galaxy_model(; RNG::AbstractRNG=Random.default_rng(), psneighbor_radius
 
     initialize_planetarysystems!(model, RNG)
     initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
-    intialize_nearest_neighbor!(model,extent) # Add nearest neighbor
-    initialize_life!(random_agent(model,PlanetarySystem), model)
+    intialize_nearest_neighbor!(model, extent) # Add nearest neighbor
+    initialize_life!(random_agent(model, PlanetarySystem), model)
         
     index!(model)
     return model
@@ -57,7 +57,7 @@ function initialize_planetarysystems!(model::AgentBasedModel, RNG::AbstractRNG =
 
     # Add PlanetarySystem agents
     for _ in 1:10
-        pos = Tuple(rand(2))
+        pos = Tuple(rand(RNG,2))
         vel = sincos(2π * rand()) .* speed
         
         psargs = Dict(:id => nextid(model),
@@ -79,16 +79,17 @@ function initialize_planetarysystems!(model::AgentBasedModel, RNG::AbstractRNG =
 end
 
 function initialize_psneighbors!(model::AgentBasedModel, radius::Float64)
-    for (a1, a2) in interacting_pairs(model, radius, :types)
-        a1.neighbors.push!(a2.id)
-        a2.neighbors.push!(a1.id)
+    for (a1, a2) in interacting_pairs(model, radius, :all)
+        push!(a1.neighbors, a2.id)
+        push!(a2.neighbors, a1.id)
+        # println("psneighbors: ",a1,a2)
     end
 end
 
 function intialize_nearest_neighbor!(model::AgentBasedModel, extent::NTuple{2,Union{Float64,Int}})
-    for (a1, a2) in interacting_pairs(model, maxradius(extent), :types)
-        a1.nearestps = a2.id
-        a2.nearestps = a1.id
+    for agent in values(model.agents)
+        agent.nearestps = nearest_neighbor(agent, model, maxradius(extent)).id
+        # println("nearest neighbor: ",agent.id, agent.nearestps)
     end
 end
 
@@ -126,22 +127,43 @@ end
 # end
 
 function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
-    destinationps = random_agent(model,PlanetarySystem)
-    while destinationps == parentps
-        destinationps = random_agent(model,PlanetarySystem)
-    end
+    # destinationps = random_agent(model,PlanetarySystem)
+    # while destinationps == parentps
+    #     destinationps = random_agent(model,PlanetarySystem)
+    # end
     pos = parentps.pos
-    vel = destinationps.pos .* 0
+    speed = 0.2
+    # vel = destinationps.pos .* 0
     
-    largs = Dict(:id => nextid(model),
-                 :pos => pos,
-                 :vel => vel)
-    
-    lkwargs = Dict(:parentplanet => parentps.id,
-                   :parentcomposition => parentps.planetcompositions[1],
-                   :destination => destinationps.id)
-    
-    add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+    if length(parentps.neighbors)>0
+        for neighborid in parentps.neighbors
+
+            # println(parentps.neighbors)
+
+            largs = Dict(:id => nextid(model),
+                        :pos => pos,
+                        :vel => (model.agents[neighborid].pos .- pos) .* speed)
+            
+            lkwargs = Dict(:parentplanet => parentps.id,
+                        :parentcomposition => parentps.planetcompositions[1],
+                        :destination => neighborid)
+            
+            add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+        end
+    else
+        largs = Dict(:id => nextid(model),
+                    :pos => pos,
+                    :vel => (model.agents[parentps.nearestps].pos .- pos) .* speed)
+            
+        lkwargs = Dict(:parentplanet => parentps.id,
+                    :parentcomposition => parentps.planetcompositions[1],
+                    :destination => parentps.nearestps)
+        
+        add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+
+    end
+
+
 end
 
 
@@ -191,10 +213,11 @@ if !ispath(animation_path)
     mkpath(animation_path)
 end
 
-gif(anim, joinpath(animation_path,"terraform_test.gif"), fps = 25)
+gif(anim, joinpath(animation_path,"terraform_test2.gif"), fps = 25)
 
 end # module
 
 #### Do all the calculations for nearest neighbors at the begining if the planetary systems don't move_agent
 # - Otherwise, do them at each step if they do move
-# -don't go back to planet you came from or planet that already has your life on it
+# - don't go back to planet you came from or planet that already has your life on it
+# - fix velocity so that you go every direction at same speed and doesn't depend on how far away your target is. 
