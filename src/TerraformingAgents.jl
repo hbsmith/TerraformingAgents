@@ -4,20 +4,23 @@ using Agents, Random, AgentsPlots, Plots
 
 Agents.random_agent(model,A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
 
+maxradius(x::NTuple{2,Union{Float64,Int}}) = sqrt(sum(x .^ 2))
+
 Base.@kwdef mutable struct PlanetarySystem <: AbstractAgent
     id::Int
     pos::NTuple{2,Float64}
     vel::NTuple{2,Float64}
     
     nplanets::Int # To simplify the initial logic, this will be limited to 1 
-    planetcompositions::Vector{Vector{Int64}} ## I'll always make 10 planet compositions, but only use the first nplanets of them
+    planetcompositions::Vector{Vector{Int}} ## I'll always make 10 planet compositions, but only use the first nplanets of them
     alive::Bool
     
     ## Properties of the process, but not the planet itself
     parentplanet::Union{Int,Nothing} #id
     parentlife::Union{Int,Nothing} #id
-    parentcomposition::Union{Vector{Int64},Nothing} 
-    nearestlife::Union{Int,Nothing}
+    parentcomposition::Union{Vector{Int},Nothing} 
+    nearestps::Union{Int,Nothing}
+    neighbors::Union{Vector{Int}}
     
     ## Do I need the below?
     # age::Float64
@@ -29,14 +32,28 @@ Base.@kwdef mutable struct Life <: AbstractAgent
     pos::NTuple{2,Float64}
     vel::NTuple{2,Float64}
     parentplanet::Int #id; this is also the "type" of life
-    parentcomposition::Vector{Int64} # to simplify initial logic, this will be a single vector of length 10
+    parentcomposition::Vector{Int} # to simplify initial logic, this will be a single vector of length 10
     destination::Int #id of destination planetarysystem
     ## once life arrives at a new planet, life the agent just "dies"
 end
 
-function galaxy_model(; RNG::AbstractRNG = MersenneTwister(1234), speed::Float64 = 0.0, nplanets::Int =1)
-    space2d = ContinuousSpace(2; periodic = true, extend = (1, 1))
+function galaxy_model(; RNG::AbstractRNG=Random.default_rng(), psneighbor_radius::Float64 = 0.2)
+    extent = (1,1)
+    space2d = ContinuousSpace(2; periodic = true, extend = extent)
     model = AgentBasedModel(Union{PlanetarySystem,Life}, space2d, properties = Dict(:dt => 1.0))
+
+    initialize_planetarysystems!(model, RNG)
+    initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
+    intialize_nearest_neighbor!(model,extent) # Add nearest neighbor
+    initialize_life!(random_agent(model,PlanetarySystem), model)
+        
+    index!(model)
+    return model
+end
+
+function initialize_planetarysystems!(model::AgentBasedModel, RNG::AbstractRNG = Random.default_rng())
+
+    speed = 0.0 # for this version of initializition where all neighbors are precalculated
 
     # Add PlanetarySystem agents
     for _ in 1:10
@@ -47,27 +64,68 @@ function galaxy_model(; RNG::AbstractRNG = MersenneTwister(1234), speed::Float64
                       :pos => pos,
                       :vel => vel)
         
-        pskwargs = Dict(:nplanets => nplanets,
+        pskwargs = Dict(:nplanets => 1,
                         :planetcompositions => [rand(RNG,1:10,10)],
                         :alive => false,
                         :parentplanet => nothing,
                         :parentlife => nothing,
                         :parentcomposition => nothing,
-                        :nearestlife => nothing)
+                        :nearestps => nothing,
+                        :neighbors => Vector{Int}(undef,0))
         
         add_agent_pos!(PlanetarySystem(;merge(psargs,pskwargs)...), model)
     
     end
-    
-    # Add Life to a planet
-    parentps = random_agent(model,PlanetarySystem)
-    initialize_life(parentps, model)
-        
-    index!(model)
-    return model
 end
 
-function initialize_life(parentps::PlanetarySystem, model::AgentBasedModel)
+function initialize_psneighbors!(model::AgentBasedModel, radius::Float64)
+    for (a1, a2) in interacting_pairs(model, radius, :types)
+        a1.neighbors.push!(a2.id)
+        a2.neighbors.push!(a1.id)
+    end
+end
+
+function intialize_nearest_neighbor!(model::AgentBasedModel, extent::NTuple{2,Union{Float64,Int}})
+    for (a1, a2) in interacting_pairs(model, maxradius(extent), :types)
+        a1.nearestps = a2.id
+        a2.nearestps = a1.id
+    end
+end
+
+# function galaxy_model(; RNG::AbstractRNG = MersenneTwister(1234), speed::Float64 = 0.0, nplanets::Int =1)
+#     space2d = ContinuousSpace(2; periodic = true, extend = (1, 1))
+#     model = AgentBasedModel(Union{PlanetarySystem,Life}, space2d, properties = Dict(:dt => 1.0))
+
+#     # Add PlanetarySystem agents
+#     for _ in 1:10
+#         pos = Tuple(rand(2))
+#         vel = sincos(2π * rand()) .* speed
+        
+#         psargs = Dict(:id => nextid(model),
+#                       :pos => pos,
+#                       :vel => vel)
+        
+#         pskwargs = Dict(:nplanets => nplanets,
+#                         :planetcompositions => [rand(RNG,1:10,10)],
+#                         :alive => false,
+#                         :parentplanet => nothing,
+#                         :parentlife => nothing,
+#                         :parentcomposition => nothing,
+#                         :nearestlife => nothing)
+        
+#         add_agent_pos!(PlanetarySystem(;merge(psargs,pskwargs)...), model)
+    
+#     end
+    
+#     # Add Life to a planet
+#     parentps = random_agent(model,PlanetarySystem)
+#     initialize_life(parentps, model)
+        
+#     index!(model)
+#     return model
+# end
+
+function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
     destinationps = random_agent(model,PlanetarySystem)
     while destinationps == parentps
         destinationps = random_agent(model,PlanetarySystem)
@@ -87,27 +145,29 @@ function initialize_life(parentps::PlanetarySystem, model::AgentBasedModel)
 end
 
 
-function model_step!(model)
-    for (a1, a2) in interacting_pairs(model, 0.2, :types)
+# function model_step!(model)
+#     for (a1, a2) in interacting_pairs(model, 0.2, :types)
         
-        if typeof(a1) == PlanetarySystem
-            a1.nearestlife = a2.id
+#         if typeof(a1) == PlanetarySystem
+#             a1.nearestlife = a2.id
         
-        elseif typeof(a1) == Life
-            a2.nearestlife = a1.id
+#         elseif typeof(a1) == Life
+#             a2.nearestlife = a1.id
         
-        end
+#         end
         
-        # println(a2)
-#         elastic_collision!(a1, a2, :mass)
-    end
-end
+#         # println(a2)
+# #         elastic_collision!(a1, a2, :mass)
+#     end
+# end
 
 agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
 
-model_colors(a) = typeof(a) == PlanetarySystem ? "#2b2b33" : "#338c54"
+modelparams = Dict(:RNG => MersenneTwister(1234))
 
-model = galaxy_model()
+model = galaxy_model(;modelparams...)
+
+model_colors(a) = typeof(a) == PlanetarySystem ? "#2b2b33" : "#338c54"
 
 e = model.space.extend
 anim = @animate for i in 1:2:100
@@ -122,11 +182,11 @@ anim = @animate for i in 1:2:100
     )
 
     title!(p1, "step $(i)")
-    step!(model, agent_step!, model_step!, 2)
+    step!(model, agent_step!, 2) # model_step!, 2)
 end
 
 
-animation_path = "animation/"
+animation_path = "../output/animation/"
 if !ispath(animation_path)
     mkpath(animation_path)
 end
@@ -134,3 +194,7 @@ end
 gif(anim, joinpath(animation_path,"terraform_test.gif"), fps = 25)
 
 end # module
+
+#### Do all the calculations for nearest neighbors at the begining if the planetary systems don't move_agent
+# - Otherwise, do them at each step if they do move
+# -don't go back to planet you came from or planet that already has your life on it
