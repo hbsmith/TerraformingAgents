@@ -1,6 +1,7 @@
 module TerraformingAgents
 
 using Agents, Random, AgentsPlots, Plots
+using DrWatson: @dict
 
 Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) where {T<:AbstractAgent} = model[rand(RNG, [k for (k,v) in model.agents if v isa A])]
 # Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
@@ -38,10 +39,17 @@ Base.@kwdef mutable struct Life <: AbstractAgent
     ## once life arrives at a new planet, life the agent just "dies"
 end
 
-function galaxy_model(; RNG::AbstractRNG=Random.default_rng(), psneighbor_radius::Float64 = 0.2)
-    extent = (1,1)
+function galaxy_model(; RNG::AbstractRNG=Random.default_rng(), 
+    extent::NTuple{2,Union{Float64,Int}} = (1,1),
+    psneighbor_radius::Float64 = 0.2,
+    dt::Union{Float64,Int} = 1.0,
+    interaction_radius::Union{Float64,Int} = 1e-4,
+    similarity_threshold::Union{Float64,Int} = 0.5
+    )
+
     space2d = ContinuousSpace(2; periodic = true, extend = extent)
-    model = AgentBasedModel(Union{PlanetarySystem,Life}, space2d, properties = Dict(:dt => 1.0))
+    abm_properties = @dict(dt, interaction_radius, similarity_threshold)
+    model = AgentBasedModel(Union{PlanetarySystem,Life}, space2d, properties = abm_properties)
 
     initialize_planetarysystems!(model, RNG)
     initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
@@ -104,7 +112,7 @@ function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
     speed = 0.2
     # vel = destinationps.pos .* 0
 
-    println(parentps.neighbors)
+    # println(parentps.neighbors)
     
     if length(parentps.neighbors)>0
         for neighborid in parentps.neighbors
@@ -115,9 +123,9 @@ function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
             direction = (model.agents[neighborid].pos .- pos)
             direction_normed = direction ./ magnitude(direction)
 
-            println(neighborid)
-            println(model.agents[neighborid].pos)
-            println(direction_normed)
+            # println(neighborid)
+            # println(model.agents[neighborid].pos)
+            # println(direction_normed)
 
             largs = Dict(:id => nextid(model),
                         :pos => pos,
@@ -149,6 +157,30 @@ function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
 
 end
 
+function is_compatible(life::Life, ps::PlanetarySystem, threshold::Float64)
+
+    ## Placeholder
+    return true
+
+end
+
+function terraform!(life::Life, ps::PlanetarySystem)
+    ps.alive = true
+    ps.parentplanet = life.parentplanet
+    ps.parentcomposition = life.parentcomposition
+    ## Change ps composition based on life parent composition and current planet composition
+    # ps.planetcompositions[1] = mix_compositions(life, ps)
+
+end
+
+function galaxy_model_step!(model)
+    for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
+        life, ps = typeof(a1) == PlanetarySystem ? (a2, a1) : (a1, a2)
+        is_compatible(life, ps, model.similarity_threshold) ? terraform!(life, ps) : return
+        kill_agent!(life, model)
+    end
+end
+
 
 # function model_step!(model)
 #     for (a1, a2) in interacting_pairs(model, 0.2, :types)
@@ -166,10 +198,17 @@ end
 #     end
 # end
 
-agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+agent_step!(agent, model) = move_agent!(agent, model, model.dt)
+
+# function sir_agent_step!(agent, model)
+#     move_agent!(agent, model, model.dt)
+#     update!(agent) # store information in life agent of it terraforming?
+#     recover_or_die!(agent, model)
+# end
 
 modelparams = Dict(:RNG => MersenneTwister(1236),
-                   :psneighbor_radius => .45)
+                   :psneighbor_radius => .45,
+                   :dt => 0.1)
 
 model = galaxy_model(;modelparams...)
 
@@ -188,7 +227,7 @@ anim = @animate for i in 1:2:100
     )
 
     title!(p1, "step $(i)")
-    step!(model, agent_step!, 2) # model_step!, 2)
+    step!(model, agent_step!, galaxy_model_step!, 2)
 end
 
 
@@ -197,7 +236,7 @@ if !ispath(animation_path)
     mkpath(animation_path)
 end
 
-gif(anim, joinpath(animation_path,"terraform_test4.gif"), fps = 25)
+gif(anim, joinpath(animation_path,"terraform_test_death1.gif"), fps = 25)
 
 end # module
 
