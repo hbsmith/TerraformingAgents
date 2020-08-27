@@ -2,9 +2,10 @@ module TerraformingAgents
 
 using Agents, Random, AgentsPlots, Plots
 
-Agents.random_agent(model,A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
+Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) where {T<:AbstractAgent} = model[rand(RNG, [k for (k,v) in model.agents if v isa A])]
+# Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
 
-maxradius(x::NTuple{2,Union{Float64,Int}}) = sqrt(sum(x .^ 2))
+magnitude(x::NTuple{2,Union{Float64,Int}}) = sqrt(sum(x .^ 2))
 
 Base.@kwdef mutable struct PlanetarySystem <: AbstractAgent
     id::Int
@@ -45,7 +46,8 @@ function galaxy_model(; RNG::AbstractRNG=Random.default_rng(), psneighbor_radius
     initialize_planetarysystems!(model, RNG)
     initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
     intialize_nearest_neighbor!(model, extent) # Add nearest neighbor
-    initialize_life!(random_agent(model, PlanetarySystem), model)
+    # initialize_life!(random_agent(model, PlanetarySystem), model)
+    initialize_life!(random_agent(model, PlanetarySystem, RNG), model)
         
     index!(model)
     return model
@@ -58,7 +60,7 @@ function initialize_planetarysystems!(model::AgentBasedModel, RNG::AbstractRNG =
     # Add PlanetarySystem agents
     for _ in 1:10
         pos = Tuple(rand(RNG,2))
-        vel = sincos(2π * rand()) .* speed
+        vel = sincos(2π * rand(RNG)) .* speed
         
         psargs = Dict(:id => nextid(model),
                       :pos => pos,
@@ -88,43 +90,10 @@ end
 
 function intialize_nearest_neighbor!(model::AgentBasedModel, extent::NTuple{2,Union{Float64,Int}})
     for agent in values(model.agents)
-        agent.nearestps = nearest_neighbor(agent, model, maxradius(extent)).id
+        agent.nearestps = nearest_neighbor(agent, model, magnitude(extent)).id
         # println("nearest neighbor: ",agent.id, agent.nearestps)
     end
 end
-
-# function galaxy_model(; RNG::AbstractRNG = MersenneTwister(1234), speed::Float64 = 0.0, nplanets::Int =1)
-#     space2d = ContinuousSpace(2; periodic = true, extend = (1, 1))
-#     model = AgentBasedModel(Union{PlanetarySystem,Life}, space2d, properties = Dict(:dt => 1.0))
-
-#     # Add PlanetarySystem agents
-#     for _ in 1:10
-#         pos = Tuple(rand(2))
-#         vel = sincos(2π * rand()) .* speed
-        
-#         psargs = Dict(:id => nextid(model),
-#                       :pos => pos,
-#                       :vel => vel)
-        
-#         pskwargs = Dict(:nplanets => nplanets,
-#                         :planetcompositions => [rand(RNG,1:10,10)],
-#                         :alive => false,
-#                         :parentplanet => nothing,
-#                         :parentlife => nothing,
-#                         :parentcomposition => nothing,
-#                         :nearestlife => nothing)
-        
-#         add_agent_pos!(PlanetarySystem(;merge(psargs,pskwargs)...), model)
-    
-#     end
-    
-#     # Add Life to a planet
-#     parentps = random_agent(model,PlanetarySystem)
-#     initialize_life(parentps, model)
-        
-#     index!(model)
-#     return model
-# end
 
 function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
     # destinationps = random_agent(model,PlanetarySystem)
@@ -134,15 +103,25 @@ function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
     pos = parentps.pos
     speed = 0.2
     # vel = destinationps.pos .* 0
+
+    println(parentps.neighbors)
     
     if length(parentps.neighbors)>0
         for neighborid in parentps.neighbors
 
             # println(parentps.neighbors)
 
+
+            direction = (model.agents[neighborid].pos .- pos)
+            direction_normed = direction ./ magnitude(direction)
+
+            println(neighborid)
+            println(model.agents[neighborid].pos)
+            println(direction_normed)
+
             largs = Dict(:id => nextid(model),
                         :pos => pos,
-                        :vel => (model.agents[neighborid].pos .- pos) .* speed)
+                        :vel => direction_normed .* speed)
             
             lkwargs = Dict(:parentplanet => parentps.id,
                         :parentcomposition => parentps.planetcompositions[1],
@@ -151,9 +130,13 @@ function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
             add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
         end
     else
+
+        direction = (model.agents[parentps.nearestps].pos .- pos)
+        direction_normed = direction ./ magnitude(direction)
+
         largs = Dict(:id => nextid(model),
                     :pos => pos,
-                    :vel => (model.agents[parentps.nearestps].pos .- pos) .* speed)
+                    :vel => direction_normed .* speed)
             
         lkwargs = Dict(:parentplanet => parentps.id,
                     :parentcomposition => parentps.planetcompositions[1],
@@ -185,7 +168,8 @@ end
 
 agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
 
-modelparams = Dict(:RNG => MersenneTwister(1234))
+modelparams = Dict(:RNG => MersenneTwister(1236),
+                   :psneighbor_radius => .45)
 
 model = galaxy_model(;modelparams...)
 
@@ -213,7 +197,7 @@ if !ispath(animation_path)
     mkpath(animation_path)
 end
 
-gif(anim, joinpath(animation_path,"terraform_test2.gif"), fps = 25)
+gif(anim, joinpath(animation_path,"terraform_test4.gif"), fps = 25)
 
 end # module
 
