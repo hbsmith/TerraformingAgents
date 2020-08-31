@@ -6,12 +6,12 @@ using DrWatson: @dict
 Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) where {T<:AbstractAgent} = model[rand(RNG, [k for (k,v) in model.agents if v isa A])]
 # Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
 
-magnitude(x::NTuple{2,Union{Float64,Int}}) = sqrt(sum(x .^ 2))
+magnitude(x::Tuple{<:Real,<:Real}) = sqrt(sum(x .^ 2))
 
 Base.@kwdef mutable struct PlanetarySystem <: AbstractAgent
     id::Int
-    pos::NTuple{2,Float64}
-    vel::NTuple{2,Float64}
+    pos::Tuple{<:Real,<:Real}
+    vel::Tuple{<:Real,<:Real}
     
     nplanets::Int # To simplify the initial logic, this will be limited to 1 
     planetcompositions::Vector{Vector{Int}} ## I'll always make 10 planet compositions, but only use the first nplanets of them
@@ -31,59 +31,128 @@ end
 
 Base.@kwdef mutable struct Life <: AbstractAgent
     id::Int
-    pos::NTuple{2,Float64}
-    vel::NTuple{2,Float64}
+    pos::Tuple{<:Real,<:Real}
+    vel::Tuple{<:Real,<:Real}
     parentplanet::Int #id; this is also the "type" of life
     parentcomposition::Vector{Int} # to simplify initial logic, this will be a single vector of length 10
     destination::Int #id of destination planetarysystem
     ## once life arrives at a new planet, life the agent just "dies"
 end
 
-function galaxy_model(; RNG::AbstractRNG=Random.default_rng(), 
-    extent::NTuple{2,Union{Float64,Int}} = (1,1),
-    psneighbor_radius::Float64 = 0.2,
-    dt::Union{Float64,Int} = 1.0,
-    interaction_radius::Union{Float64,Int} = 1e-4,
-    similarity_threshold::Union{Float64,Int} = 0.5
+function galaxy_model(
+    nplanetarysystems::Int ; 
+    RNG::AbstractRNG=Random.default_rng(), 
+    extent::Tuple{<:Real,<:Real} = (1,1), ## Size of space
+    dt::Real = 1.0, 
+    psneighbor_radius::Real = 0.2, ## distance threshold used to decide where to send life from parent planet
+    interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
+    similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
+    nplanetspersystem::Int = 1, ## number of planets per star
+    )
+
+    pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems],
+    vel = [(0,0) for _ in 1:nplanetarysystems],
+    planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
+
+end
+
+function galaxy_model(; 
+    RNG::AbstractRNG=Random.default_rng(), 
+    extent::Tuple{<:Real,<:Real} = (1,1), ## Size of space
+    dt::Real = 1.0, 
+    psneighbor_radius::Real = 0.2, ## distance threshold used to decide where to send life from parent planet
+    interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
+    similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
+    nplanetspersystem::Int = 1, ## number of planets per star
+    pos::AbstractArray{Tuple{<:Real,<:Real}} = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems],
+    vel::AbstractArray{<:Real} = [(0,0) for _ in 1:nplanetarysystems],
+    planetcompositions::Vector{Vector{Vector{Int}}} = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
     )
 
     space2d = ContinuousSpace(2; periodic = true, extend = extent)
-    abm_properties = @dict(dt, interaction_radius, similarity_threshold)
-    model = AgentBasedModel(Union{PlanetarySystem,Life}, space2d, properties = abm_properties)
+    model = AgentBasedModel(
+        Union{PlanetarySystem,Life}, 
+        space2d, 
+        properties = @dict(
+            dt, 
+            interaction_radius, 
+            similarity_threshold, 
+            psneighbor_radius))
 
-    initialize_planetarysystems!(model, RNG)
+    initialize_planetarysystems!(model, RNG, nplanetarysystems, nplanetspersystem, pos, vel, planetcompositions)
     initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
     intialize_nearest_neighbor!(model, extent) # Add nearest neighbor
-    # initialize_life!(random_agent(model, PlanetarySystem), model)
-    initialize_life!(random_agent(model, PlanetarySystem, RNG), model)
-        
+    initialize_life!(random_agent(model, PlanetarySystem, RNG), model)   
     index!(model)
+    
     return model
+
 end
 
-function initialize_planetarysystems!(model::AgentBasedModel, RNG::AbstractRNG = Random.default_rng())
+function initialize_planetarysystems!(
+    nplanetarysystems::Int = 10
+    model::AgentBasedModel; 
+    RNG::AbstractRNG = Random.default_rng()
+    nplanetspersystem::Int = 1)
 
-    speed = 0.0 # for this version of initializition where all neighbors are precalculated
+end
+
+function check_pos_vel_compositions_combinations(pos,vel,planetcompositions)
+
+    args = [pos, vel, planetcompositions]
+    userargs = args[args .!= nothing]
+
+    if sum(args .== nothing) == length(args)
+        ArgumentError("one of `pos`, `vel`, or `planetcompositions` must be provided")
+    elseif ~all(length(i) == length([1]) for i in userargs)
+        ArgumentError("provided arguments for `pos`, `vel`, and `planetcompositions` must all be same length")
+    else
+        return
+    end
+
+end
+
+
+function initialize_planetarysystems!(
+    model::AgentBasedModel; 
+    RNG::AbstractRNG = Random.default_rng()
+    nplanetarysystems::Int = 10,
+    nplanetspersystem::Int = 1,
+    pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
+    vel::AbstractArray{<:Real} = [(0,0) for _ in 1:nplanetarysystems],
+    planetcompositions::Vector{Vector{Vector{Int}}} = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems])
+    ##  MAYBE I SHOULD SWITCH PLANETCOMPOSITIONS TO BEING ABSTRACT ARRAY? BUT THEN TESTING GETS HARDER, BUT ALLOWS EASIER TRANSITION TO STATIC IN THE FUTURE
+    ## COULD DO THIS A BETTER WAY WITH MULTIPLE DISPATCH SO THAT I DON'T ALLOW USER TO OVERCONSTRAIN
+
+    check_pos_vel_compositions_combinations(pos,vel,planetcompositions)
+
+
+    length(pos) != nplanetarysystems && ArgumentError("length(pos) must equal nplanetarysystems")
+    length(vel) != nplanetarysystems && ArgumentError("length(vel) must equal nplanetarysystems")
+    length(planetcompositions) != nplanetarysystems && ArgumentError("length(planetcompositions) must equal nplanetarysystems")
+    for composition in planetcompositions
+        length(composition) != nplanetspersystem && ArgumentError("length(planetcompositions[i]) must equal nplanetspersystem for all i")
+    end
+    # speed = 0.0 # for this version of initializition where all neighbors are precalculated
 
     # Add PlanetarySystem agents
-    for _ in 1:10
-        pos = Tuple(rand(RNG,2))
-        vel = sincos(2π * rand(RNG)) .* speed
+    for i in 1:nplanetarysystems
+        # pos = Tuple(rand(RNG,2))
+        # vel = sincos(2π * rand(RNG)) .* speed
         
-        psargs = Dict(:id => nextid(model),
-                      :pos => pos,
-                      :vel => vel)
+        pskwargs = Dict(:id => nextid(model),
+                    :pos => pos[i],
+                    :vel => vel[i],
+                    :nplanets => nplanetspersystem,
+                    :planetcompositions => [rand(RNG,1:10,10)],
+                    :alive => false,
+                    :parentplanet => nothing,
+                    :parentlife => nothing,
+                    :parentcomposition => nothing,
+                    :nearestps => nothing,
+                    :neighbors => Vector{Int}(undef,0))
         
-        pskwargs = Dict(:nplanets => 1,
-                        :planetcompositions => [rand(RNG,1:10,10)],
-                        :alive => false,
-                        :parentplanet => nothing,
-                        :parentlife => nothing,
-                        :parentcomposition => nothing,
-                        :nearestps => nothing,
-                        :neighbors => Vector{Int}(undef,0))
-        
-        add_agent_pos!(PlanetarySystem(;merge(psargs,pskwargs)...), model)
+        add_agent_pos!(PlanetarySystem(;pskwargs...), model)
     
     end
 end
@@ -168,6 +237,7 @@ function terraform!(life::Life, ps::PlanetarySystem)
     ps.alive = true
     ps.parentplanet = life.parentplanet
     ps.parentcomposition = life.parentcomposition
+    println("terraformed $(ps.id) from $(life.id)")
     ## Change ps composition based on life parent composition and current planet composition
     # ps.planetcompositions[1] = mix_compositions(life, ps)
 
