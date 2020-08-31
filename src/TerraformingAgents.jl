@@ -107,7 +107,7 @@ function check_pos_vel_compositions_combinations(pos,vel,planetcompositions)
     elseif ~all(length(i) == length([1]) for i in userargs)
         ArgumentError("provided arguments for `pos`, `vel`, and `planetcompositions` must all be same length")
     else
-        return
+        return 
     end
 
 end
@@ -124,7 +124,12 @@ function initialize_planetarysystems!(
     ##  MAYBE I SHOULD SWITCH PLANETCOMPOSITIONS TO BEING ABSTRACT ARRAY? BUT THEN TESTING GETS HARDER, BUT ALLOWS EASIER TRANSITION TO STATIC IN THE FUTURE
     ## COULD DO THIS A BETTER WAY WITH MULTIPLE DISPATCH SO THAT I DON'T ALLOW USER TO OVERCONSTRAIN
 
-    check_pos_vel_compositions_combinations(pos,vel,planetcompositions)
+    check_pos_vel_compositions_combinations(pos, vel, planetcompositions)
+
+    args = [pos, vel, planetcompositions]
+    nplanetarysystems = length(args[args .!= nothing][1])
+
+    pos == nothing && pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems]
 
 
     length(pos) != nplanetarysystems && ArgumentError("length(pos) must equal nplanetarysystems")
