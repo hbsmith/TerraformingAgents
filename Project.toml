@@ -2,3 +2,16 @@ name = "TerraformingAgents"
 uuid = "981ec1f1-890d-427e-a75e-8426c5a948cc"
 authors = ["hbsmith <hbs@asu.edu>"]
 version = "0.1.0"
+
+[deps]
+Agents = "46ada45e-f475-11e8-01d0-f70cc89e6671"
+AgentsPlots = "7820620d-95fb-4739-93b3-b0a14dd83f9a"
+DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

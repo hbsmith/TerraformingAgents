@@ -47,11 +47,10 @@ function galaxy_model(
     psneighbor_radius::Real = 0.2, ## distance threshold used to decide where to send life from parent planet
     interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
     similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
-    nplanetspersystem::Int = 1, ## number of planets per star
-    )
+    nplanetspersystem::Int = 1) ## number of planets per star)
 
-    pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems],
-    vel = [(0,0) for _ in 1:nplanetarysystems],
+    pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems]
+    vel = [(0,0) for _ in 1:nplanetarysystems]
     planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
 
 end
@@ -64,10 +63,9 @@ function galaxy_model(;
     interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
     similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
     nplanetspersystem::Int = 1, ## number of planets per star
-    pos::AbstractArray{Tuple{<:Real,<:Real}} = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems],
-    vel::AbstractArray{<:Real} = [(0,0) for _ in 1:nplanetarysystems],
-    planetcompositions::Vector{Vector{Vector{Int}}} = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
-    )
+    pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
+    vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
+    planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
 
     space2d = ContinuousSpace(2; periodic = true, extend = extent)
     model = AgentBasedModel(
@@ -89,52 +87,73 @@ function galaxy_model(;
 
 end
 
-function initialize_planetarysystems!(
-    nplanetarysystems::Int = 10
-    model::AgentBasedModel; 
-    RNG::AbstractRNG = Random.default_rng()
-    nplanetspersystem::Int = 1)
 
-end
 
-function check_pos_vel_compositions_combinations(pos,vel,planetcompositions)
+function haveidenticallengths(args::NamedTuple)
 
-    args = [pos, vel, planetcompositions]
-    userargs = args[args .!= nothing]
+    providedargs = collect(args)[collect(args) .!== nothing] 
 
-    if sum(args .== nothing) == length(args)
-        ArgumentError("one of `pos`, `vel`, or `planetcompositions` must be provided")
-    elseif ~all(length(i) == length([1]) for i in userargs)
-        ArgumentError("provided arguments for `pos`, `vel`, and `planetcompositions` must all be same length")
+    if all(map(isnothing,args))
+        ArgumentError("one of $(keys(args)) must be provided")
+    elseif ~all(length(i) == length(providedargs[1]) for i in providedargs)
+        ArgumentError("provided arguments $(keys(args)[collect(args) .!== nothing]) must all be same length")
     else
-        return 
+        return true
     end
 
 end
 
+# function initialize_planetarysystems!(
+#     model::AgentBasedModel,
+#     nplanetarysystems::Int = 10; 
+#     RNG::AbstractRNG = Random.default_rng(),
+#     nplanetspersystem::Int = 1)
+
+#     println("nothing")
+
+# end
 
 function initialize_planetarysystems!(
     model::AgentBasedModel; 
-    RNG::AbstractRNG = Random.default_rng()
+    RNG::AbstractRNG = Random.default_rng(),
     nplanetarysystems::Int = 10,
     nplanetspersystem::Int = 1,
     pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
-    vel::AbstractArray{<:Real} = [(0,0) for _ in 1:nplanetarysystems],
-    planetcompositions::Vector{Vector{Vector{Int}}} = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems])
+    vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
+    planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
     ##  MAYBE I SHOULD SWITCH PLANETCOMPOSITIONS TO BEING ABSTRACT ARRAY? BUT THEN TESTING GETS HARDER, BUT ALLOWS EASIER TRANSITION TO STATIC IN THE FUTURE
     ## COULD DO THIS A BETTER WAY WITH MULTIPLE DISPATCH SO THAT I DON'T ALLOW USER TO OVERCONSTRAIN
 
-    check_pos_vel_compositions_combinations(pos, vel, planetcompositions)
+    ## Ensure at least one of the following args is provided
+    # args = [pos, vel, planetcompositions]
+    args = (pos=pos, vel=vel, planetcompositions=planetcompositions)
+    hasidenticallength(args)
 
-    args = [pos, vel, planetcompositions]
-    nplanetarysystems = length(args[args .!= nothing][1])
+    nplanetarysystems = length(args[args .!== nothing][1])
 
-    pos == nothing && pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems]
+    ## Initialize arguments which are not provided 
+    ## (flat random pos, no velocity, flat random compositions)
+    isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems])
+    isnothing(vel) && (vel = [(0,0) for _ in 1:nplanetarysystems])
+    isnothing(planetcompositions) && ([[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems])
+
+    if isnothing(nplanetspersystem) & isnothing(planetcompositions)
+        nplanetspersystem = 1
+        planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
+    elseif isnothing(planetcompositions)
+        planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
+    elseif isnothing(nplanetspersystem)
+        ## pass-- this effectively allows for specifiying heterogenous numbers of planets per star
+        ## already checked in hasidenticallength whether planetcompositions has the right length 
+    elseif length(planetcompositions) != nplanetspersystem
+        # NEED TO CHANGE THIS TO CHECK THE LGNTH OF EACH VECTOR IN PLANETCOMPOSITONS
+        ArgumentError("Model is overconstrained: length(planetcompositions) must equal nplanetspersystem")
+    else ## nplanetspersystem and planetcompositions are both specified
+         ## this is ok if they're the 
+    end
+        
 
 
-    length(pos) != nplanetarysystems && ArgumentError("length(pos) must equal nplanetarysystems")
-    length(vel) != nplanetarysystems && ArgumentError("length(vel) must equal nplanetarysystems")
-    length(planetcompositions) != nplanetarysystems && ArgumentError("length(planetcompositions) must equal nplanetarysystems")
     for composition in planetcompositions
         length(composition) != nplanetspersystem && ArgumentError("length(planetcompositions[i]) must equal nplanetspersystem for all i")
     end
@@ -273,45 +292,47 @@ end
 #     end
 # end
 
-agent_step!(agent, model) = move_agent!(agent, model, model.dt)
-
 # function sir_agent_step!(agent, model)
 #     move_agent!(agent, model, model.dt)
 #     update!(agent) # store information in life agent of it terraforming?
 #     recover_or_die!(agent, model)
 # end
 
-modelparams = Dict(:RNG => MersenneTwister(1236),
-                   :psneighbor_radius => .45,
-                   :dt => 0.1)
+## COMMENTING OUT EVEYRTHING BELOW FOR TESTING
 
-model = galaxy_model(;modelparams...)
+# agent_step!(agent, model) = move_agent!(agent, model, model.dt)
 
-model_colors(a) = typeof(a) == PlanetarySystem ? "#2b2b33" : "#338c54"
+# modelparams = Dict(:RNG => MersenneTwister(1236),
+#                    :psneighbor_radius => .45,
+#                    :dt => 0.1)
 
-e = model.space.extend
-anim = @animate for i in 1:2:100
-    p1 = plotabm(
-        model,
-        as = 5,
-        ac = model_colors,
-        showaxis = false,
-        grid = false,
-        xlims = (0, e[1]),
-        ylims = (0, e[2]),
-    )
+# model = galaxy_model(;modelparams...)
 
-    title!(p1, "step $(i)")
-    step!(model, agent_step!, galaxy_model_step!, 2)
-end
+# model_colors(a) = typeof(a) == PlanetarySystem ? "#2b2b33" : "#338c54"
+
+# e = model.space.extend
+# anim = @animate for i in 1:2:100
+#     p1 = plotabm(
+#         model,
+#         as = 5,
+#         ac = model_colors,
+#         showaxis = false,
+#         grid = false,
+#         xlims = (0, e[1]),
+#         ylims = (0, e[2]),
+#     )
+
+#     title!(p1, "step $(i)")
+#     step!(model, agent_step!, galaxy_model_step!, 2)
+# end
 
 
-animation_path = "../output/animation/"
-if !ispath(animation_path)
-    mkpath(animation_path)
-end
+# animation_path = "../output/animation/"
+# if !ispath(animation_path)
+#     mkpath(animation_path)
+# end
 
-gif(anim, joinpath(animation_path,"terraform_test_death1.gif"), fps = 25)
+# gif(anim, joinpath(animation_path,"terraform_test_death1.gif"), fps = 25)
 
 end # module
 
