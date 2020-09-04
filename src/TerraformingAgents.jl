@@ -87,8 +87,6 @@ function galaxy_model(;
 
 end
 
-# isargprovided(args::NamedTuple) = all(map(isnothing,args)) && ArgumentError("one of $(keys(args)) must be provided")
-
 function providedargs(args::Dict) 
     
     providedargs = filter(x -> !isnothing(x.second), args)
@@ -99,80 +97,41 @@ end
 
 haveidenticallengths(args::Dict) = all(length(i.second) == length(args[collect(keys(args))[1]]) for i in args)
 
+function initialize_planetarysystems_basic!(
+    model::AgentBasedModel,
+    nplanetarysystems::Int = 10; 
+    RNG::AbstractRNG = Random.default_rng(),
+    nplanetspersystem::Int = 1)
 
+    println("nothing")
 
-# function haveidenticallengths(args::NamedTuple)
+end
 
-#     providedargs = collect(args)[collect(args) .!== nothing] 
-
-#     if all(map(isnothing,args))
-#         throw(ArgumentError("one of $(keys(args)) must be provided"))
-#     elseif ~all(length(i) == length(providedargs[1]) for i in providedargs)
-#         throw(ArgumentError("provided arguments $(keys(args)[collect(args) .!== nothing]) must all be same length"))
-#     else
-#         return true
-#     end
-
-# end
-
-# function initialize_planetarysystems!(
-#     model::AgentBasedModel,
-#     nplanetarysystems::Int = 10; 
-#     RNG::AbstractRNG = Random.default_rng(),
-#     nplanetspersystem::Int = 1)
-
-#     println("nothing")
-
-# end
-
-function initialize_planetarysystems!(
+function initialize_planetarysystems_advanced!(
     model::AgentBasedModel; 
     RNG::AbstractRNG = Random.default_rng(),
-    nplanetarysystems::Int = 10,
-    nplanetspersystem::Int = 1,
     pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
     vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
     planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
+    ## Don't need to let user specify number of planets per system. If people want to do that they can just specify the planetcompositions
     ##  MAYBE I SHOULD SWITCH PLANETCOMPOSITIONS TO BEING ABSTRACT ARRAY? BUT THEN TESTING GETS HARDER, BUT ALLOWS EASIER TRANSITION TO STATIC IN THE FUTURE
     ## COULD DO THIS A BETTER WAY WITH MULTIPLE DISPATCH SO THAT I DON'T ALLOW USER TO OVERCONSTRAIN
 
-    ## Ensure at least one of the following args is provided
+    ## Ensure at least one of the following args is provided and return
     args = Dict(pos=>pos, vel=>vel, planetcompositions=>planetcompositions)
-    ## Get user provided args
     userargs = providedargs(args)
+    
     ## Verify userargs aren't overconstrained
     haveidenticallength(userargs) || throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
-
-
-    nplanetarysystems = length(args[args .!== nothing][1])
+    
+    ## Infered from userargs
+    nplanetarysystems = length(userargs[collect(keys(userargs))[1]])
 
     ## Initialize arguments which are not provided 
-    ## (flat random pos, no velocity, flat random compositions)
+    ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
     isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems])
     isnothing(vel) && (vel = [(0,0) for _ in 1:nplanetarysystems])
-    isnothing(planetcompositions) && ([[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems])
-
-    if isnothing(nplanetspersystem) & isnothing(planetcompositions)
-        nplanetspersystem = 1
-        planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
-    elseif isnothing(planetcompositions)
-        planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
-    elseif isnothing(nplanetspersystem)
-        ## pass-- this effectively allows for specifiying heterogenous numbers of planets per star
-        ## already checked in hasidenticallength whether planetcompositions has the right length 
-    elseif length(planetcompositions) != nplanetspersystem
-        # NEED TO CHANGE THIS TO CHECK THE LGNTH OF EACH VECTOR IN PLANETCOMPOSITONS
-        ArgumentError("Model is overconstrained: length(planetcompositions) must equal nplanetspersystem")
-    else ## nplanetspersystem and planetcompositions are both specified
-         ## this is ok if they're the 
-    end
-        
-
-
-    for composition in planetcompositions
-        length(composition) != nplanetspersystem && ArgumentError("length(planetcompositions[i]) must equal nplanetspersystem for all i")
-    end
-    # speed = 0.0 # for this version of initializition where all neighbors are precalculated
+    isnothing(planetcompositions) && ([[rand(RNG,1:10,1)] for _ in 1:nplanetarysystems])
 
     # Add PlanetarySystem agents
     for i in 1:nplanetarysystems

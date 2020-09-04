@@ -63,52 +63,6 @@ end
 
 end
 
-# @testset "Check argument lengths" begin 
-
-#     @test TerraformingAgents.haveidenticallengths((
-#         pos = [(1, 2), (3.3, 2)], 
-#         vel = [(1.1, 2.2), (0.1, 2)], 
-#         planetcompositions = [[[1,2,3],[4,5,6]], [[5,6,7],[8,9,10]]]))
-    
-#     ## planetcompositions with different lengths
-#     @test TerraformingAgents.haveidenticallengths((
-#         pos = [(1, 2), (3.3, 2)], 
-#         vel = [(1.1, 2.2), (0.1, 2)], 
-#         planetcompositions = [[[1,2,3]], [[5,6,7],[8,9,10]]]))
-
-#     ## various nothing args
-#     @test TerraformingAgents.haveidenticallengths((
-#         pos = nothing, 
-#         vel = nothing, 
-#         planetcompositions = [[[1,2,3]], [[5,6,7],[8,9,10]]]))
-
-#     @test TerraformingAgents.haveidenticallengths((
-#         pos = nothing, 
-#         vel = [(1.1, 2.2), (0.1, 2)], 
-#         planetcompositions = nothing))
-
-#     @test TerraformingAgents.haveidenticallengths((
-#         pos = [(1, 2), (3.3, 2)], 
-#         vel = nothing, 
-#         planetcompositions = [[[1,2,3]], [[5,6,7],[8,9,10]]]))
-    
-#     @test_throws ArgumentError TerraformingAgents.haveidenticallengths((
-#         pos = nothing, 
-#         vel = nothing, 
-#         planetcompositions = nothing))
-     
-#     ## Length mismatches                                                                   
-#     @test_throws ArgumentError TerraformingAgents.haveidenticallengths((
-#         pos = [(1, 2)], 
-#         vel = nothing, 
-#         planetcompositions = [[[1,2,3]], [[5,6,7],[8,9,10]]]))
-
-#     @test_throws ArgumentError TerraformingAgents.haveidenticallengths((
-#         pos = [(1, 2),(3,4.1)], 
-#         vel = [(1, 2)], 
-#         planetcompositions = [[[1,2,3]], [[5,6,7],[8,9,10]]]))                                                                        
-# end
-
 # @testset "Initialization" begin
 
 #     args = Dict(:nplanetarysystems => 10)
@@ -129,35 +83,3 @@ end
 
 
 # end
-
-# @testset "sort_biosystem_compounds" begin
-
-#     compounds = readcompounds("data/compound")
-
-#     @testset "sortkey: exact_mass" begin
-
-#         biosystem_compounds = readids(["C00068","C00069","C00379","C00380","C00381"])
-#         sortkey = :exact_mass
-#         zero_mass_behavior = "end"
-
-#         expected_exact_mass = [("C00380",111.0433),
-#                                ("C00379",152.0685),
-#                                ("C00068",425.045),
-#                                ("C00381",0.0),
-#                                ("C00069",0.0)]
-
-#         Random.seed!(1234);
-#         @test expected_exact_mass == BioXP.sort_biosystem_compounds(compounds,
-#                                                     biosystem_compounds,
-#                                                     sortkey,
-#                                                     zero_mass_behavior)
-        
-#         for i in 1:1000
-#             @test expected_exact_mass[1:3] == BioXP.sort_biosystem_compounds(compounds,
-#                                                     biosystem_compounds,
-#                                                     sortkey,
-#                                                     zero_mass_behavior)[1:3]
-
-#         end
-        
-    # end
