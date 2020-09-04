@@ -87,21 +87,33 @@ function galaxy_model(;
 
 end
 
+# isargprovided(args::NamedTuple) = all(map(isnothing,args)) && ArgumentError("one of $(keys(args)) must be provided")
+
+function providedargs(args::Dict) 
+    
+    providedargs = filter(x -> !isnothing(x.second), args)
+
+    isempty(providedargs) ? throw(ArgumentError("one of $(keys(args)) must be provided")) : providedargs
+
+end 
+
+haveidenticallengths(args::Dict) = all(length(i.second) == length(args[collect(keys(args))[1]]) for i in args)
 
 
-function haveidenticallengths(args::NamedTuple)
 
-    providedargs = collect(args)[collect(args) .!== nothing] 
+# function haveidenticallengths(args::NamedTuple)
 
-    if all(map(isnothing,args))
-        ArgumentError("one of $(keys(args)) must be provided")
-    elseif ~all(length(i) == length(providedargs[1]) for i in providedargs)
-        ArgumentError("provided arguments $(keys(args)[collect(args) .!== nothing]) must all be same length")
-    else
-        return true
-    end
+#     providedargs = collect(args)[collect(args) .!== nothing] 
 
-end
+#     if all(map(isnothing,args))
+#         throw(ArgumentError("one of $(keys(args)) must be provided"))
+#     elseif ~all(length(i) == length(providedargs[1]) for i in providedargs)
+#         throw(ArgumentError("provided arguments $(keys(args)[collect(args) .!== nothing]) must all be same length"))
+#     else
+#         return true
+#     end
+
+# end
 
 # function initialize_planetarysystems!(
 #     model::AgentBasedModel,
@@ -125,9 +137,12 @@ function initialize_planetarysystems!(
     ## COULD DO THIS A BETTER WAY WITH MULTIPLE DISPATCH SO THAT I DON'T ALLOW USER TO OVERCONSTRAIN
 
     ## Ensure at least one of the following args is provided
-    # args = [pos, vel, planetcompositions]
-    args = (pos=pos, vel=vel, planetcompositions=planetcompositions)
-    hasidenticallength(args)
+    args = Dict(pos=>pos, vel=>vel, planetcompositions=>planetcompositions)
+    ## Get user provided args
+    userargs = providedargs(args)
+    ## Verify userargs aren't overconstrained
+    haveidenticallength(userargs) || throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
+
 
     nplanetarysystems = length(args[args .!== nothing][1])
 
