@@ -116,9 +116,10 @@ function galaxy_model(;
     if isempty(filter(x -> !isnothing(x.second), @dict(nplanetarysystems, pos, vel, planetcompositions)))
         throw(ArgumentError("One of nplanetarysystems, pos, vel, planetcompositions must be provided"))
     elseif isempty(filter(x -> !isnothing(x.second), @dict(pos, vel, planetcompositions)))
-        initialize_planetarysystems_basic!(model,nplanetarysystems;@dict(RNG,nplanetspersystem))
+        initialize_planetarysystems_basic!(model,nplanetarysystems;@dict(RNG,nplanetspersystem)...)
     else
-        initialize_planetarysystems_advanced!(model;@dict(RNG,pos,vel,planetcompositions))
+        initialize_planetarysystems_advanced!(model;@dict(RNG,pos,vel,planetcompositions)...)
+    end
 
     # initialize_planetarysystems!(model, RNG, nplanetarysystems, nplanetspersystem, pos, vel, planetcompositions)
     initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
@@ -186,7 +187,7 @@ function initialize_planetarysystems_basic!(
     vel=nothing 
     planetcompositions=nothing
 
-    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, nplanetspersystem, pos, vel, planetcompositions))    
+    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, nplanetspersystem, pos, vel, planetcompositions)...)    
 
 end
 
@@ -204,7 +205,7 @@ function initialize_planetarysystems_advanced!(
     ## Infered from userargs
     nplanetarysystems = length(userargs[collect(keys(userargs))[1]])
 
-    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, nplanetspersystem, pos, vel, planetcompositions))    
+    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, nplanetspersystem, pos, vel, planetcompositions)...)    
 
 end
 
