@@ -97,52 +97,29 @@ end
 
 haveidenticallengths(args::Dict) = all(length(i.second) == length(args[collect(keys(args))[1]]) for i in args)
 
-function initialize_planetarysystems_basic!(
+function initialize_planetarysystems_unsafe!(
     model::AgentBasedModel,
     nplanetarysystems::Int = 10; 
     RNG::AbstractRNG = Random.default_rng(),
-    nplanetspersystem::Int = 1)
-
-    println("nothing")
-
-end
-
-function initialize_planetarysystems_advanced!(
-    model::AgentBasedModel; 
-    RNG::AbstractRNG = Random.default_rng(),
+    nplanetspersystem::Int = 1,  ## Not used if planetcompositions provided
     pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
     vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
     planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
-    ## Don't need to let user specify number of planets per system. If people want to do that they can just specify the planetcompositions
-    ##  MAYBE I SHOULD SWITCH PLANETCOMPOSITIONS TO BEING ABSTRACT ARRAY? BUT THEN TESTING GETS HARDER, BUT ALLOWS EASIER TRANSITION TO STATIC IN THE FUTURE
-    ## COULD DO THIS A BETTER WAY WITH MULTIPLE DISPATCH SO THAT I DON'T ALLOW USER TO OVERCONSTRAIN
-
-    ## Ensure at least one of the following args is provided and return
-    args = Dict(pos=>pos, vel=>vel, planetcompositions=>planetcompositions)
-    userargs = providedargs(args)
-    
-    ## Verify userargs aren't overconstrained
-    haveidenticallength(userargs) || throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
-    
-    ## Infered from userargs
-    nplanetarysystems = length(userargs[collect(keys(userargs))[1]])
 
     ## Initialize arguments which are not provided 
     ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
     isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems])
     isnothing(vel) && (vel = [(0,0) for _ in 1:nplanetarysystems])
-    isnothing(planetcompositions) && ([[rand(RNG,1:10,1)] for _ in 1:nplanetarysystems])
+    isnothing(planetcompositions) && ([[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems])
 
     # Add PlanetarySystem agents
     for i in 1:nplanetarysystems
-        # pos = Tuple(rand(RNG,2))
-        # vel = sincos(2π * rand(RNG)) .* speed
         
         pskwargs = Dict(:id => nextid(model),
                     :pos => pos[i],
                     :vel => vel[i],
-                    :nplanets => nplanetspersystem,
-                    :planetcompositions => [rand(RNG,1:10,10)],
+                    :nplanets => length(planetcompositions[i]),
+                    :planetcompositions => planetcompositions[i],
                     :alive => false,
                     :parentplanet => nothing,
                     :parentlife => nothing,
@@ -153,6 +130,40 @@ function initialize_planetarysystems_advanced!(
         add_agent_pos!(PlanetarySystem(;pskwargs...), model)
     
     end
+
+end
+
+function initialize_planetarysystems_basic!(
+    model::AgentBasedModel,
+    nplanetarysystems::Int = 10; 
+    RNG::AbstractRNG = Random.default_rng(),
+    nplanetspersystem::Int = 1)
+
+    pos=nothing
+    vel=nothing 
+    planetcompositions=nothing
+
+    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, nplanetspersystem, pos, vel, planetcompositions))    
+
+end
+
+function initialize_planetarysystems_advanced!(
+    model::AgentBasedModel; 
+    RNG::AbstractRNG = Random.default_rng(),
+    pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
+    vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
+    planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
+
+    ## Validate user's args
+    userargs = providedargs(@dict(pos, vel, planetcompositions))
+    haveidenticallength(userargs) || throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
+    
+    ## Infered from userargs
+    nplanetarysystems = length(userargs[collect(keys(userargs))[1]])
+
+    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, nplanetspersystem, pos, vel, planetcompositions))    
+
+
 end
 
 function initialize_psneighbors!(model::AgentBasedModel, radius::Float64)
