@@ -10,8 +10,8 @@ magnitude(x::Tuple{<:Real,<:Real}) = sqrt(sum(x .^ 2))
 
 Base.@kwdef mutable struct PlanetarySystem <: AbstractAgent
     id::Int
-    pos::Tuple{<:Real,<:Real}
-    vel::Tuple{<:Real,<:Real}
+    pos::NTuple{2,<:AbstractFloat}
+    vel::NTuple{2,<:AbstractFloat}
     
     nplanets::Int # To simplify the initial logic, this will be limited to 1 
     planetcompositions::Vector{Vector{Int}} ## I'll always make 10 planet compositions, but only use the first nplanets of them
@@ -31,8 +31,8 @@ end
 
 Base.@kwdef mutable struct Life <: AbstractAgent
     id::Int
-    pos::Tuple{<:Real,<:Real}
-    vel::Tuple{<:Real,<:Real}
+    pos::NTuple{2,<:AbstractFloat}
+    vel::NTuple{2,<:AbstractFloat}
     parentplanet::Int #id; this is also the "type" of life
     parentcomposition::Vector{Int} # to simplify initial logic, this will be a single vector of length 10
     destination::Int #id of destination planetarysystem
@@ -199,18 +199,18 @@ haveidenticallengths(args::Dict) = all(length(i.second) == length(args[collect(k
 
 function initialize_planetarysystems_unsafe!(
     model::AgentBasedModel,
-    nplanetarysystems::Int = 10; 
+    nplanetarysystems::Int; 
     RNG::AbstractRNG = Random.default_rng(),
     nplanetspersystem::Int = 1,  ## Not used if planetcompositions provided
-    pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
-    vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
-    planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
+    pos::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
+    vel::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
+    planetcompositions::Union{Nothing,Vector{Vector{Vector{Int}}}} = nothing)
 
     ## Initialize arguments which are not provided 
     ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
     isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems])
     isnothing(vel) && (vel = [(0,0) for _ in 1:nplanetarysystems])
-    isnothing(planetcompositions) && ([[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems])
+    isnothing(planetcompositions) && (planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems])
 
     # Add PlanetarySystem agents
     for i in 1:nplanetarysystems
@@ -235,9 +235,11 @@ end
 
 function initialize_planetarysystems_basic!(
     model::AgentBasedModel,
-    nplanetarysystems::Int = 10; 
+    nplanetarysystems::Int; 
     RNG::AbstractRNG = Random.default_rng(),
     nplanetspersystem::Int = 1)
+
+    nplanetarysystems < 1 && throw(ArgumentError("At least one planetary system required."))
 
     pos=nothing
     vel=nothing 
@@ -250,9 +252,9 @@ end
 function initialize_planetarysystems_advanced!(
     model::AgentBasedModel; 
     RNG::AbstractRNG = Random.default_rng(),
-    pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
-    vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
-    planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
+    pos::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
+    vel::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
+    planetcompositions::Union{Nothing,Vector{Vector{Vector{Int}}}} = nothing)
 
     ## Validate user's args
     userargs = providedargs(@dict(pos, vel, planetcompositions))
