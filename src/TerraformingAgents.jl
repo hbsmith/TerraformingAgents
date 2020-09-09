@@ -2,6 +2,7 @@ module TerraformingAgents
 
 using Agents, Random, AgentsPlots, Plots
 using DrWatson: @dict, @unpack
+using Suppressor: @suppress_err
 
 Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) where {T<:AbstractAgent} = model[rand(RNG, [k for (k,v) in model.agents if v isa A])]
 # Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
@@ -202,8 +203,8 @@ function initialize_planetarysystems_unsafe!(
     nplanetarysystems::Int; 
     RNG::AbstractRNG = Random.default_rng(),
     nplanetspersystem::Int = 1,  ## Not used if planetcompositions provided
-    pos::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
-    vel::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
+    pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
+    vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     planetcompositions::Union{Nothing,Vector{Vector{Vector{Int}}}} = nothing)
 
     ## Initialize arguments which are not provided 
@@ -252,18 +253,18 @@ end
 function initialize_planetarysystems_advanced!(
     model::AgentBasedModel; 
     RNG::AbstractRNG = Random.default_rng(),
-    pos::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
-    vel::Union{Nothing,AbstractArray{NTuple{2,<:AbstractFloat}}} = nothing,
+    pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
+    vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     planetcompositions::Union{Nothing,Vector{Vector{Vector{Int}}}} = nothing)
 
     ## Validate user's args
     userargs = providedargs(@dict(pos, vel, planetcompositions))
-    haveidenticallength(userargs) || throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
+    haveidenticallengths(userargs) || throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
     
     ## Infered from userargs
     nplanetarysystems = length(userargs[collect(keys(userargs))[1]])
 
-    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, nplanetspersystem, pos, vel, planetcompositions)...)    
+    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, pos, vel, planetcompositions)...)    
 
 end
 
