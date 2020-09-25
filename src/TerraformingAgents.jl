@@ -4,6 +4,8 @@ using Agents, Random, AgentsPlots, Plots
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
 
+export PlanetarySystem, Life
+
 Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) where {T<:AbstractAgent} = model[rand(RNG, [k for (k,v) in model.agents if v isa A])]
 # Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
 
@@ -276,36 +278,23 @@ function initialize_psneighbors!(model::AgentBasedModel, radius::Float64)
     end
 end
 
-function intialize_nearest_neighbor!(model::AgentBasedModel, extent::NTuple{2,Union{Float64,Int}})
+function initialize_nearest_neighbor!(model::AgentBasedModel) #, extent::NTuple{2,Union{Float64,Int}})
     for agent in values(model.agents)
-        agent.nearestps = nearest_neighbor(agent, model, magnitude(extent)).id
+        agent.nearestps = nearest_neighbor(agent, model, magnitude(model.space.extend)).id
         # println("nearest neighbor: ",agent.id, agent.nearestps)
     end
 end
 
-function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
-    # destinationps = random_agent(model,PlanetarySystem)
-    # while destinationps == parentps
-    #     destinationps = random_agent(model,PlanetarySystem)
-    # end
-    pos = parentps.pos
-    speed = 0.2
-    # vel = destinationps.pos .* 0
+function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel, speed::Real)
 
-    # println(parentps.neighbors)
+    pos = parentps.pos
     
     if length(parentps.neighbors)>0
         for neighborid in parentps.neighbors
 
             # println(parentps.neighbors)
-
-
             direction = (model.agents[neighborid].pos .- pos)
             direction_normed = direction ./ magnitude(direction)
-
-            # println(neighborid)
-            # println(model.agents[neighborid].pos)
-            # println(direction_normed)
 
             largs = Dict(:id => nextid(model),
                         :pos => pos,
@@ -317,7 +306,7 @@ function initialize_life!(parentps::PlanetarySystem, model::AgentBasedModel)
             
             add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
         end
-    else
+    else ## Go to nearest star, not neighbor stars
 
         direction = (model.agents[parentps.nearestps].pos .- pos)
         direction_normed = direction ./ magnitude(direction)
@@ -355,6 +344,7 @@ function terraform!(life::Life, ps::PlanetarySystem)
 end
 
 function galaxy_model_step!(model)
+    ## How big are agents? are they points? maybe just need to expand interaction radius here
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
         life, ps = typeof(a1) == PlanetarySystem ? (a2, a1) : (a1, a2)
         is_compatible(life, ps, model.similarity_threshold) ? terraform!(life, ps) : return

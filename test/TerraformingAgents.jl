@@ -83,7 +83,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -100,7 +100,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -130,7 +130,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -147,7 +147,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -164,7 +164,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -181,7 +181,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -198,7 +198,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -215,7 +215,7 @@ end
 
             space2d = ContinuousSpace(2; periodic = true, extend = extent)
             model = @suppress_err AgentBasedModel(
-                Union{TerraformingAgents.PlanetarySystem,TerraformingAgents.Life}, 
+                Union{PlanetarySystem,Life}, 
                 space2d, 
                 properties = @dict(
                     dt, 
@@ -231,6 +231,140 @@ end
     end
 
 end
+
+@testset "Initialize psneighbors" begin 
+
+    extent = (1,1) ## Size of space
+    @testset "raidus 0.29" begin 
+        psneighbor_radius = 0.29 ## distance threshold used to decide where to send life from parent planet
+        space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+        model = @suppress_err AgentBasedModel(
+            Union{PlanetarySystem,Life}, 
+            space2d, 
+            properties = @dict(psneighbor_radius))
+
+        RNG = MersenneTwister(3141)
+        TerraformingAgents.initialize_planetarysystems_advanced!(model; pos = [(0.0, 0.0),(0.2, 0.2),(0.5, 0.5)], RNG = RNG)
+        TerraformingAgents.initialize_psneighbors!(model, psneighbor_radius)  
+        
+        @test model.agents[1].neighbors == [2]
+        @test model.agents[2].neighbors == [1]
+        @test model.agents[3].neighbors == []
+
+    end
+    
+    @testset "radius 0.3" begin
+        psneighbor_radius = 0.3
+        space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+        model = @suppress_err AgentBasedModel(
+            Union{PlanetarySystem,Life}, 
+            space2d, 
+            properties = @dict(psneighbor_radius))
+
+        RNG = MersenneTwister(3141)
+        TerraformingAgents.initialize_planetarysystems_advanced!(model; pos = [(0.0, 0.0),(0.2, 0.2),(0.5, 0.5)], RNG = RNG)
+        TerraformingAgents.initialize_psneighbors!(model, psneighbor_radius)  
+        
+        @test model.agents[1].neighbors == [2]
+        @test model.agents[2].neighbors == [1]
+        @test model.agents[3].neighbors == []
+
+    end
+
+    @testset "radius .43" begin
+        psneighbor_radius = 0.43
+
+        space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+        model = @suppress_err AgentBasedModel(
+            Union{PlanetarySystem,Life}, 
+            space2d, 
+            properties = @dict(psneighbor_radius))
+
+        RNG = MersenneTwister(3141)
+        TerraformingAgents.initialize_planetarysystems_advanced!(model; pos = [(0.0, 0.0),(0.2, 0.2),(0.5, 0.5)], RNG = RNG)
+        TerraformingAgents.initialize_psneighbors!(model, psneighbor_radius)  
+        
+        @test model.agents[1].neighbors == [2]
+        @test Set(model.agents[2].neighbors) == Set([1,3])
+        @test model.agents[3].neighbors == [2]
+    end
+
+end
+
+@testset "Initialize nearest neighbor" begin 
+
+    extent = (1,1) ## Size of space
+    psneighbor_radius = 0.3 ## distance threshold used to decide where to send life from parent planet
+    space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+    model = @suppress_err AgentBasedModel(
+        Union{PlanetarySystem,Life}, 
+        space2d, 
+        properties = @dict(psneighbor_radius))
+
+    RNG = MersenneTwister(3141)
+    TerraformingAgents.initialize_planetarysystems_advanced!(model; pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)], RNG = RNG)
+    TerraformingAgents.initialize_psneighbors!(model, psneighbor_radius)  
+    TerraformingAgents.initialize_nearest_neighbor!(model)
+
+    @test model.agents[1].nearestps == 2
+    @test model.agents[2].nearestps == 1 ## I think this should always return the lower index if tied
+    @test model.agents[3].nearestps == 2
+    @test model.agents[4].nearestps == 3
+
+end
+
+@testset "Initialize life with neighbors" begin
+
+    extent = (1,1) ## Size of space
+    lifespeed = 0.2
+    psneighbor_radius = 0.3 ## distance threshold used to decide where to send life from parent planet
+    space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+    model = @suppress_err AgentBasedModel(
+        Union{PlanetarySystem,Life}, 
+        space2d, 
+        properties = @dict(psneighbor_radius))
+
+    RNG = MersenneTwister(3141)
+    TerraformingAgents.initialize_planetarysystems_advanced!(model; pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)], RNG = RNG)
+    TerraformingAgents.initialize_psneighbors!(model, psneighbor_radius)  
+    TerraformingAgents.initialize_nearest_neighbor!(model)
+    TerraformingAgents.initialize_life!(model.agents[3], model, lifespeed)
+    ### Test neighbors exist
+    lifeagents = filter(p->isa(p.second,Life),model.agents)
+    @test length(lifeagents) == 2
+    destinations = []
+    for i in values(lifeagents)
+        push!(destinations, i.destination)
+        @test i.parentplanet == 3
+    end
+    @test Set(destinations) == Set([1,2])
+
+end
+
+@testset "Initialize life without neighbors" begin
+
+    extent = (1,1) ## Size of space
+    lifespeed = 0.2
+    psneighbor_radius = 0.1 ## distance threshold used to decide where to send life from parent planet
+    space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+    model = @suppress_err AgentBasedModel(
+        Union{PlanetarySystem,Life}, 
+        space2d, 
+        properties = @dict(psneighbor_radius))
+
+    RNG = MersenneTwister(3141)
+    TerraformingAgents.initialize_planetarysystems_advanced!(model; pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)], RNG = RNG)
+    TerraformingAgents.initialize_psneighbors!(model, psneighbor_radius)  
+    TerraformingAgents.initialize_nearest_neighbor!(model)
+    TerraformingAgents.initialize_life!(model.agents[2], model, lifespeed)
+    ### Test neighbors exist
+    lifeagents = filter(p->isa(p.second,Life),model.agents)
+    @test length(lifeagents) == 1
+    @test model.agents[5].parentplanet == 2
+    @test model.agents[5].destination == 1
+
+end
+
 
 # @testset "Initialization" begin
 
