@@ -3,8 +3,14 @@ module TerraformingAgents
 using Agents, Random, AgentsPlots, Plots
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
+using LinearAlgebra: dot
 
-export PlanetarySystem, Life
+export 
+PlanetarySystem, 
+Life,
+galaxy_model_basic,
+galaxy_model_advanced,
+galaxy_model_step!
 
 Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) where {T<:AbstractAgent} = model[rand(RNG, [k for (k,v) in model.agents if v isa A])]
 # Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
@@ -44,10 +50,10 @@ end
 
 function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
-    @unpack RNG, extent, dt, interaction_radius, similarity_threshold, psneighbor_radius = kwarg_dict
+    @unpack RNG, extent, dt, interaction_radius, similarity_threshold, psneighbor_radius, lifespeed = kwarg_dict
 
     space2d = ContinuousSpace(2; periodic = true, extend = extent)
-    model = AgentBasedModel(
+    model = @suppress_err AgentBasedModel(
         Union{PlanetarySystem,Life}, 
         space2d, 
         properties = @dict(
@@ -64,10 +70,11 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
         initialize_planetarysystems_advanced!(model; @dict(RNG, pos, vel, planetcompositions)...)
     else
         throw(ArgumentError("`detail` must be `:basic` or `:advanced`"))
+    end
     
     initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
-    intialize_nearest_neighbor!(model, extent) # Add nearest neighbor
-    initialize_life!(random_agent(model, PlanetarySystem, RNG), model)   
+    initialize_nearest_neighbor!(model) # Add nearest neighbor
+    initialize_life!(random_agent(model, PlanetarySystem, RNG), model, lifespeed)   
     index!(model)
     
     return model
@@ -82,31 +89,10 @@ function galaxy_model_basic(
     psneighbor_radius::Real = 0.2, ## distance threshold used to decide where to send life from parent planet
     interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
     similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
-    nplanetspersystem::Int = 1) ## number of planets per star)
+    nplanetspersystem::Int = 1,
+    lifespeed::Real = 0.2) ## number of planets per star)
 
-    galaxy_model_setup(:basic, @dict(nplanetarysystems, RNG, extent, dt, psneighbor_radius, interaction_radius, similarity_threshold, nplanetspersystem))
-
-    # # pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems]
-    # # vel = [(0,0) for _ in 1:nplanetarysystems]
-    # # planetcompositions = [[rand(RNG,1:10,nplanetspersystem)] for _ in 1:nplanetarysystems]
-
-    # space2d = ContinuousSpace(2; periodic = true, extend = extent)
-    # model = AgentBasedModel(
-    #     Union{PlanetarySystem,Life}, 
-    #     space2d, 
-    #     properties = @dict(
-    #         dt, 
-    #         interaction_radius, 
-    #         similarity_threshold, 
-    #         psneighbor_radius))
-
-    # initialize_planetarysystems_basic!(model, nplanetarysystems; @dict(RNG, nplanetspersystem)...)
-    # initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
-    # intialize_nearest_neighbor!(model, extent) # Add nearest neighbor
-    # initialize_life!(random_agent(model, PlanetarySystem, RNG), model)   
-    # index!(model)
-    
-    # return model
+    galaxy_model_setup(:basic, @dict(nplanetarysystems, RNG, extent, dt, psneighbor_radius, interaction_radius, similarity_threshold, nplanetspersystem, lifespeed))
 
 end
 
@@ -117,76 +103,12 @@ function galaxy_model_advanced(;
     psneighbor_radius::Real = 0.2, ## distance threshold used to decide where to send life from parent planet
     interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
     similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
+    lifespeed::Real = 0.2,
     pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
     vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
     planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
 
-    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, psneighbor_radius, interaction_radius, similarity_threshold, pos, vel, planetcompositions))
-
-    # space2d = ContinuousSpace(2; periodic = true, extend = extent)
-    # model = AgentBasedModel(
-    #     Union{PlanetarySystem,Life}, 
-    #     space2d, 
-    #     properties = @dict(
-    #         dt, 
-    #         interaction_radius, 
-    #         similarity_threshold, 
-    #         psneighbor_radius))
-
-    # initialize_planetarysystems_advanced!(model; @dict(RNG, pos, vel, planetcompositions)...)
-    # initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
-    # intialize_nearest_neighbor!(model, extent) # Add nearest neighbor
-    # initialize_life!(random_agent(model, PlanetarySystem, RNG), model)   
-    # index!(model)
-    
-    # return model
-
-end
-
-# function galaxy_model(; 
-#     RNG::AbstractRNG=Random.default_rng(), 
-#     extent::Tuple{<:Real,<:Real} = (1,1), ## Size of space
-#     dt::Real = 1.0, 
-#     psneighbor_radius::Real = 0.2, ## distance threshold used to decide where to send life from parent planet
-#     interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
-#     similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
-#     nplanetspersystem::Int = 1, ## number of planets per star, only used when planetcompositions not provided
-#     nplanetarysystems::Union{Int,Nothing} = nothing,
-#     pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
-#     vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
-#     planetcompositions::Vector{Vector{Vector{Int}}} = nothing)
-
-#     space2d = ContinuousSpace(2; periodic = true, extend = extent)
-#     model = AgentBasedModel(
-#         Union{PlanetarySystem,Life}, 
-#         space2d, 
-#         properties = @dict(
-#             dt, 
-#             interaction_radius, 
-#             similarity_threshold, 
-#             psneighbor_radius))
-
-#     # userargs = providedargs(@dict(nplanetarysystems, pos, vel, planetcompositions))
-
-#     ## If any of pos, vel, planetcompositions are provided, it overrides nplanetarysystems
-#     if isempty(filter(x -> !isnothing(x.second), @dict(nplanetarysystems, pos, vel, planetcompositions)))
-#         throw(ArgumentError("One of nplanetarysystems, pos, vel, planetcompositions must be provided"))
-#     elseif isempty(filter(x -> !isnothing(x.second), @dict(pos, vel, planetcompositions)))
-#         initialize_planetarysystems_basic!(model,nplanetarysystems;@dict(RNG,nplanetspersystem)...)
-#     elseif isnothing(nplanetarysystems)
-#         initialize_planetarysystems_advanced!(model;@dict(RNG,pos,vel,planetcompositions)...)
-#     else    
-#         @warn "Arguments might be overconstrained, disregarding `nplanetarysystems` arg"
-#         initialize_planetarysystems_advanced!(model;@dict(RNG,pos,vel,planetcompositions)...)
-#     end
-
-#     # initialize_planetarysystems!(model, RNG, nplanetarysystems, nplanetspersystem, pos, vel, planetcompositions)
-#     initialize_psneighbors!(model, psneighbor_radius) # Add neighbor's within psneighbor_radius
-#     intialize_nearest_neighbor!(model, extent) # Add nearest neighbor
-#     initialize_life!(random_agent(model, PlanetarySystem, RNG), model)   
-#     index!(model)
-    
-#     return model
+    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, psneighbor_radius, interaction_radius, similarity_threshold, pos, vel, planetcompositions, lifespeed))
 
 end
 
@@ -343,11 +265,20 @@ function terraform!(life::Life, ps::PlanetarySystem)
 
 end
 
+function approaching_planet(life::Life, ps::PlanetarySystem)
+
+    lifesRelativePos = life.pos .- ps.pos
+    lifesRelativeVel = life.vel
+
+    dot(lifesRelativePos,lifesRelativeVel) >= 0 ? false : true
+end
+
 function galaxy_model_step!(model)
-    ## How big are agents? are they points? maybe just need to expand interaction radius here
+    ## Interaction radius has to account for the velocity of life and the size of dt to ensure interaction
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
         life, ps = typeof(a1) == PlanetarySystem ? (a2, a1) : (a1, a2)
-        is_compatible(life, ps, model.similarity_threshold) ? terraform!(life, ps) : return
+        life.parentplanet == ps.id && return ## don't accidentally interact with the parent planet
+        approaching_planet(life, ps) && is_compatible(life, ps, model.similarity_threshold) ? terraform!(life, ps) : return
         kill_agent!(life, model)
     end
 end

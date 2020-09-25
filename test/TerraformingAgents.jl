@@ -365,6 +365,73 @@ end
 
 end
 
+@testset "approaching_planet" begin 
+
+    extent = (1,1) ## Size of space
+    lifespeed = 0.2
+    psneighbor_radius = 0.2 ## distance threshold used to decide where to send life from parent planet
+    space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+    model = @suppress_err AgentBasedModel(
+        Union{PlanetarySystem,Life}, 
+        space2d, 
+        properties = @dict(psneighbor_radius))
+
+    RNG = MersenneTwister(3141)
+    TerraformingAgents.initialize_planetarysystems_advanced!(model; pos = [(0.1, 0.1),(0.2, 0.2)], RNG = RNG)
+    TerraformingAgents.initialize_psneighbors!(model, psneighbor_radius)  
+    TerraformingAgents.initialize_nearest_neighbor!(model)
+    
+    TerraformingAgents.initialize_life!(model.agents[2], model, lifespeed)
+    @test TerraformingAgents.approaching_planet(model.agents[3],model.agents[1]) == true
+    @test TerraformingAgents.approaching_planet(model.agents[3],model.agents[2]) == false
+    model.agents[3].vel = .-model.agents[3].vel
+    @test TerraformingAgents.approaching_planet(model.agents[3],model.agents[1]) == false
+    @test TerraformingAgents.approaching_planet(model.agents[3],model.agents[2]) == false
+    model.agents[3].vel = (-0.2, 0.0)
+    @test TerraformingAgents.approaching_planet(model.agents[3],model.agents[1]) == true
+    @test TerraformingAgents.approaching_planet(model.agents[3],model.agents[2]) == false
+    
+    kill_agent!(model.agents[3], model)
+    TerraformingAgents.initialize_life!(model.agents[1], model, lifespeed)
+    @test TerraformingAgents.approaching_planet(model.agents[4],model.agents[2]) == true
+    @test TerraformingAgents.approaching_planet(model.agents[4],model.agents[1]) == false
+    model.agents[4].vel = .-model.agents[4].vel
+    @test TerraformingAgents.approaching_planet(model.agents[4],model.agents[2]) == false
+    @test TerraformingAgents.approaching_planet(model.agents[4],model.agents[1]) == false
+    model.agents[4].vel = (0.0, 0.2)
+    @test TerraformingAgents.approaching_planet(model.agents[4],model.agents[2]) == true
+    @test TerraformingAgents.approaching_planet(model.agents[4],model.agents[1]) == false    
+
+end
+
+@testset "Agent dies at correct planet" begin
+    
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+    model = galaxy_model_basic(3, RNG=MersenneTwister(3141), interaction_radius = 0.02)
+    steps = 0
+    for i in 1:2:100
+        step!(model, agent_step!, galaxy_model_step!, 2)
+        steps+=1
+        lifeagents = filter(p->isa(p.second,Life),model.agents)
+        steps == 3 && @test length(lifeagents) == 1
+        steps == 4 && @test length(lifeagents) == 1
+        steps == 5 && @test length(lifeagents) == 0
+    end
+
+    model = galaxy_model_basic(3, RNG=MersenneTwister(3141), interaction_radius = 0.01)
+    steps = 0
+    for i in 1:2:100
+        step!(model, agent_step!, galaxy_model_step!, 2)
+        steps+=1
+        lifeagents = filter(p->isa(p.second,Life),model.agents)
+        steps == 3 && @test length(lifeagents) == 1
+        steps == 4 && @test length(lifeagents) == 1
+        steps == 5 && @test length(lifeagents) == 0
+    end
+
+
+end
+
 
 # @testset "Initialization" begin
 
