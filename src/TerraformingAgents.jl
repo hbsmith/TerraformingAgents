@@ -47,7 +47,7 @@ Base.@kwdef mutable struct Life <: AbstractAgent
     vel::NTuple{2,<:AbstractFloat}
     parentplanet::Int #id; this is also the "type" of life
     composition::Vector{Int} # to simplify initial logic, this will be a single vector of length 10. Should this be the same as the planet composition?
-    destination::Int #id of destination planetarysystem
+    destination::Union{Nothing,Int} #id of destination planetarysystem
     ancestors::Vector{Int} #list of all life that phylogenetically preceded this life
     ## once life arrives at a new planet, life the agent just "dies"
 end
@@ -80,8 +80,7 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
     initialize_nearest_neighbor!(model) # Add nearest neighbor
     initialize_life!(random_agent(model, Planet, RNG), model)   
     index!(model)
-    
-    return model
+    model
 
 end
 
@@ -155,6 +154,7 @@ function initialize_planetarysystems_unsafe!(
         add_agent_pos!(Planet(;pskwargs...), model)
     
     end
+    model
 
 end
 
@@ -236,7 +236,7 @@ end
 
 # end
 
-function compatibleplanetids(life::Life, allowed_diff::Real, model::ABM)
+function compatibleplanetids(life::Life, model::ABM)
 
     candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
     ncandidateplanets = length(candidateplanets)
@@ -249,7 +249,7 @@ function compatibleplanetids(life::Life, allowed_diff::Real, model::ABM)
     end    
     allplanetcompositions = hcat(_planetvect...)
     compositiondiffs = abs.(allplanetcompositions .- life.composition)
-    compatibleindxs = findall(<=(allowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
+    compatibleindxs = findall(<=(model.llowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
     planetids[compatibleindxs]
 
 end
@@ -330,75 +330,93 @@ end
 # end
 
 
-function initialize_life!(parentps::Planet, model::AgentBasedModel)
+function initialize_life!(planet::Planet, model::AgentBasedModel; ancestors::Union{Nothing,Vector{Int}}=nothing) ## Ancestor can't be the agent itself because it dies
 
-    parentps.claimed = true
-    pos = parentps.pos
+    ## Update planet properties
+    planet.claimed = true
+    planet.alive = true
 
-    for psid in neighboringTerraformCandidates()
+    ## Create Life without destination/velocity
+    args = Dict(:id => nextid(model),
+                :pos => planet.pos,
+                :vel => (0.0,0.0),
+                :parentplanet => planet.id,
+                :parentcomposition => planet.composition,
+                :destination => nothing,
+                :ancestors => isnothing(ancestor) ? Int[] : ancestors) ## Only "first" life won't have ancestors
 
-        direction = (model.agents[psid].pos .- pos)
-        direction_normed = direction ./ magnitude(direction)
+    life = add_agent_pos!(Life(;args...), model)
+    life.destination = nearestcompatibleplanet(life, compatibleplanetids(life,model), model) ## return planet itself
+    direction = (life.destination.pos .- life.pos)
+    direction_normed = direction ./ magnitude(direction)
+    life.vel = direction_normed .* model.lifespeed
+    model
 
-        largs = Dict(:id => nextid(model),
-                    :pos => pos,
-                    :vel => direction_normed .* model.lifespeed)
+    # for psid in neighboringTerraformCandidates()
+
+    #     direction = (model.agents[psid].pos .- pos)
+    #     direction_normed = direction ./ magnitude(direction)
+
+    #     largs = Dict(:id => nextid(model),
+    #                 :pos => pos,
+    #                 :vel => direction_normed .* model.lifespeed)
         
-        lkwargs = Dict(:parentplanet => parentps.id,
-                    :parentcomposition => parentps.composition[1],
-                    :destination => psid)
+    #     lkwargs = Dict(:parentplanet => planet.id,
+    #                 :parentcomposition => planet.composition[1],
+    #                 :destination => psid)
        
-        model.agents[psid].claimed = true
-        add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+    #     model.agents[psid].claimed = true
+    #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
 
-    end
+    # end
 
-    ########
+    # ########
     
-    if length(parentps.neighbors)>0
-        for neighborid in parentps.neighbors
+    # if length(planet.neighbors)>0
+    #     for neighborid in planet.neighbors
 
-            # println(parentps.neighbors)
-            direction = (model.agents[neighborid].pos .- pos)
-            direction_normed = direction ./ magnitude(direction)
+    #         # println(parentps.neighbors)
+    #         direction = (model.agents[neighborid].pos .- pos)
+    #         direction_normed = direction ./ magnitude(direction)
 
-            largs = Dict(:id => nextid(model),
-                        :pos => pos,
-                        :vel => direction_normed .* model.lifespeed)
+    #         largs = Dict(:id => nextid(model),
+    #                     :pos => pos,
+    #                     :vel => direction_normed .* model.lifespeed)
             
-            lkwargs = Dict(:parentplanet => parentps.id,
-                        :parentcomposition => parentps.composition[1],
-                        :destination => neighborid)
+    #         lkwargs = Dict(:parentplanet => planet.id,
+    #                     :parentcomposition => planet.composition[1],
+    #                     :destination => neighborid)
             
-            add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
-        end
-    else ## Go to nearest star, not neighbor stars
+    #         add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+    #     end
+    # else ## Go to nearest star, not neighbor stars
 
-        direction = (model.agents[parentps.nearestps].pos .- pos) ## This won't work if nearest is a star you've been to
-        direction_normed = direction ./ magnitude(direction)
+    #     direction = (model.agents[planet.nearestps].pos .- pos) ## This won't work if nearest is a star you've been to
+    #     direction_normed = direction ./ magnitude(direction)
 
-        largs = Dict(:id => nextid(model),
-                    :pos => pos,
-                    :vel => direction_normed .* model.lifespeed)
+    #     largs = Dict(:id => nextid(model),
+    #                 :pos => pos,
+    #                 :vel => direction_normed .* model.lifespeed)
             
-        lkwargs = Dict(:parentplanet => parentps.id,
-                    :parentcomposition => parentps.composition[1],
-                    :destination => parentps.nearestps)
+    #     lkwargs = Dict(:parentplanet => planet.id,
+    #                 :parentcomposition => planet.composition[1],
+    #                 :destination => planet.nearestps)
         
-        add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+    #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
 
-    end
+    # end
 
 
 end
 
-function terraform!(life::Life, ps::Planet)
-    ps.alive = true
-    ps.parentplanet = life.parentplanet
-    ps.parentcomposition = life.composition
-    ps.parentlife = life.id
-    push!(ps.ancestors, life.parentplanet)
-    println("terraformed $(ps.id) from $(life.id)")
+function terraform!(life::Life, planet::Planet)
+    # planet.alive = true
+    # planet.parentplanet = life.parentplanet
+    # planet.parentcomposition = life.composition
+    # planet.parentlife = life.id
+    initialize_life!(planet, model, ancestors = push!(life.ancestors, ife.id))
+    push!(planet.ancestors, life.parentplanet) ## Need to reevaluate how i think about ancestors and using life vs planet for that--go back to my original hypothesis points
+    println("terraformed $(planet.id) from $(life.id)")
     ## Change ps composition based on life parent composition and current planet composition
     # ps.planetcompositions[1] = mix_compositions(life, ps)
 
