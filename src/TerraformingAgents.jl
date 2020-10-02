@@ -236,33 +236,33 @@ end
 
 # end
 
-function compatiblePlanetIds(life::Life, model::ABM, allowedDiff::Real)
+function compatibleplanetids(life::Life, allowed_diff::Real, model::ABM)
 
-    candidatePlanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
-    nCandidatePlanets = length(candidatePlanets)
+    candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
+    ncandidateplanets = length(candidateplanets)
 
-    allPlanetIds = Vector{Int}(undef,nCandidatePlanets)
-    _PlanetVect = Vector{Int}(undef,nCandidatePlanets)
-    for (i,a) in enumerate(values(candidatePlanets))
-        _PlanetVect[i] = a.planetcompositions
-        allPlanetIds[i] = a.id
+    planetids = Vector{Int}(undef,ncandidateplanets)
+    _planetvect = Vector{Int}(undef,ncandidateplanets)
+    for (i,a) in enumerate(values(candidateplanets))
+        _planetvect[i] = a.planetcompositions
+        planetids[i] = a.id
     end    
-    allPlanetCompositions = hcat(_PlanetVect...)
-    compositionDiffs = abs.(allPlanetCompositions .- life.composition)
-    compatibleIdxs = findall(<=(allowedDiff),maximum(compositionDiffs, dims=1)) ## No element can differ by more than threshold
-    allPlanetIds[compatibleIdxs]
+    allplanetcompositions = hcat(_planetvect...)
+    compositiondiffs = abs.(allplanetcompositions .- life.composition)
+    compatibleindxs = findall(<=(allowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
+    planetids[compatibleindxs]
 
 end
 
-function nearestCompatiblePlanet(life::Life, compatiblePlanetIds::Vector{Int}, model::ABM)
+function nearestcompatibleplanet(life::Life, compatibleplanetids::Vector{Int}, model::ABM)
 
-    planetPositions = Array{Real}(undef,2,length(compatiblePlanetIds))
-    for (i,id) in enumerate(compatiblePlanetIds)
-        planetPositions[1,i] = model.agent[id].pos[1]
-        planetPositions[2,i] = model.agent[id].pos[2]
+    planetpositions = Array{Real}(undef,2,length(compatibleplanetids))
+    for (i,id) in enumerate(compatibleplanetids)
+        planetpositions[1,i] = model.agent[id].pos[1]
+        planetpositions[2,i] = model.agent[id].pos[2]
     end
-    idx, dist = nn(KDTree(planetPositions),collect(life.pos)) ## I need to make sure the life is initialized first with position
-    compatiblePlanetIds[idx]
+    idx, dist = nn(KDTree(planetpositions),collect(life.pos)) ## I need to make sure the life is initialized first with position
+    compatibleplanetids[idx]
 
 end
 
