@@ -25,13 +25,16 @@ Base.@kwdef mutable struct Planet <: AbstractAgent
     
     # nplanets::Int # To simplify the initial logic, this will be limited to 1 
     composition::Vector{Int} ## I'll always make 10 planet compositions, but only use the first nplanets of them
+    initialcomposition::Vector{Int} ## Same as composition until it's terraformed
     alive::Bool
+    claimed::Bool
     
     ## Properties of the process, but not the planet itself
-    ancestors::Vector{Int}
+    ancestors::Vector{Int} #list of all planets that phylogenetically preceded this life
     parentplanet::Union{Int,Nothing} #id
     parentlife::Union{Int,Nothing} #id
     parentcomposition::Union{Vector{Int},Nothing} 
+    
     
     ## Do I need the below?
     # age::Float64
@@ -43,7 +46,7 @@ Base.@kwdef mutable struct Life <: AbstractAgent
     pos::NTuple{2,<:AbstractFloat}
     vel::NTuple{2,<:AbstractFloat}
     parentplanet::Int #id; this is also the "type" of life
-    composition::Vector{Int} # to simplify initial logic, this will be a single vector of length 10
+    composition::Vector{Int} # to simplify initial logic, this will be a single vector of length 10. Should this be the same as the planet composition?
     destination::Int #id of destination planetarysystem
     ancestors::Vector{Int} #list of all life that phylogenetically preceded this life
     ## once life arrives at a new planet, life the agent just "dies"
@@ -51,7 +54,7 @@ end
 
 function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
-    @unpack RNG, extent, dt, interaction_radius, similarity_threshold, lifespeed = kwarg_dict
+    @unpack RNG, extent, dt, interaction_radius, allowed_diff, lifespeed = kwarg_dict
 
     space2d = ContinuousSpace(2; periodic = true, extend = extent)
     model = @suppress_err AgentBasedModel(
@@ -60,13 +63,12 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
         properties = @dict(
             dt, 
             interaction_radius, 
-            similarity_threshold, 
-            visited_planets,
+            allowed_diff, 
             lifespeed))
 
     if detail == :basic 
-        @unpack nplanetarysystems, nplanetspersystem = kwarg_dict
-        initialize_planetarysystems_basic!(model, nplanetarysystems; @dict(RNG, nplanetspersystem)...)
+        @unpack nplanets = kwarg_dict
+        initialize_planetarysystems_basic!(model, nplanets; @dict(RNG)...)
     elseif detail == :advanced
         @unpack pos, vel, planetcompositions = kwarg_dict
         initialize_planetarysystems_advanced!(model; @dict(RNG, pos, vel, planetcompositions)...)
@@ -84,15 +86,15 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 end
 
 function galaxy_model_basic(
-    nplanetarysystems::Int; 
+    nplanets::Int; 
     RNG::AbstractRNG=Random.default_rng(), 
     extent::Tuple{<:Real,<:Real} = (1,1), ## Size of space
     dt::Real = 1.0, 
     interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
-    similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
+    allowed_diff::Real = 0.5, ## how similar life and destination planet have to be for terraformation
     lifespeed::Real = 0.2) ## number of planets per star)
 
-    galaxy_model_setup(:basic, @dict(nplanetarysystems, RNG, extent, dt, interaction_radius, similarity_threshold, lifespeed))
+    galaxy_model_setup(:basic, @dict(nplanets, RNG, extent, dt, interaction_radius, allowed_diff, lifespeed))
 
 end
 
@@ -101,13 +103,13 @@ function galaxy_model_advanced(;
     extent::Tuple{<:Real,<:Real} = (1,1), ## Size of space
     dt::Real = 1.0, 
     interaction_radius::Real = 1e-4, ## how close life and destination planet have to be to interact
-    similarity_threshold::Real = 0.5, ## how similar life and destination planet have to be for terraformation
+    allowed_diff::Real = 0.5, ## how similar life and destination planet have to be for terraformation
     lifespeed::Real = 0.2,
-    pos::Union{Nothing,AbstractArray{Tuple{<:Real,<:Real}}} = nothing,
-    vel::AbstractArray{Tuple{<:Real,<:Real}} = nothing,
-    planetcompositions::Vector{Vector{Int}} = nothing)
+    pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
+    vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
+    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing)
 
-    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, interaction_radius, similarity_threshold, pos, vel, planetcompositions, lifespeed))
+    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, interaction_radius, allowed_diff, pos, vel, planetcompositions, lifespeed))
 
 end
 
@@ -123,25 +125,26 @@ haveidenticallengths(args::Dict) = all(length(i.second) == length(args[collect(k
 
 function initialize_planetarysystems_unsafe!(
     model::AgentBasedModel,
-    nplanetarysystems::Int; 
+    nplanets::Int; 
     RNG::AbstractRNG = Random.default_rng(),
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Vector{Int}}}} = nothing)
+    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing)
 
     ## Initialize arguments which are not provided 
     ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
-    isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanetarysystems])
-    isnothing(vel) && (vel = [(0,0) for _ in 1:nplanetarysystems])
-    isnothing(planetcompositions) && (planetcompositions = [rand(RNG,1:10,1) for _ in 1:nplanetarysystems])
+    isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanets])
+    isnothing(vel) && (vel = [(0,0) for _ in 1:nplanets])
+    isnothing(planetcompositions) && (planetcompositions = [rand(RNG,1:10,10) for _ in 1:nplanets])
 
     # Add PlanetarySystem agents
-    for i in 1:nplanetarysystems
+    for i in 1:nplanets
         
         pskwargs = Dict(:id => nextid(model),
                     :pos => pos[i],
                     :vel => vel[i],
-                    :planetcompositions => planetcompositions[i],
+                    :composition => planetcompositions[i],
+                    :initialcomposition => planetcompositions[i],
                     :alive => false,
                     :claimed => false,
                     :parentplanet => nothing,
@@ -157,16 +160,16 @@ end
 
 function initialize_planetarysystems_basic!(
     model::AgentBasedModel,
-    nplanetarysystems::Int; 
+    nplanets::Int; 
     RNG::AbstractRNG = Random.default_rng())
 
-    nplanetarysystems < 1 && throw(ArgumentError("At least one planetary system required."))
+    nplanets < 1 && throw(ArgumentError("At least one planetary system required."))
 
     pos=nothing
     vel=nothing 
     planetcompositions=nothing
 
-    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, pos, vel, planetcompositions)...)    
+    initialize_planetarysystems_unsafe!(model, nplanets; @dict(RNG, pos, vel, planetcompositions)...)    
 
 end
 
@@ -175,16 +178,16 @@ function initialize_planetarysystems_advanced!(
     RNG::AbstractRNG = Random.default_rng(),
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Vector{Int}}}} = nothing)
+    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing)
 
     ## Validate user's args
     userargs = providedargs(@dict(pos, vel, planetcompositions))
     haveidenticallengths(userargs) || throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
     
     ## Infered from userargs
-    nplanetarysystems = length(userargs[collect(keys(userargs))[1]])
+    nplanets = length(userargs[collect(keys(userargs))[1]])
 
-    initialize_planetarysystems_unsafe!(model, nplanetarysystems; @dict(RNG, pos, vel, planetcompositions)...)    
+    initialize_planetarysystems_unsafe!(model, nplanets; @dict(RNG, pos, vel, planetcompositions)...)    
 
 end
 
@@ -414,7 +417,7 @@ function galaxy_model_step!(model)
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
         life, ps = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
         life.parentplanet == ps.id && return ## don't accidentally interact with the parent planet
-        approaching_planet(life, ps) && is_compatible(life, ps, model.similarity_threshold) ? terraform!(life, ps) : return
+        approaching_planet(life, ps) && is_compatible(life, ps, model.allowed_diff) ? terraform!(life, ps) : return
         kill_agent!(life, model)
         initialize_life!(ps, model)
     end
