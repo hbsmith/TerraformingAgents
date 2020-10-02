@@ -441,6 +441,10 @@ function galaxy_model_step!(model)
     end
 end
 
+## TO DO 10/2/2020
+## - MAKE CONSISTENT HOW I KEEP TRACK OF ancestors
+## - MAKE CONSISTENT PASSING INSTANCES VS IDS, KEEPING IN MIND INSTANCES WILL DIE AND I WANT THEM TO BE GARBAGE COLLECTED
+## - UPDATE TESTS
 
 #= I should probably have a function that just scales my planet compositions 
 accross the color spectrum instead of baking colors in as the compositions
