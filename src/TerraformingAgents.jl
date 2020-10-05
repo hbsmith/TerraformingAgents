@@ -17,6 +17,7 @@ Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) wh
 # Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
 
 magnitude(x::Tuple{<:Real,<:Real}) = sqrt(sum(x .^ 2))
+direction(start::Agent, finish::Agent) = (finish.pos .- start.pos) ./ magnitude((finish.pos .- start.pos)) ## This is normalized
 
 Base.@kwdef mutable struct Planet <: AbstractAgent
     id::Int
@@ -77,7 +78,7 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
     end
     
     # initialize_psneighbors!(model, ) # Add neighbor's within 
-    initialize_nearest_neighbor!(model) # Add nearest neighbor
+    # initialize_nearest_neighbor!(model) # Add nearest neighbor
     initialize_life!(random_agent(model, Planet, RNG), model)   
     index!(model)
     model
@@ -236,7 +237,7 @@ end
 
 # end
 
-function compatibleplanetids(life::Life, model::ABM)
+function compatibleplanetids(planet::Planet, model::ABM)
 
     candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
     ncandidateplanets = length(candidateplanets)
@@ -248,20 +249,20 @@ function compatibleplanetids(life::Life, model::ABM)
         planetids[i] = a.id
     end    
     allplanetcompositions = hcat(_planetvect...)
-    compositiondiffs = abs.(allplanetcompositions .- life.composition)
+    compositiondiffs = abs.(allplanetcompositions .- planet.composition)
     compatibleindxs = findall(<=(model.llowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
     planetids[compatibleindxs]
 
 end
 
-function nearestcompatibleplanet(life::Life, compatibleplanetids::Vector{Int}, model::ABM)
+function nearestcompatibleplanet(planet::Planet, compatibleplanetids::Vector{Int}, model::ABM)
 
     planetpositions = Array{Real}(undef,2,length(compatibleplanetids))
     for (i,id) in enumerate(compatibleplanetids)
         planetpositions[1,i] = model.agent[id].pos[1]
         planetpositions[2,i] = model.agent[id].pos[2]
     end
-    idx, dist = nn(KDTree(planetpositions),collect(life.pos)) ## I need to make sure the life is initialized first with position
+    idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) ## I need to make sure the life is initialized first with position
     compatibleplanetids[idx]
 
 end
@@ -329,96 +330,149 @@ end
 
 # end
 
-
-function initialize_life!(planet::Planet, model::AgentBasedModel; ancestors::Union{Nothing,Vector{Int}}=nothing) ## Ancestor can't be the agent itself because it dies
-
-    ## Update planet properties
-    planet.claimed = true
+function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{Int}}=nothing) ## First life is weird because it inherits from planet without changing planet and has no ancestors
+## Design choice is to modify planet and life together since the life is just a reflection of the planet anyways
     planet.alive = true
+    planet.claimed = true ## This should already be true unless this is the first planet
+    ## No ancestors, parentplanet, parentlife, parentcomposition
+    destinationplanet =  nearestcompatibleplanet(planet, compatibleplanetids(planet,model), model)
 
-    ## Create Life without destination/velocity
     args = Dict(:id => nextid(model),
                 :pos => planet.pos,
-                :vel => (0.0,0.0),
+                :vel => direction(planet,destinationplanet) .* model.lifespeed,
                 :parentplanet => planet.id,
                 :parentcomposition => planet.composition,
-                :destination => nothing,
+                :destination => destinationplanet,
                 :ancestors => isnothing(ancestor) ? Int[] : ancestors) ## Only "first" life won't have ancestors
 
     life = add_agent_pos!(Life(;args...), model)
-    life.destination = nearestcompatibleplanet(life, compatibleplanetids(life,model), model) ## return planet itself
-    direction = (life.destination.pos .- life.pos)
-    direction_normed = direction ./ magnitude(direction)
-    life.vel = direction_normed .* model.lifespeed
+    
+    destinationplanet.claimed = true
     model
 
-    # for psid in neighboringTerraformCandidates()
-
-    #     direction = (model.agents[psid].pos .- pos)
-    #     direction_normed = direction ./ magnitude(direction)
-
-    #     largs = Dict(:id => nextid(model),
-    #                 :pos => pos,
-    #                 :vel => direction_normed .* model.lifespeed)
-        
-    #     lkwargs = Dict(:parentplanet => planet.id,
-    #                 :parentcomposition => planet.composition[1],
-    #                 :destination => psid)
-       
-    #     model.agents[psid].claimed = true
-    #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
-
-    # end
-
-    # ########
-    
-    # if length(planet.neighbors)>0
-    #     for neighborid in planet.neighbors
-
-    #         # println(parentps.neighbors)
-    #         direction = (model.agents[neighborid].pos .- pos)
-    #         direction_normed = direction ./ magnitude(direction)
-
-    #         largs = Dict(:id => nextid(model),
-    #                     :pos => pos,
-    #                     :vel => direction_normed .* model.lifespeed)
-            
-    #         lkwargs = Dict(:parentplanet => planet.id,
-    #                     :parentcomposition => planet.composition[1],
-    #                     :destination => neighborid)
-            
-    #         add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
-    #     end
-    # else ## Go to nearest star, not neighbor stars
-
-    #     direction = (model.agents[planet.nearestps].pos .- pos) ## This won't work if nearest is a star you've been to
-    #     direction_normed = direction ./ magnitude(direction)
-
-    #     largs = Dict(:id => nextid(model),
-    #                 :pos => pos,
-    #                 :vel => direction_normed .* model.lifespeed)
-            
-    #     lkwargs = Dict(:parentplanet => planet.id,
-    #                 :parentcomposition => planet.composition[1],
-    #                 :destination => planet.nearestps)
-        
-    #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
-
-    # end
-
-
 end
+    
 
+## Life which spawns from the planet after it's been terraformed
+# function initialize_life!(planet::Planet, model::AgentBasedModel; ancestors::Union{Nothing,Vector{Int}}=nothing) ## Ancestor can't be the agent itself because it dies
+
+#     ## Update planet properties
+#     planet.claimed = true ## This should already be true unless it's the OG life
+#     planet.alive = true
+
+#     ## Create Life without destination/velocity
+#     args = Dict(:id => nextid(model),
+#                 :pos => planet.pos,
+#                 :vel => (0.0,0.0),
+#                 :parentplanet => planet.id,
+#                 :parentcomposition => planet.composition,
+#                 :destination => nothing,
+#                 :ancestors => isnothing(ancestor) ? Int[] : ancestors) ## Only "first" life won't have ancestors
+
+#     life = add_agent_pos!(Life(;args...), model)
+
+#     ## Find and update destination
+#     life.destination = nearestcompatibleplanet(life, compatibleplanetids(life,model), model) ## return planet itself
+#     direction = (life.destination.pos .- life.pos)
+#     direction_normed = direction ./ magnitude(direction)
+#     life.vel = direction_normed .* model.lifespeed
+
+#     ## Update destination planet properties
+#     life.destination.claimed = true
+
+
+#     model
+
+#     # for psid in neighboringTerraformCandidates()
+
+#     #     direction = (model.agents[psid].pos .- pos)
+#     #     direction_normed = direction ./ magnitude(direction)
+
+#     #     largs = Dict(:id => nextid(model),
+#     #                 :pos => pos,
+#     #                 :vel => direction_normed .* model.lifespeed)
+        
+#     #     lkwargs = Dict(:parentplanet => planet.id,
+#     #                 :parentcomposition => planet.composition[1],
+#     #                 :destination => psid)
+       
+#     #     model.agents[psid].claimed = true
+#     #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+
+#     # end
+
+#     # ########
+    
+#     # if length(planet.neighbors)>0
+#     #     for neighborid in planet.neighbors
+
+#     #         # println(parentps.neighbors)
+#     #         direction = (model.agents[neighborid].pos .- pos)
+#     #         direction_normed = direction ./ magnitude(direction)
+
+#     #         largs = Dict(:id => nextid(model),
+#     #                     :pos => pos,
+#     #                     :vel => direction_normed .* model.lifespeed)
+            
+#     #         lkwargs = Dict(:parentplanet => planet.id,
+#     #                     :parentcomposition => planet.composition[1],
+#     #                     :destination => neighborid)
+            
+#     #         add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+#     #     end
+#     # else ## Go to nearest star, not neighbor stars
+
+#     #     direction = (model.agents[planet.nearestps].pos .- pos) ## This won't work if nearest is a star you've been to
+#     #     direction_normed = direction ./ magnitude(direction)
+
+#     #     largs = Dict(:id => nextid(model),
+#     #                 :pos => pos,
+#     #                 :vel => direction_normed .* model.lifespeed)
+            
+#     #     lkwargs = Dict(:parentplanet => planet.id,
+#     #                 :parentcomposition => planet.composition[1],
+#     #                 :destination => planet.nearestps)
+        
+#     #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
+
+#     # end
+
+
+# end
+
+## Life which has spawned elsewhere merging with a dead planet
 function terraform!(life::Life, planet::Planet)
-    # planet.alive = true
-    # planet.parentplanet = life.parentplanet
-    # planet.parentcomposition = life.composition
-    # planet.parentlife = life.id
-    initialize_life!(planet, model, ancestors = push!(life.ancestors, ife.id))
-    push!(planet.ancestors, life.parentplanet) ## Need to reevaluate how i think about ancestors and using life vs planet for that--go back to my original hypothesis points
+
+    ## Modify destination planet properties
+    planet.composition = mixcompositions(planet.compositon,life.composition)
+    planet.alive = true
+    push!(planet.ancestors, life.parentplanet)
+    planet.parentplanet = life.parentplanet
+    planet.parentlife = life.id 
+    planet.parentcomposition = life.composition
+    # planet.claimed = true ## Test to make sure this is already true beforehand
+
+    spawnlife!(planet, model, ancestors = push!(life.ancestors, life.id)) ## This makes new life 
     println("terraformed $(planet.id) from $(life.id)")
-    ## Change ps composition based on life parent composition and current planet composition
-    # ps.planetcompositions[1] = mix_compositions(life, ps)
+    kill_agent!(life, model)
+    
+
+
+    
+    # ############
+    # # planet.alive = true
+    # # planet.parentplanet = life.parentplanet
+    # # planet.parentcomposition = life.composition
+    # # planet.parentlife = life.id
+
+    # #################
+    # ## initialize_life/firstlife should be last thing done after terraforming
+    # initialize_life!(planet, model, ancestors = push!(life.ancestors, life.id))
+    # planet.parentcomposition = life.composition
+    # push!(planet.ancestors, life.parentplanet) ## Need to reevaluate how i think about ancestors and using life vs planet for that--go back to my original hypothesis points
+    # println("terraformed $(planet.id) from $(life.id)")
+    # ## Change ps composition based on life parent composition and current planet composition
+    # # ps.planetcompositions[1] = mix_compositions(life, ps)
 
 end
 
@@ -433,11 +487,9 @@ end
 function galaxy_model_step!(model)
     ## Interaction radius has to account for the velocity of life and the size of dt to ensure interaction
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
-        life, ps = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
-        life.parentplanet == ps.id && return ## don't accidentally interact with the parent planet
-        approaching_planet(life, ps) && is_compatible(life, ps, model.allowed_diff) ? terraform!(life, ps) : return
-        kill_agent!(life, model)
-        initialize_life!(ps, model)
+        life, planet = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
+        life.parentplanet == planet.id && return ## don't accidentally interact with the parent planet
+        approaching_planet(life, planet) && is_compatible(life, planet, model.allowed_diff) ? terraform!(life, planet) : return
     end
 end
 
