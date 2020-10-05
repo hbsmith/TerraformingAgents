@@ -36,10 +36,8 @@ Base.@kwdef mutable struct Planet <: AbstractAgent
     parentlife::Union{Int,Nothing} #id
     parentcomposition::Union{Vector{Int},Nothing} 
     
-    
-    ## Do I need the below?
+    ## Do I need the below? If planets disappear after certain length of time
     # age::Float64
-    # originalcomposition::Vector{Vector{Int64}}
 end
 
 Base.@kwdef mutable struct Life <: AbstractAgent
@@ -192,51 +190,6 @@ function initialize_planetarysystems_advanced!(
 
 end
 
-# function initialize_psneighbors!(model::AgentBasedModel, radius::Float64)
-#     for (a1, a2) in interacting_pairs(model, radius, :all)
-#         push!(a1.neighbors, a2.id)
-#         push!(a2.neighbors, a1.id)
-#         # println("psneighbors: ",a1,a2)
-#     end
-# end
-
-# function initialize_nearest_neighbor!(model::AgentBasedModel) #, extent::NTuple{2,Union{Float64,Int}})
-#     for agent in values(model.agents)
-#         agent.nearestps = nearest_neighbor(agent, model, magnitude(model.space.extend)).id
-#         # println("nearest neighbor: ",agent.id, agent.nearestps)
-#     end
-# end
-
-# function findNearestDeadNeighbor(ps::PlanetarySystem)
-
-#     return true
-
-# end
-
-# function neighboringTerraformCandidates(ps::PlanetarySystem, model::ABM, threshold::Real)
-
-#     ## This can return >1 candidate
-#     ## Two ways to do this 
-#     ## 1. Use pre-calculatd ps.neighbors ids
-#     # candidates = filter(n -> (model.agents[n].alive==false) & (ps.claimed==false), ps.neighbors) ## and ps.claimed == false
-
-
-#     ## 2. use model.neighbor_radius and calcuate neighbors
-
-
-#     ## Don't use neighbors, look at all other planets existing
-#     candidatePlanets = filter(p->p.second.alive==true & isa(p.second, PlanetarySystem) & ps.claimed==false, model.agents)
-#     candidatePlanetIds = 
-
-#     diff = compositions.-testpscomp
-#     maxdiffs = maximum(abs.(diff),dims=1)
-#     findall(<(3),maxdiffs)
-
-#     nn(KDTree(poss),poss[:,1])
-
-
-# end
-
 function compatibleplanetids(planet::Planet, model::ABM)
 
     candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
@@ -267,69 +220,6 @@ function nearestcompatibleplanet(planet::Planet, compatibleplanetids::Vector{Int
 
 end
 
-
-# function findNearestTerraformingCandidates(ps::PlanetarySystem, life::Life, model::AgentBasedModel)
-
-#     viableDestinations = Int64[]
-#     dibsedPlanets = Int64[]
-#     # openPlanets = setdiff(ps.neighbors)
-#     ## Need 3 filters
-#     ## 1. planets within neighbor radius 
-#     ## 2. compatible planets 
-#     ## 3. unclaimed planets 
-
-#     ## If at any point during 1->2->3 are no planets, find nearest planet which is compatible and unclaimed
-
-
-#     if deadNeighbors(ps)
-#         for newps in deadNeighbors(ps)
-#             areCompatabile(ps,newps) && noDibs() ## Planets must be compatable and not destinations by current life
-#         end
-#     else
-#         findNearestDeadNeighbors()
-#         findNearestCompatibleNeighbors()
-    
-
-#     candidate_neighbors = filter(n->model.agents[n].alive==false, ps.neighbors)
-#     length(candidate_neighbors) > 0 && return candidate_neighbors
-#     ps.nearestps.alive || return Int64[ps.nearestps]
-#     return Int64[findNearestDeadNeighbor(ps)]
-
-#     ## NEED TO CHECK if any planets are current destinations
-
-#     #= Should I have life avoid going to planets that are closer to other planets with life? 
-#         Or will this natrually be taken care of because those would be destinations if that
-#         was the case?
-    
-#     =#
-
-#     #= pseduocode
-#     initial_candidates = filter(dead, neighbors_within_neighborradius) OR filter(dead, nearest_neighbor)
-
-#     ## Decide whether or not to go towards a planet beforehand, based on compatability? Or wait till
-#         you head towards the planet and interact to decide whether or not your compatible? Logically
-#         you should figure out beforehand if you're compatible, but maybe there's a limit on how 
-#         confident you are in your assessment based on how far away you are and how different the
-#         candidate planet is. This also seems too complicated though. So maybe for now you have
-#         perfect knowledge of candidate planets before you leave, as long as they're within a certain
-#         distance. And you only go towards compatible planets
-
-#     ## Filter by dead candidates or unvisited candidates? All dead will be unvisited,
-#         but unvisited may include alive planets settled by other related life. Maybe decided
-#         based on how related the life is whether to try and settle or not? So if it's your immeadiate
-#         family or first cousin don't settle for example. But this gets too complicated so let's stick
-#         to settling dead planets only.
-
-#     ## visited_planets == [ps.id for ps in filter(x->x.alive==true, filter(p->isa(p, PlanetarySystem), model.agents))
-
-#     for ps in filter(dead, initial_candidates)
-#         direction = (model.agents[ps.id].pos .- pos)
-#         direction_normed = direction ./ magnitude(direction)
-#         :vel => direction_normed .* model.lifespeed
-#     =#
-
-# end
-
 function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{Int}}=nothing) ## First life is weird because it inherits from planet without changing planet and has no ancestors
 ## Design choice is to modify planet and life together since the life is just a reflection of the planet anyways
     planet.alive = true
@@ -351,96 +241,8 @@ function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{
     model
 
 end
-    
 
-## Life which spawns from the planet after it's been terraformed
-# function initialize_life!(planet::Planet, model::AgentBasedModel; ancestors::Union{Nothing,Vector{Int}}=nothing) ## Ancestor can't be the agent itself because it dies
-
-#     ## Update planet properties
-#     planet.claimed = true ## This should already be true unless it's the OG life
-#     planet.alive = true
-
-#     ## Create Life without destination/velocity
-#     args = Dict(:id => nextid(model),
-#                 :pos => planet.pos,
-#                 :vel => (0.0,0.0),
-#                 :parentplanet => planet.id,
-#                 :parentcomposition => planet.composition,
-#                 :destination => nothing,
-#                 :ancestors => isnothing(ancestor) ? Int[] : ancestors) ## Only "first" life won't have ancestors
-
-#     life = add_agent_pos!(Life(;args...), model)
-
-#     ## Find and update destination
-#     life.destination = nearestcompatibleplanet(life, compatibleplanetids(life,model), model) ## return planet itself
-#     direction = (life.destination.pos .- life.pos)
-#     direction_normed = direction ./ magnitude(direction)
-#     life.vel = direction_normed .* model.lifespeed
-
-#     ## Update destination planet properties
-#     life.destination.claimed = true
-
-
-#     model
-
-#     # for psid in neighboringTerraformCandidates()
-
-#     #     direction = (model.agents[psid].pos .- pos)
-#     #     direction_normed = direction ./ magnitude(direction)
-
-#     #     largs = Dict(:id => nextid(model),
-#     #                 :pos => pos,
-#     #                 :vel => direction_normed .* model.lifespeed)
-        
-#     #     lkwargs = Dict(:parentplanet => planet.id,
-#     #                 :parentcomposition => planet.composition[1],
-#     #                 :destination => psid)
-       
-#     #     model.agents[psid].claimed = true
-#     #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
-
-#     # end
-
-#     # ########
-    
-#     # if length(planet.neighbors)>0
-#     #     for neighborid in planet.neighbors
-
-#     #         # println(parentps.neighbors)
-#     #         direction = (model.agents[neighborid].pos .- pos)
-#     #         direction_normed = direction ./ magnitude(direction)
-
-#     #         largs = Dict(:id => nextid(model),
-#     #                     :pos => pos,
-#     #                     :vel => direction_normed .* model.lifespeed)
-            
-#     #         lkwargs = Dict(:parentplanet => planet.id,
-#     #                     :parentcomposition => planet.composition[1],
-#     #                     :destination => neighborid)
-            
-#     #         add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
-#     #     end
-#     # else ## Go to nearest star, not neighbor stars
-
-#     #     direction = (model.agents[planet.nearestps].pos .- pos) ## This won't work if nearest is a star you've been to
-#     #     direction_normed = direction ./ magnitude(direction)
-
-#     #     largs = Dict(:id => nextid(model),
-#     #                 :pos => pos,
-#     #                 :vel => direction_normed .* model.lifespeed)
-            
-#     #     lkwargs = Dict(:parentplanet => planet.id,
-#     #                 :parentcomposition => planet.composition[1],
-#     #                 :destination => planet.nearestps)
-        
-#     #     add_agent_pos!(Life(;merge(largs,lkwargs)...), model)
-
-#     # end
-
-
-# end
-
-## Life which has spawned elsewhere merging with a dead planet
+## Life which has spawned elsewhere merging with an uninhabited (ie dead) planet
 function terraform!(life::Life, planet::Planet)
 
     ## Modify destination planet properties
@@ -455,30 +257,12 @@ function terraform!(life::Life, planet::Planet)
     spawnlife!(planet, model, ancestors = push!(life.ancestors, life.id)) ## This makes new life 
     println("terraformed $(planet.id) from $(life.id)")
     kill_agent!(life, model)
-    
-
-
-    
-    # ############
-    # # planet.alive = true
-    # # planet.parentplanet = life.parentplanet
-    # # planet.parentcomposition = life.composition
-    # # planet.parentlife = life.id
-
-    # #################
-    # ## initialize_life/firstlife should be last thing done after terraforming
-    # initialize_life!(planet, model, ancestors = push!(life.ancestors, life.id))
-    # planet.parentcomposition = life.composition
-    # push!(planet.ancestors, life.parentplanet) ## Need to reevaluate how i think about ancestors and using life vs planet for that--go back to my original hypothesis points
-    # println("terraformed $(planet.id) from $(life.id)")
-    # ## Change ps composition based on life parent composition and current planet composition
-    # # ps.planetcompositions[1] = mix_compositions(life, ps)
 
 end
 
-function approaching_planet(life::Life, ps::Planet)
+function approaching_planet(life::Life, planet::Planet)
 
-    lifesRelativePos = life.pos .- ps.pos
+    lifesRelativePos = life.pos .- planet.pos
     lifesRelativeVel = life.vel
 
     dot(lifesRelativePos,lifesRelativeVel) >= 0 ? false : true
@@ -502,9 +286,11 @@ end
 accross the color spectrum instead of baking colors in as the compositions
 themselves
 =#
+
 col_to_hex(col) = "#"*hex(col)
 hex_to_col(hex) = convert(RGB{Float64}, parse(Colorant, hex))
 mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
+
 # function model_step!(model)
 #     for (a1, a2) in interacting_pairs(model, 0.2, :types)
         
