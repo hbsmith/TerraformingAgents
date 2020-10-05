@@ -17,38 +17,34 @@ Agents.random_agent(model, A::Type{T}, RNG::AbstractRNG=Random.default_rng()) wh
 # Agents.random_agent(model, A::Type{T}) where {T<:AbstractAgent} = model[rand([k for (k,v) in model.agents if v isa A])]
 
 magnitude(x::Tuple{<:Real,<:Real}) = sqrt(sum(x .^ 2))
-direction(start::Agent, finish::Agent) = (finish.pos .- start.pos) ./ magnitude((finish.pos .- start.pos)) ## This is normalized
+direction(start::AbstractAgent, finish::AbstractAgent) = (finish.pos .- start.pos) ./ magnitude((finish.pos .- start.pos)) ## This is normalized
 
 Base.@kwdef mutable struct Planet <: AbstractAgent
     id::Int
     pos::NTuple{2,<:AbstractFloat}
     vel::NTuple{2,<:AbstractFloat}
     
-    # nplanets::Int # To simplify the initial logic, this will be limited to 1 
     composition::Vector{Int} ## I'll always make 10 planet compositions, but only use the first nplanets of them
     initialcomposition::Vector{Int} ## Same as composition until it's terraformed
     alive::Bool
     claimed::Bool
     
     ## Properties of the process, but not the planet itself
-    ancestors::Vector{Int} #list of all planets that phylogenetically preceded this life
-    parentplanet::Union{Int,Nothing} #id
-    parentlife::Union{Int,Nothing} #id
+    ancestors::Vector{Planet} #list of all planets that phylogenetically preceded this life
+    parentplanet::Union{Planet,Nothing} #id
+    parentlife::Union{<:AbstractAgent,Nothing} # This shouild be life but I can't force because it would cause a mutually recursive declaration b/w Planet and Life
     parentcomposition::Union{Vector{Int},Nothing} 
-    
-    ## Do I need the below? If planets disappear after certain length of time
-    # age::Float64
+
 end
 
 Base.@kwdef mutable struct Life <: AbstractAgent
     id::Int
     pos::NTuple{2,<:AbstractFloat}
     vel::NTuple{2,<:AbstractFloat}
-    parentplanet::Int #id; this is also the "type" of life
+    parentplanet::Planet #id; this is also the "type" of life
     composition::Vector{Int} # to simplify initial logic, this will be a single vector of length 10. Should this be the same as the planet composition?
-    destination::Union{Nothing,Int} #id of destination planetarysystem
-    ancestors::Vector{Int} #list of all life that phylogenetically preceded this life
-    ## once life arrives at a new planet, life the agent just "dies"
+    destination::Union{Nothing,Planet} #id of destination planetarysystem
+    ancestors::Vector{Life} #list of all life that phylogenetically preceded this life
 end
 
 function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
@@ -148,7 +144,7 @@ function initialize_planetarysystems_unsafe!(
                     :parentplanet => nothing,
                     :parentlife => nothing,
                     :parentcomposition => nothing,
-                    :ancestors => Vector{Int}(undef,0))
+                    :ancestors => Vector{Planet}(undef,0))
         
         add_agent_pos!(Planet(;pskwargs...), model)
     
@@ -190,50 +186,98 @@ function initialize_planetarysystems_advanced!(
 
 end
 
-function compatibleplanetids(planet::Planet, model::ABM)
+function compatibleplanets(planet::Planet, allowed_diff::Real)
 
-    candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
-    ncandidateplanets = length(candidateplanets)
+    cadidateplanets = collect(values(filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents)))
+    compositions = hcat([a.composition for a in candidateplanets]...)
+    compositiondiffs = abs.(compositions .- planet.composition)
+    compatibleindxs = findall(<=(allowed_diff),maximum(compositiondiffs, dims=1))
+    candidateplanets[compatibleindxs] ## Returns Planet
 
-    planetids = Vector{Int}(undef,ncandidateplanets)
-    _planetvect = Vector{Int}(undef,ncandidateplanets)
-    for (i,a) in enumerate(values(candidateplanets))
-        _planetvect[i] = a.planetcompositions
-        planetids[i] = a.id
-    end    
-    allplanetcompositions = hcat(_planetvect...)
-    compositiondiffs = abs.(allplanetcompositions .- planet.composition)
-    compatibleindxs = findall(<=(model.llowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
-    planetids[compatibleindxs]
+    ######
+
+    # candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
+    # ncandidateplanets = length(candidateplanets)
+
+    # planets = Vector{Planet}(undef,ncandidateplanets)
+    # _compositions = Vector{Int}(undef,ncandidateplanets)
+    # for (i,a) in enumerate(values(candidateplanets))
+    #     _compositions[i] = a.composition
+    #     planets[i] = a
+    # end    
+    # allplanetcompositions = hcat(_compositions...)
+    # compositiondiffs = abs.(allplanetcompositions .- planet.composition)
+    # compatibleindxs = findall(<=(model.allowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
+    # planetids[compatibleindxs]
 
 end
 
-function nearestcompatibleplanet(planet::Planet, compatibleplanetids::Vector{Int}, model::ABM)
+function nearestcompatibleplanet(planet::Planet, compatibleplanets::Vector{Planet})
 
-    planetpositions = Array{Real}(undef,2,length(compatibleplanetids))
-    for (i,id) in enumerate(compatibleplanetids)
-        planetpositions[1,i] = model.agent[id].pos[1]
-        planetpositions[2,i] = model.agent[id].pos[2]
+    planetpositions = Array{Real}(undef,2,length(compatibleplanets))
+    for (i,a) in enumerate(compatibleplanets)
+        planetpositions[1,i] = a.pos[1]
+        planetpositions[2,i] = a.pos[2]
     end
     idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) ## I need to make sure the life is initialized first with position
-    compatibleplanetids[idx]
+    compatibleplanets[idx] ## Returns Planet
+
+    # ####
+
+    # planetpositions = Array{Real}(undef,2,length(compatibleplanetids))
+    # for (i,id) in enumerate(compatibleplanetids)
+    #     planetpositions[1,i] = model.agent[id].pos[1]
+    #     planetpositions[2,i] = model.agent[id].pos[2]
+    # end
+    # idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) ## I need to make sure the life is initialized first with position
+    # compatibleplanetids[idx]
 
 end
 
-function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{Int}}=nothing) ## First life is weird because it inherits from planet without changing planet and has no ancestors
+# function compatibleplanetids(planet::Planet, model::ABM)
+
+#     candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
+#     ncandidateplanets = length(candidateplanets)
+
+#     planetids = Vector{Int}(undef,ncandidateplanets)
+#     _planetvect = Vector{Int}(undef,ncandidateplanets)
+#     for (i,a) in enumerate(values(candidateplanets))
+#         _planetvect[i] = a.planetcompositions
+#         planetids[i] = a.id
+#     end    
+#     allplanetcompositions = hcat(_planetvect...)
+#     compositiondiffs = abs.(allplanetcompositions .- planet.composition)
+#     compatibleindxs = findall(<=(model.llowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
+#     planetids[compatibleindxs]
+
+# end
+
+# function nearestcompatibleplanet(planet::Planet, compatibleplanetids::Vector{Int}, model::ABM)
+
+#     planetpositions = Array{Real}(undef,2,length(compatibleplanetids))
+#     for (i,id) in enumerate(compatibleplanetids)
+#         planetpositions[1,i] = model.agent[id].pos[1]
+#         planetpositions[2,i] = model.agent[id].pos[2]
+#     end
+#     idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) ## I need to make sure the life is initialized first with position
+#     compatibleplanetids[idx]
+
+# end
+
+function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{Life}}=nothing) ## First life is weird because it inherits from planet without changing planet and has no ancestors
 ## Design choice is to modify planet and life together since the life is just a reflection of the planet anyways
     planet.alive = true
     planet.claimed = true ## This should already be true unless this is the first planet
     ## No ancestors, parentplanet, parentlife, parentcomposition
-    destinationplanet =  nearestcompatibleplanet(planet, compatibleplanetids(planet,model), model)
+    destinationplanet =  nearestcompatibleplanet(planet, compatibleplanets(planet, model.allowed_diff))
 
     args = Dict(:id => nextid(model),
                 :pos => planet.pos,
-                :vel => direction(planet,destinationplanet) .* model.lifespeed,
-                :parentplanet => planet.id,
+                :vel => direction(planet, destinationplanet) .* model.lifespeed,
+                :parentplanet => planet,
                 :parentcomposition => planet.composition,
                 :destination => destinationplanet,
-                :ancestors => isnothing(ancestor) ? Int[] : ancestors) ## Only "first" life won't have ancestors
+                :ancestors => isnothing(ancestor) ? Planet[] : ancestors) ## Only "first" life won't have ancestors
 
     life = add_agent_pos!(Life(;args...), model)
     
@@ -246,40 +290,40 @@ end
 function terraform!(life::Life, planet::Planet)
 
     ## Modify destination planet properties
-    planet.composition = mixcompositions(planet.compositon,life.composition)
+    planet.composition = mixcompositions(planet.compositon, life.composition)
     planet.alive = true
     push!(planet.ancestors, life.parentplanet)
     planet.parentplanet = life.parentplanet
-    planet.parentlife = life.id 
+    planet.parentlife = life
     planet.parentcomposition = life.composition
     # planet.claimed = true ## Test to make sure this is already true beforehand
 
-    spawnlife!(planet, model, ancestors = push!(life.ancestors, life.id)) ## This makes new life 
+    spawnlife!(planet, model, ancestors = push!(life.ancestors, life)) ## This makes new life 
     println("terraformed $(planet.id) from $(life.id)")
     kill_agent!(life, model)
 
 end
 
-function approaching_planet(life::Life, planet::Planet)
+# function approaching_planet(life::Life, planet::Planet)
+# ## Don't think I need this if I just check that the planet is the destination
+#     lifesRelativePos = life.pos .- planet.pos
+#     lifesRelativeVel = life.vel
 
-    lifesRelativePos = life.pos .- planet.pos
-    lifesRelativeVel = life.vel
+#     dot(lifesRelativePos,lifesRelativeVel) >= 0 ? false : true
 
-    dot(lifesRelativePos,lifesRelativeVel) >= 0 ? false : true
-end
+# end
 
 function galaxy_model_step!(model)
     ## Interaction radius has to account for the velocity of life and the size of dt to ensure interaction
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
         life, planet = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
-        life.parentplanet == planet.id && return ## don't accidentally interact with the parent planet
-        approaching_planet(life, planet) && is_compatible(life, planet, model.allowed_diff) ? terraform!(life, planet) : return
+        planet == life.destinationplanet && terraform!(life, planet)
+        # life.parentplanet == planet && return ## don't accidentally interact with the parent planet
+        # approaching_planet(life, planet) && is_compatible(life, planet, model.allowed_diff) ? terraform!(life, planet) : return
     end
 end
 
-## TO DO 10/2/2020
-## - MAKE CONSISTENT HOW I KEEP TRACK OF ancestors
-## - MAKE CONSISTENT PASSING INSTANCES VS IDS, KEEPING IN MIND INSTANCES WILL DIE AND I WANT THEM TO BE GARBAGE COLLECTED
+## TO DO 10/5/2020
 ## - UPDATE TESTS
 
 #= I should probably have a function that just scales my planet compositions 
