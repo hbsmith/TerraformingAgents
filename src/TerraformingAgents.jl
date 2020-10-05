@@ -194,22 +194,6 @@ function compatibleplanets(planet::Planet, allowed_diff::Real)
     compatibleindxs = findall(<=(allowed_diff),maximum(compositiondiffs, dims=1))
     candidateplanets[compatibleindxs] ## Returns Planet
 
-    ######
-
-    # candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
-    # ncandidateplanets = length(candidateplanets)
-
-    # planets = Vector{Planet}(undef,ncandidateplanets)
-    # _compositions = Vector{Int}(undef,ncandidateplanets)
-    # for (i,a) in enumerate(values(candidateplanets))
-    #     _compositions[i] = a.composition
-    #     planets[i] = a
-    # end    
-    # allplanetcompositions = hcat(_compositions...)
-    # compositiondiffs = abs.(allplanetcompositions .- planet.composition)
-    # compatibleindxs = findall(<=(model.allowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
-    # planetids[compatibleindxs]
-
 end
 
 function nearestcompatibleplanet(planet::Planet, compatibleplanets::Vector{Planet})
@@ -222,47 +206,7 @@ function nearestcompatibleplanet(planet::Planet, compatibleplanets::Vector{Plane
     idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) ## I need to make sure the life is initialized first with position
     compatibleplanets[idx] ## Returns Planet
 
-    # ####
-
-    # planetpositions = Array{Real}(undef,2,length(compatibleplanetids))
-    # for (i,id) in enumerate(compatibleplanetids)
-    #     planetpositions[1,i] = model.agent[id].pos[1]
-    #     planetpositions[2,i] = model.agent[id].pos[2]
-    # end
-    # idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) ## I need to make sure the life is initialized first with position
-    # compatibleplanetids[idx]
-
 end
-
-# function compatibleplanetids(planet::Planet, model::ABM)
-
-#     candidateplanets = filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents) ## parentplanet won't be here because it's already claimed
-#     ncandidateplanets = length(candidateplanets)
-
-#     planetids = Vector{Int}(undef,ncandidateplanets)
-#     _planetvect = Vector{Int}(undef,ncandidateplanets)
-#     for (i,a) in enumerate(values(candidateplanets))
-#         _planetvect[i] = a.planetcompositions
-#         planetids[i] = a.id
-#     end    
-#     allplanetcompositions = hcat(_planetvect...)
-#     compositiondiffs = abs.(allplanetcompositions .- planet.composition)
-#     compatibleindxs = findall(<=(model.llowed_diff),maximum(compositiondiffs, dims=1)) ## No element can differ by more than threshold
-#     planetids[compatibleindxs]
-
-# end
-
-# function nearestcompatibleplanet(planet::Planet, compatibleplanetids::Vector{Int}, model::ABM)
-
-#     planetpositions = Array{Real}(undef,2,length(compatibleplanetids))
-#     for (i,id) in enumerate(compatibleplanetids)
-#         planetpositions[1,i] = model.agent[id].pos[1]
-#         planetpositions[2,i] = model.agent[id].pos[2]
-#     end
-#     idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) ## I need to make sure the life is initialized first with position
-#     compatibleplanetids[idx]
-
-# end
 
 function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{Life}}=nothing) ## First life is weird because it inherits from planet without changing planet and has no ancestors
 ## Design choice is to modify planet and life together since the life is just a reflection of the planet anyways
