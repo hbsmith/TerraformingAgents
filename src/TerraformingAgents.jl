@@ -62,10 +62,10 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
     if detail == :basic 
         @unpack nplanets = kwarg_dict
-        initialize_planetarysystems_basic!(model, nplanets; @dict(RNG)...)
+        initialize_planets_basic!(model, nplanets; @dict(RNG)...)
     elseif detail == :advanced
         @unpack pos, vel, planetcompositions = kwarg_dict
-        initialize_planetarysystems_advanced!(model; @dict(RNG, pos, vel, planetcompositions)...)
+        initialize_planets_advanced!(model; @dict(RNG, pos, vel, planetcompositions)...)
     else
         throw(ArgumentError("`detail` must be `:basic` or `:advanced`"))
     end
@@ -114,9 +114,9 @@ end
 
 haveidenticallengths(args::Dict) = all(length(i.second) == length(args[collect(keys(args))[1]]) for i in args)
 
-function initialize_planetarysystems_unsafe!(
-    model::AgentBasedModel,
-    nplanets::Int; 
+function initialize_planets_unsafe(
+    nplanets::Int,
+    model::AgentBasedModel; 
     RNG::AbstractRNG = Random.default_rng(),
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
@@ -149,9 +149,9 @@ function initialize_planetarysystems_unsafe!(
 
 end
 
-function initialize_planetarysystems_basic!(
-    model::AgentBasedModel,
-    nplanets::Int; 
+function initialize_planets_basic!(
+    nplanets::Int,
+    model::AgentBasedModel; 
     RNG::AbstractRNG = Random.default_rng())
 
     nplanets < 1 && throw(ArgumentError("At least one planetary system required."))
@@ -160,11 +160,11 @@ function initialize_planetarysystems_basic!(
     vel=nothing 
     planetcompositions=nothing
 
-    initialize_planetarysystems_unsafe!(model, nplanets; @dict(RNG, pos, vel, planetcompositions)...)    
+    initialize_planets_unsafe(nplanets, model; @dict(RNG, pos, vel, planetcompositions)...)    
 
 end
 
-function initialize_planetarysystems_advanced!(
+function initialize_planets_advanced!(
     model::AgentBasedModel; 
     RNG::AbstractRNG = Random.default_rng(),
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
@@ -178,7 +178,7 @@ function initialize_planetarysystems_advanced!(
     ## Infered from userargs
     nplanets = length(userargs[collect(keys(userargs))[1]])
 
-    initialize_planetarysystems_unsafe!(model, nplanets; @dict(RNG, pos, vel, planetcompositions)...)    
+    initialize_planets_unsafe(nplanets, model; @dict(RNG, pos, vel, planetcompositions)...)    
 
 end
 
