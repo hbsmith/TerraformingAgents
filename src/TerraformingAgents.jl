@@ -62,15 +62,18 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
     if detail == :basic 
         @unpack nplanets = kwarg_dict
-        initialize_planets_basic!(model, nplanets; @dict(RNG)...)
+        ool = nothing
+        initialize_planets_basic!(nplanets, model; @dict(RNG)...)
     elseif detail == :advanced
-        @unpack pos, vel, planetcompositions = kwarg_dict
+        @unpack pos, vel, planetcompositions, ool = kwarg_dict
         initialize_planets_advanced!(model; @dict(RNG, pos, vel, planetcompositions)...)
     else
         throw(ArgumentError("`detail` must be `:basic` or `:advanced`"))
     end
     
-    initialize_life!(random_agent(model, Planet, RNG), model)   
+    isnothing(ool) ? spawnlife!(random_agent(model, Planet, RNG), model) : spawnlife!(model.agents[ool], model)
+
+       
     index!(model)
     model
 
@@ -98,9 +101,10 @@ function galaxy_model_advanced(;
     lifespeed::Real = 0.2,
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing)
+    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing,
+    ool::Int = nothing)
 
-    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, interaction_radius, allowed_diff, pos, vel, planetcompositions, lifespeed))
+    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, interaction_radius, allowed_diff, pos, vel, planetcompositions, lifespeed, ool))
 
 end
 
@@ -182,10 +186,10 @@ function initialize_planets_advanced!(
 
 end
 
-## WORKING ON TESTING THIS FUNCTION AS PART OF INITIALIZING LIFE 2020/10/09
 function compatibleplanets(planet::Planet, model::ABM)
 
-    candidateplanets = collect(values(filter(p -> (p.second.alive==false) & isa(p.second, Planet) & (p.second.claimed == false) & (p.second.id != planet.id), model.agents)))
+    candidateplanets = collect(values(filter(p -> isa(p.second, Planet), model.agents)))
+    candidateplanets = collect(values(filter(p -> (p.alive==false) & (p.claimed == false) & (p.id != planet.id), candidateplanets)))
     compositions = hcat([a.composition for a in candidateplanets]...)
     compositiondiffs = abs.(compositions .- planet.composition)
     compatibleindxs = findall(<=(model.allowed_diff),vec(maximum(compositiondiffs, dims=1)))
@@ -201,7 +205,6 @@ function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet
         planetpositions[1,i] = a.pos[1]
         planetpositions[2,i] = a.pos[2]
     end
-    # println(planetpositions)
     idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) 
     candidateplanets[idx] ## Returns Planet
 
@@ -214,7 +217,7 @@ function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{
     ## No ancestors, parentplanet, parentlife, parentcomposition
     candidateplanets = compatibleplanets(planet, model)
     if length(candidateplanets) == 0
-        @warn "Life on Planet $(Planet.id) has no compatible planets. It's the end of its line."
+        @warn "Life on Planet $(planet.id) has no compatible planets. It's the end of its line."
         destinationplanet = nothing 
         vel = planet.pos .* 0.0
     else
@@ -246,10 +249,10 @@ end
 
 
 ## Life which has spawned elsewhere merging with an uninhabited (ie dead) planet
-function terraform!(life::Life, planet::Planet)
+function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
-    planet.composition = mixcompositions(planet.compositon, life.composition)
+    planet.composition = mixcompositions(planet.composition, life.composition)
     planet.alive = true
     push!(planet.ancestors, life.parentplanet)
     planet.parentplanet = life.parentplanet
@@ -267,9 +270,7 @@ function galaxy_model_step!(model)
     ## Interaction radius has to account for the velocity of life and the size of dt to ensure interaction
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
         life, planet = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
-        planet == life.destinationplanet && terraform!(life, planet)
-        # life.parentplanet == planet && return ## don't accidentally interact with the parent planet
-        # approaching_planet(life, planet) && is_compatible(life, planet, model.allowed_diff) ? terraform!(life, planet) : return
+        planet == life.destination && terraform!(life, planet, model)
     end
 end
 
@@ -282,50 +283,8 @@ themselves
 =#
 
 ## Fun with colors
-col_to_hex(col) = "#"*hex(col)
-hex_to_col(hex) = convert(RGB{Float64}, parse(Colorant, hex))
-mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
-
-
-
-# function sir_agent_step!(agent, model)
-#     move_agent!(agent, model, model.dt)
-#     update!(agent) # store information in life agent of it terraforming?
-#     recover_or_die!(agent, model)
-# end
-
-# agent_step!(agent, model) = move_agent!(agent, model, model.dt)
-
-# modelparams = Dict(:RNG => MersenneTwister(1236),
-#                    : => .45,
-#                    :dt => 0.1)
-
-# model = galaxy_model(;modelparams...)
-
-# model_colors(a) = typeof(a) == PlanetarySystem ? "#2b2b33" : "#338c54"
-
-# e = model.space.extend
-# anim = @animate for i in 1:2:100
-#     p1 = plotabm(
-#         model,
-#         as = 5,
-#         ac = model_colors,
-#         showaxis = false,
-#         grid = false,
-#         xlims = (0, e[1]),
-#         ylims = (0, e[2]),
-#     )
-
-#     title!(p1, "step $(i)")
-#     step!(model, agent_step!, galaxy_model_step!, 2)
-# end
-
-
-# animation_path = "../output/animation/"
-# if !ispath(animation_path)
-#     mkpath(animation_path)
-# end
-
-# gif(anim, joinpath(animation_path,"terraform_test_death1.gif"), fps = 25)
+# col_to_hex(col) = "#"*hex(col)
+# hex_to_col(hex) = convert(RGB{Float64}, parse(Colorant, hex))
+# mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
 
 end # module

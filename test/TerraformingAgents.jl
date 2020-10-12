@@ -111,10 +111,6 @@ end
             RNG = MersenneTwister(3141)
             @test_throws ArgumentError TerraformingAgents.initialize_planets_basic!(-1, model; @dict(RNG)...)
 
-            ## test trying to initialize with 
-            ## - negative or 0 planets 
-            ## 
-
         end
 
     end
@@ -327,52 +323,39 @@ end
 
 end
 
-# @testset "Agent dies at correct planet" begin
+@testset "Agent dies at correct planet" begin
     
-#     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
-#     model = galaxy_model_basic(3, RNG=MersenneTwister(3141), interaction_radius = 0.02)
-#     steps = 0
-#     for i in 1:2:100
-#         step!(model, agent_step!, galaxy_model_step!, 2)
-#         steps+=1
-#         lifeagents = filter(p->isa(p.second,Life),model.agents)
-#         steps == 3 && @test length(lifeagents) == 1
-#         steps == 4 && @test length(lifeagents) == 1
-#         steps == 5 && @test length(lifeagents) == 0
-#     end
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+    model = galaxy_model_advanced(
+        RNG=MersenneTwister(3141), 
+        allowed_diff = 3,
+        pos = [(.5,.5),(.5,.4),(.5,.3)],
+        planetcompositions = [[3,2,1],[8,7,6],[6,3,3]],
+        ool = 1)
+    
+    steps = 0
+    n = 2
+    for i in 1:n:20
+        step!(model, agent_step!, galaxy_model_step!, n)
+        steps+=n
+        lifeagents = filter(p->isa(p.second,Life),model.agents)
 
-#     model = galaxy_model_basic(3, RNG=MersenneTwister(3141), interaction_radius = 0.01)
-#     steps = 0
-#     for i in 1:2:100
-#         step!(model, agent_step!, galaxy_model_step!, 2)
-#         steps+=1
-#         lifeagents = filter(p->isa(p.second,Life),model.agents)
-#         steps == 3 && @test length(lifeagents) == 1
-#         steps == 4 && @test length(lifeagents) == 1
-#         steps == 5 && @test length(lifeagents) == 0
-#     end
+        steps == 2 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 4 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 6 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 8 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 10 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
+        steps == 12 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
+    end
 
+end
 
-# end
+@testset "galaxy model basic no error" begin
+    
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+    model = galaxy_model_basic(10, RNG = MersenneTwister(3141))
+    for i in 1:1:20
+        step!(model, agent_step!, galaxy_model_step!)
+    end
 
-
-# @testset "Initialization" begin
-
-#     args = Dict(:nplanetarysystems => 10)
-
-#     modelparams = Dict(:RNG => MersenneTwister(1236),
-#                     :lifespeed => .45,
-#                     :dt => 0.1)
-
-#     model = galaxy_model(
-#         args[:nplanetarysystems]
-#         ;modelparams...)
-
-#     ## give pos, use default vel, comp
-#     ## give vel, use defualt pos, comp
-#     ## give pos and vel, use default comp 
-#     ## give pos and comp, use default vel 
-#     ## give 
-
-
-# end
+end
