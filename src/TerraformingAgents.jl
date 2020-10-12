@@ -182,25 +182,28 @@ function initialize_planets_advanced!(
 
 end
 
-function compatibleplanets(planet::Planet, allowed_diff::Real)
+## WORKING ON TESTING THIS FUNCTION AS PART OF INITIALIZING LIFE 2020/10/09
+function compatibleplanets(planet::Planet, model::ABM)
 
-    cadidateplanets = collect(values(filter(p->p.second.alive==false & isa(p.second, Planet) & p.second.claimed==false, model.agents)))
+    candidateplanets = collect(values(filter(p -> (p.second.alive==false) & isa(p.second, Planet) & (p.second.claimed == false) & (p.second.id != planet.id), model.agents)))
     compositions = hcat([a.composition for a in candidateplanets]...)
     compositiondiffs = abs.(compositions .- planet.composition)
-    compatibleindxs = findall(<=(allowed_diff),maximum(compositiondiffs, dims=1))
-    candidateplanets[compatibleindxs] ## Returns Planet
+    compatibleindxs = findall(<=(model.allowed_diff),vec(maximum(compositiondiffs, dims=1)))
+    convert(Vector{Planet}, candidateplanets[compatibleindxs]) ## Returns Planets
 
 end
 
-function nearestcompatibleplanet(planet::Planet, compatibleplanets::Vector{Planet})
+function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet})
 
-    planetpositions = Array{Real}(undef,2,length(compatibleplanets))
-    for (i,a) in enumerate(compatibleplanets)
+    length(candidateplanets) == 0 && throw(ArgumentError("candidateplanets is empty"))
+    planetpositions = Array{Float64}(undef,2,length(candidateplanets))
+    for (i,a) in enumerate(candidateplanets)
         planetpositions[1,i] = a.pos[1]
         planetpositions[2,i] = a.pos[2]
     end
+    # println(planetpositions)
     idx, dist = nn(KDTree(planetpositions),collect(planet.pos)) 
-    compatibleplanets[idx] ## Returns Planet
+    candidateplanets[idx] ## Returns Planet
 
 end
 
@@ -209,26 +212,36 @@ function spawnlife!(planet::Planet, model::ABM; ancestors::Union{Nothing,Vector{
     planet.alive = true
     planet.claimed = true ## This should already be true unless this is the first planet
     ## No ancestors, parentplanet, parentlife, parentcomposition
-    destinationplanet =  nearestcompatibleplanet(planet, compatibleplanets(planet, model.allowed_diff))
+    candidateplanets = compatibleplanets(planet, model)
+    if length(candidateplanets) == 0
+        @warn "Life on Planet $(Planet.id) has no compatible planets. It's the end of its line."
+        destinationplanet = nothing 
+        vel = planet.pos .* 0.0
+    else
+        destinationplanet =  nearestcompatibleplanet(planet, candidateplanets)
+        vel = direction(planet, destinationplanet) .* model.lifespeed
+    end
 
     args = Dict(:id => nextid(model),
                 :pos => planet.pos,
-                :vel => direction(planet, destinationplanet) .* model.lifespeed,
+                :vel => vel,
                 :parentplanet => planet,
-                :parentcomposition => planet.composition,
+                :composition => planet.composition,
                 :destination => destinationplanet,
-                :ancestors => isnothing(ancestor) ? Planet[] : ancestors) ## Only "first" life won't have ancestors
+                :ancestors => isnothing(ancestors) ? Planet[] : ancestors) ## Only "first" life won't have ancestors
 
     life = add_agent_pos!(Life(;args...), model)
     
-    destinationplanet.claimed = true
+    !isnothing(destinationplanet) && (destinationplanet.claimed = true) ## destination is only nothing if no compatible planets 
+    ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
+
     model
 
 end
 
 function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
-    ## Simple for now
-    convert(Vector{Int}, round.(lifecomposition .+ planetcomposition))
+    ## Simple for now; Rounding goes to nearest even number
+    convert(Vector{Int}, round.((lifecomposition .+ planetcomposition)./2))
 end
 
 
@@ -249,15 +262,6 @@ function terraform!(life::Life, planet::Planet)
     kill_agent!(life, model)
 
 end
-
-# function approaching_planet(life::Life, planet::Planet)
-# ## Don't think I need this if I just check that the planet is the destination
-#     lifesRelativePos = life.pos .- planet.pos
-#     lifesRelativeVel = life.vel
-
-#     dot(lifesRelativePos,lifesRelativeVel) >= 0 ? false : true
-
-# end
 
 function galaxy_model_step!(model)
     ## Interaction radius has to account for the velocity of life and the size of dt to ensure interaction
