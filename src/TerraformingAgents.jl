@@ -4,6 +4,7 @@ using Agents, Random, AgentsPlots, Plots
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
 using LinearAlgebra: dot
+using Distributions: Uniform
 using NearestNeighbors
 
 export 
@@ -84,11 +85,13 @@ function galaxy_model_basic(
     RNG::AbstractRNG=Random.default_rng(), 
     extent::Tuple{<:Real,<:Real} = (1,1), ## Size of space
     dt::Real = 1.0, 
-    interaction_radius::Real = 0.02, ## How close life and destination planet have to be to interact
+    interaction_radius::Union{Real,Nothing} = nothing, ## How close life and destination planet have to be to interact
     allowed_diff::Real = 3, ## How similar each element of life and destination planet have to be for terraformation
     lifespeed::Real = 0.2,
     compositionmaxvalue::Int = 10,
     compositionsize::Int = 10) ## Speed that life spreads
+
+    isnothing(interaction_radius) && (interaction_radius = dt*lifespeed)
 
     galaxy_model_setup(:basic, @dict(nplanets, RNG, extent, dt, interaction_radius, allowed_diff, lifespeed, compositionmaxvalue, compositionsize))
 
@@ -98,7 +101,7 @@ function galaxy_model_advanced(;
     RNG::AbstractRNG=Random.default_rng(), 
     extent::Tuple{<:Real,<:Real} = (1,1), 
     dt::Real = 1.0, 
-    interaction_radius::Real = 0.02, 
+    interaction_radius::Union{Real,Nothing} = nothing, 
     allowed_diff::Real = 3, 
     lifespeed::Real = 0.2,
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
@@ -107,6 +110,8 @@ function galaxy_model_advanced(;
     compositionmaxvalue::Int = 10, 
     compositionsize::Int = 10,
     ool::Int = nothing)
+
+    isnothing(interaction_radius) && (interaction_radius = dt*lifespeed)
 
     galaxy_model_setup(:advanced, @dict(RNG, extent, dt, interaction_radius, allowed_diff, pos, vel, planetcompositions, compositionmaxvalue, compositionsize, lifespeed, ool))
 
@@ -134,7 +139,7 @@ function initialize_planets_unsafe(
 
     ## Initialize arguments which are not provided 
     ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
-    isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanets])
+    isnothing(pos) && (pos = [(rand(RNG, Uniform(0, model.space.extend[1])), rand(RNG, Uniform(0, model.space.extend[2]))) for _ in 1:nplanets])
     isnothing(vel) && (vel = [(0,0) for _ in 1:nplanets])
     isnothing(planetcompositions) && (planetcompositions = [rand(RNG,1:compositionmaxvalue,compositionsize) for _ in 1:nplanets])
 
@@ -275,6 +280,8 @@ function terraform!(life::Life, planet::Planet, model::ABM)
 end
 
 function galaxy_model_step!(model)
+    ## I need to scale the interaction radius by dt and the velocity of life or else I can 
+    ##   miss some interactions
     
     life_to_kill = Life[]
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
@@ -292,11 +299,6 @@ function galaxy_model_step!(model)
     end
     
 end
-
-#= I should probably have a function that just scales my planet compositions 
-accross the color spectrum instead of baking colors in as the compositions
-themselves
-=#
 
 ## Fun with colors
 # col_to_hex(col) = "#"*hex(col)

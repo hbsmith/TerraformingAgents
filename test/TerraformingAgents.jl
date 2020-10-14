@@ -328,6 +328,7 @@ end
     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
     model = galaxy_model_advanced(
         RNG=MersenneTwister(3141), 
+        interaction_radius = 0.02,
         allowed_diff = 3,
         pos = [(.5,.5),(.5,.4),(.5,.3)],
         planetcompositions = [[3,2,1],[8,7,6],[6,3,3]],
