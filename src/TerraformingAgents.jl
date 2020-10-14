@@ -271,39 +271,27 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     # planet.claimed = true ## Test to make sure this is already true beforehand
 
     spawnlife!(planet, model, ancestors = push!(life.ancestors, life)) ## This makes new life 
-    # println("terraformed $(planet.id) from $(life.id)")
-    # kill_agent!(life, model)
 
 end
 
 function galaxy_model_step!(model)
+    
     life_to_kill = Life[]
-    ## Interaction radius has to account for the velocity of life and the size of dt to ensure interaction
-    # for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
-    #     println(a1.id," ",a2.id)
-    # end
-    # println("loopspace----------")
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
+        
         life, planet = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
-        # println(a1.id," ",a2.id)
         if planet == life.destination
-            # println("planet&dest ",a1.id," ",a2.id)
             terraform!(life, planet, model)
             push!(life_to_kill, life)
         end
-        # planet == life.destination && terraform!(life, planet, model)
-        # println()
+        
     end
-    # println("end of galaxy model step****")
-    ## try killing at the end of the step
+
     for life in life_to_kill
         kill_agent!(life,model)
     end
     
 end
-
-## TO DO 10/5/2020
-## - UPDATE TESTS
 
 #= I should probably have a function that just scales my planet compositions 
 accross the color spectrum instead of baking colors in as the compositions
