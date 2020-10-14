@@ -359,3 +359,17 @@ end
     end
 
 end
+
+@testset "galaxy model basic w/modified planet compositions" begin
+    
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+    model = galaxy_model_basic(10, RNG = MersenneTwister(3141), compositionmaxvalue = 16, compositionsize = 6)
+    for a in values(model.agents)
+        @test length(a.composition) == 6
+        @test maximum(a.composition) <= 16
+    end
+    for i in 1:1:20
+        step!(model, agent_step!, galaxy_model_step!)
+    end
+
+end

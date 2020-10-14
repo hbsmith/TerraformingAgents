@@ -48,7 +48,7 @@ end
 
 function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
-    @unpack RNG, extent, dt, interaction_radius, allowed_diff, lifespeed = kwarg_dict
+    @unpack RNG, extent, dt, interaction_radius, allowed_diff, lifespeed, compositionmaxvalue, compositionsize = kwarg_dict
 
     space2d = ContinuousSpace(2; periodic = true, extend = extent)
     model = @suppress_err AgentBasedModel(
@@ -63,10 +63,10 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
     if detail == :basic 
         @unpack nplanets = kwarg_dict
         ool = nothing
-        initialize_planets_basic!(nplanets, model; @dict(RNG)...)
+        initialize_planets_basic!(nplanets, model; @dict(RNG, compositionmaxvalue, compositionsize)...)
     elseif detail == :advanced
         @unpack pos, vel, planetcompositions, ool = kwarg_dict
-        initialize_planets_advanced!(model; @dict(RNG, pos, vel, planetcompositions)...)
+        initialize_planets_advanced!(model; @dict(RNG, pos, vel, planetcompositions, compositionmaxvalue, compositionsize)...)
     else
         throw(ArgumentError("`detail` must be `:basic` or `:advanced`"))
     end
@@ -86,9 +86,11 @@ function galaxy_model_basic(
     dt::Real = 1.0, 
     interaction_radius::Real = 0.02, ## How close life and destination planet have to be to interact
     allowed_diff::Real = 3, ## How similar each element of life and destination planet have to be for terraformation
-    lifespeed::Real = 0.2) ## Speed that life spreads
+    lifespeed::Real = 0.2,
+    compositionmaxvalue::Int = 10,
+    compositionsize::Int = 10) ## Speed that life spreads
 
-    galaxy_model_setup(:basic, @dict(nplanets, RNG, extent, dt, interaction_radius, allowed_diff, lifespeed))
+    galaxy_model_setup(:basic, @dict(nplanets, RNG, extent, dt, interaction_radius, allowed_diff, lifespeed, compositionmaxvalue, compositionsize))
 
 end
 
@@ -102,9 +104,11 @@ function galaxy_model_advanced(;
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing,
+    compositionmaxvalue::Int = 10, 
+    compositionsize::Int = 10,
     ool::Int = nothing)
 
-    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, interaction_radius, allowed_diff, pos, vel, planetcompositions, lifespeed, ool))
+    galaxy_model_setup(:advanced, @dict(RNG, extent, dt, interaction_radius, allowed_diff, pos, vel, planetcompositions, compositionmaxvalue, compositionsize, lifespeed, ool))
 
 end
 
@@ -124,13 +128,15 @@ function initialize_planets_unsafe(
     RNG::AbstractRNG = Random.default_rng(),
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing)
+    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing,
+    compositionmaxvalue::Int = 10,
+    compositionsize::Int = 10)
 
     ## Initialize arguments which are not provided 
     ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
     isnothing(pos) && (pos = [Tuple(rand(RNG,2)) for _ in 1:nplanets])
     isnothing(vel) && (vel = [(0,0) for _ in 1:nplanets])
-    isnothing(planetcompositions) && (planetcompositions = [rand(RNG,1:10,10) for _ in 1:nplanets])
+    isnothing(planetcompositions) && (planetcompositions = [rand(RNG,1:compositionmaxvalue,compositionsize) for _ in 1:nplanets])
 
     for i in 1:nplanets
         
@@ -156,7 +162,9 @@ end
 function initialize_planets_basic!(
     nplanets::Int,
     model::AgentBasedModel; 
-    RNG::AbstractRNG = Random.default_rng())
+    RNG::AbstractRNG = Random.default_rng(),
+    compositionmaxvalue::Int = 10, 
+    compositionsize::Int = 10)
 
     nplanets < 1 && throw(ArgumentError("At least one planetary system required."))
 
@@ -164,7 +172,7 @@ function initialize_planets_basic!(
     vel=nothing 
     planetcompositions=nothing
 
-    initialize_planets_unsafe(nplanets, model; @dict(RNG, pos, vel, planetcompositions)...)    
+    initialize_planets_unsafe(nplanets, model; @dict(RNG, pos, vel, planetcompositions, compositionmaxvalue, compositionsize)...)    
 
 end
 
@@ -173,7 +181,9 @@ function initialize_planets_advanced!(
     RNG::AbstractRNG = Random.default_rng(),
     pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
     vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing)
+    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing,
+    compositionmaxvalue::Int = 10,
+    compositionsize::Int = 10)
 
     ## Validate user's args
     userargs = providedargs(@dict(pos, vel, planetcompositions))
@@ -182,7 +192,7 @@ function initialize_planets_advanced!(
     ## Infered from userargs
     nplanets = length(userargs[collect(keys(userargs))[1]])
 
-    initialize_planets_unsafe(nplanets, model; @dict(RNG, pos, vel, planetcompositions)...)    
+    initialize_planets_unsafe(nplanets, model; @dict(RNG, pos, vel, planetcompositions, compositionmaxvalue, compositionsize)...)    
 
 end
 
@@ -261,7 +271,7 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     # planet.claimed = true ## Test to make sure this is already true beforehand
 
     spawnlife!(planet, model, ancestors = push!(life.ancestors, life)) ## This makes new life 
-    println("terraformed $(planet.id) from $(life.id)")
+    # println("terraformed $(planet.id) from $(life.id)")
     # kill_agent!(life, model)
 
 end
