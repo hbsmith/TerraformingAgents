@@ -53,6 +53,11 @@ Base.@kwdef mutable struct Life <: AbstractAgent
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
 end
 
+"""
+Set up the galaxy (not user facing). 
+
+Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+"""
 function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
     @unpack RNG,
@@ -73,12 +78,12 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
     if detail == :basic
         @unpack nplanets = kwarg_dict
-        ool = nothing
         initialize_planets_basic!(
             nplanets,
             model;
             @dict(RNG, compositionmaxvalue, compositionsize)...,
         )
+        ool = nothing
     elseif detail == :advanced
         @unpack pos, vel, planetcompositions, ool = kwarg_dict
         initialize_planets_advanced!(
@@ -98,13 +103,33 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
 
     isnothing(ool) ? spawnlife!(random_agent(model, Planet, RNG), model) :
     spawnlife!(model.agents[ool], model)
-
-
     index!(model)
     model
 
 end
 
+"""
+    galaxy_model_basic(nplanets; <keyword arguments>)
+
+Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. Galaxy starts 
+with `nplanets` number of planets.
+
+...
+# Arguments
+- `RNG::AbstractRNG = Random.default_rng()`: RNG object
+- `extent::Tuple{<:Real,<:Real} = (1, 1)`: Bounds of the agent space
+- `dt::Real = 1.0`: Model timestep
+- `interaction_radius::Union{Real,Nothing} = nothing`: How close `Life` and destination
+        `Planet` have to be to interact via `interacting_pairs`. Default is `dt*lifespeed`.
+- `allowed_diff::Real = 3`: How similar each element of a `Planet`'s `composition` and `Life`'s
+        `composition` have to be in order to be compatible for terraformation.
+- `lifespeed::Real = 0.2`: Distance `Life` can move in one timestep.
+- `compositionmaxvalue::Int = 10`: Max possible value within `composition` vector.
+- `compositionsize::Int = 10`: `length` of `composition` vector.
+...
+
+See also: [`galaxy_model_advanced`](@ref)
+"""
 function galaxy_model_basic(
     nplanets::Int;
     RNG::AbstractRNG = Random.default_rng(),
@@ -136,6 +161,32 @@ function galaxy_model_basic(
 
 end
 
+"""
+    galaxy_model_advanced(; pos, vel, planetcompositions, <keyword arguments>)
+
+Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. One of `pos`, 
+`vel` or `planetcompositions` are required.
+
+...
+# Arguments
+- `RNG::AbstractRNG = Random.default_rng()`: RNG object
+- `extent::Tuple{<:Real,<:Real} = (1, 1)`: Bounds of the agent space
+- `dt::Real = 1.0`: Model timestep
+- `interaction_radius::Union{Real,Nothing} = nothing`: How close `Life` and destination
+        `Planet` have to be to interact via `interacting_pairs`. Default is `dt*lifespeed`.
+- `allowed_diff::Real = 3`: How similar each element of a `Planet`'s `composition` and 
+        `Life`'s `composition` have to be in order to be compatible for terraformation.
+- `lifespeed::Real = 0.2`: Distance `Life` can move in one timestep.
+- `pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` poss
+- `vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` vels
+- `planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing`: `Planet` compositions
+- `compositionmaxvalue::Int = 10`: Max possible value within `composition` vector.
+- `compositionsize::Int = 10`: `length` of `composition` vector.
+- `ool::Int = nothing`: ID of `Planet` to initialize `Life` on
+...
+
+See also: [`galaxy_model_basic`](@ref)
+"""
 function galaxy_model_advanced(;
     RNG::AbstractRNG = Random.default_rng(),
     extent::Tuple{<:Real,<:Real} = (1, 1),
@@ -173,6 +224,11 @@ function galaxy_model_advanced(;
 
 end
 
+"""
+Core function to set up the Planets (not user facing).
+
+Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+"""
 function initialize_planets_unsafe(
     nplanets::Int,
     model::AgentBasedModel;
@@ -222,6 +278,11 @@ function initialize_planets_unsafe(
 
 end
 
+"""
+Set up the Planets based only on `nplanets` (not user facing).
+
+Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+"""
 function initialize_planets_basic!(
     nplanets::Int,
     model::AgentBasedModel;
@@ -244,6 +305,13 @@ function initialize_planets_basic!(
 
 end
 
+"""
+    providedargs(args::Dict)
+
+Return args, with pairs containing `nothing` values removed, as long as one pair has a 
+non-`nothing` value. Used to check inputs of [`initialize_planets_advanced`](@ref)
+(not user facing).
+"""
 function providedargs(args::Dict)
 
     providedargs = filter(x -> !isnothing(x.second), args)
@@ -253,9 +321,18 @@ function providedargs(args::Dict)
 
 end
 
+"""
+Return `true` if all args values have identical lengths. Used to check inputs of 
+[`initialize_planets_advanced`](@ref) (not user facing).
+"""
 haveidenticallengths(args::Dict) =
     all(length(i.second) == length(args[collect(keys(args))[1]]) for i in args)
 
+"""
+Set up the Planets based only on `pos`, `vel`, or `planetcompositions` (not user facing).
+
+Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+"""
 function initialize_planets_advanced!(
     model::AgentBasedModel;
     RNG::AbstractRNG = Random.default_rng(),
@@ -282,6 +359,11 @@ function initialize_planets_advanced!(
 
 end
 
+"""
+    compatibleplanets(planet, model)
+
+Return `Vector{Planet}` where planet is compatible for terraformation (not user facing).
+"""
 function compatibleplanets(planet::Planet, model::ABM)
 
     candidateplanets = collect(values(filter(p -> isa(p.second, Planet), model.agents)))
@@ -297,6 +379,11 @@ function compatibleplanets(planet::Planet, model::ABM)
 
 end
 
+"""
+    nearestcompatibleplanet(planet, candidateplanets)
+
+Return candidateplanet nearest to planet (not user facing).
+"""
 function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet})
 
     length(candidateplanets) == 0 && throw(ArgumentError("candidateplanets is empty"))
@@ -310,12 +397,16 @@ function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet
 
 end
 
+"""
+Core function to set up and spawn Life (not user facing).
+
+Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+"""
 function spawnlife!(
     planet::Planet,
     model::ABM;
     ancestors::Union{Nothing,Vector{Life}} = nothing,
 )
-    ## Design choice is to modify planet and life together since the life is just a reflection of the planet anyways
     planet.alive = true
     planet.claimed = true ## This should already be true unless this is the first planet
     ## No ancestors, parentplanet, parentlife, parentcomposition
@@ -348,13 +439,26 @@ function spawnlife!(
 
 end
 
+"""
+    mixcompositions(lifecomposition, planetcomposition)
+
+Return rounded element-averaged composition (not user facing).
+"""
 function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
     ## Simple for now; Rounding goes to nearest even number
     convert(Vector{Int}, round.((lifecomposition .+ planetcomposition) ./ 2))
 end
 
+"""
+    terraform!(life, planet, model)
 
-## Life which has spawned elsewhere merging with an uninhabited (ie dead) planet
+Perform actions on `life` and `planet` associated with successful terraformation. Takes
+existing `life` and terraforms an exsiting non-alive `planet`.
+- Mix the composition of `planet` and `life`
+- Update the `planet` to `alive=true`
+- Update the `planet`'s ancestors, parentplanet, parentlife, and parentcomposition
+- Call `spawnlife!` to send out life from `planet`.
+"""
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
@@ -371,7 +475,10 @@ function terraform!(life::Life, planet::Planet, model::ABM)
 end
 
 """
+    galaxy_model_step(model)
 
+Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and 
+terraforms a `Planet` if a `Life` has reached its destination; then kills that `Life`.
 """
 function galaxy_model_step!(model)
     ## I need to scale the interaction radius by dt and the velocity of life or else I can 
