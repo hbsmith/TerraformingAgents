@@ -9,7 +9,11 @@ using NearestNeighbors
 
 export Planet, Life, galaxy_model_basic, galaxy_model_advanced, galaxy_model_step!
 
-"""Return random agent of type `A`"""
+"""
+    random_agent(model, A, RNG = Random.default_rng())
+
+Return random agent of type `A` (not user facing).
+"""
 Agents.random_agent(
     model,
     A::Type{T},
@@ -18,7 +22,12 @@ Agents.random_agent(
 
 magnitude(x::Tuple{<:Real,<:Real}) = sqrt(sum(x .^ 2))
 
-"""Return normalized direction `start::AbstractAgent` to `finish::AbstractAgent`"""
+"""
+    direction(start, finish)
+
+Return normalized direction from `start::AbstractAgent` to `finish::AbstractAgent` (not
+user facing).
+"""
 direction(start::AbstractAgent, finish::AbstractAgent) =
     (finish.pos .- start.pos) ./ magnitude((finish.pos .- start.pos))
 
@@ -54,7 +63,7 @@ Base.@kwdef mutable struct Life <: AbstractAgent
 end
 
 """
-Set up the galaxy (not user facing). 
+Set up the galaxy model (not user facing). 
 
 Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
 """
@@ -173,12 +182,14 @@ Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. One 
 - `extent::Tuple{<:Real,<:Real} = (1, 1)`: Bounds of the agent space
 - `dt::Real = 1.0`: Model timestep
 - `interaction_radius::Union{Real,Nothing} = nothing`: How close `Life` and destination
-        `Planet` have to be to interact via `interacting_pairs`. Default is `dt*lifespeed`.
+    `Planet` have to be to interact via `interacting_pairs`. Default is `dt*lifespeed`.
 - `allowed_diff::Real = 3`: How similar each element of a `Planet`'s `composition` and 
-        `Life`'s `composition` have to be in order to be compatible for terraformation.
+    `Life`'s `composition` have to be in order to be compatible for terraformation.
 - `lifespeed::Real = 0.2`: Distance `Life` can move in one timestep.
-- `pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` poss
-- `vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` vels
+- `pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` 
+    positions
+- `vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` 
+    velocities
 - `planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing`: `Planet` compositions
 - `compositionmaxvalue::Int = 10`: Max possible value within `composition` vector.
 - `compositionsize::Int = 10`: `length` of `composition` vector.
@@ -308,7 +319,7 @@ end
 """
     providedargs(args::Dict)
 
-Return args, with pairs containing `nothing` values removed, as long as one pair has a 
+Return `args`, with pairs containing `nothing` values removed, as long as one pair has a 
 non-`nothing` value. Used to check inputs of [`initialize_planets_advanced`](@ref)
 (not user facing).
 """
@@ -322,14 +333,16 @@ function providedargs(args::Dict)
 end
 
 """
-Return `true` if all args values have identical lengths. Used to check inputs of 
+    haveidenticallengths(args)
+
+Return `true` if all args values have identical `length`s. Used to check inputs of 
 [`initialize_planets_advanced`](@ref) (not user facing).
 """
 haveidenticallengths(args::Dict) =
     all(length(i.second) == length(args[collect(keys(args))[1]]) for i in args)
 
 """
-Set up the Planets based only on `pos`, `vel`, or `planetcompositions` (not user facing).
+Set up the `Planet`s based only on `pos`, `vel`, or `planetcompositions` (not user facing).
 
 Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
 """
@@ -362,7 +375,8 @@ end
 """
     compatibleplanets(planet, model)
 
-Return `Vector{Planet}` where planet is compatible for terraformation (not user facing).
+Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation (not user
+facing).
 """
 function compatibleplanets(planet::Planet, model::ABM)
 
@@ -382,7 +396,7 @@ end
 """
     nearestcompatibleplanet(planet, candidateplanets)
 
-Return candidateplanet nearest to planet (not user facing).
+Return `Planet` within `candidateplanets` that is nearest to `planet `(not user facing).
 """
 function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet})
 
@@ -398,7 +412,7 @@ function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet
 end
 
 """
-Core function to set up and spawn Life (not user facing).
+Core function to set up and spawn `Life` (not user facing).
 
 Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
 """
@@ -454,10 +468,10 @@ end
 
 Perform actions on `life` and `planet` associated with successful terraformation. Takes
 existing `life` and terraforms an exsiting non-alive `planet`.
-- Mix the composition of `planet` and `life`
+- Mix the `composition` of `planet` and `life`
 - Update the `planet` to `alive=true`
-- Update the `planet`'s ancestors, parentplanet, parentlife, and parentcomposition
-- Call `spawnlife!` to send out life from `planet`.
+- Update the `planet`'s `ancestors`, `parentplanet`, `parentlife`, and `parentcomposition`
+- Call `spawnlife!` to send out `Life` from `planet`.
 """
 function terraform!(life::Life, planet::Planet, model::ABM)
 
@@ -477,8 +491,8 @@ end
 """
     galaxy_model_step(model)
 
-Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and 
-terraforms a `Planet` if a `Life` has reached its destination; then kills that `Life`.
+Custom `model_step` to be called by `Agents.step!`. Check all `interacting_pairs`, and 
+`terraform` a `Planet` if a `Life` has reached its destination; then kill that `Life`.
 """
 function galaxy_model_step!(model)
     ## I need to scale the interaction radius by dt and the velocity of life or else I can 
