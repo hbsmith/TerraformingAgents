@@ -32,8 +32,9 @@ magnitude(x) = sqrt(sum(x .^ 2))
 Return normalized direction from `start::AbstractAgent` to `finish::AbstractAgent` (not
 user facing).
 """
-direction(start::AbstractAgent, finish::AbstractAgent) =
-    (finish.pos .- start.pos) ./ magnitude((finish.pos .- start.pos))
+direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- start.pos
+    δ ./ magnitude(δ)
+end
 
 Base.@kwdef mutable struct Planet <: AbstractAgent
     id::Int
