@@ -38,8 +38,8 @@ end
 
 Base.@kwdef mutable struct Planet <: AbstractAgent
     id::Int
-    pos::NTuple{2,<:AbstractFloat}
-    vel::NTuple{2,<:AbstractFloat}
+    pos::NTuple{2, Float64}
+    vel::NTuple{2, Float64}
 
     composition::Vector{Int} ## Represents the planet's genotype
     initialcomposition::Vector{Int} ## Same as composition until it's terraformed
@@ -61,11 +61,11 @@ end
 
 Base.@kwdef mutable struct Life <: AbstractAgent
     id::Int
-    pos::NTuple{2,<:AbstractFloat}
-    vel::NTuple{2,<:AbstractFloat}
+    pos::NTuple{2, Float64}
+    vel::NTuple{2, Float64}
     parentplanet::Planet
     composition::Vector{Int} ## Taken from parentplanet
-    destination::Union{Nothing,Planet}
+    destination::Union{Planet, Nothing}
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
 end
 
