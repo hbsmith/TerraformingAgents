@@ -24,7 +24,7 @@ function Agents.random_agent(rng::AbstractRNG, A::Type, model)
 end
 Agents.random_agent(A::Type, model) = random_agent(Random.default_rng(), A, model)
 
-magnitude(x::Tuple{<:Real,<:Real}) = sqrt(sum(x .^ 2))
+magnitude(x) = sqrt(sum(x .^ 2))
 
 """
     direction(start, finish)
