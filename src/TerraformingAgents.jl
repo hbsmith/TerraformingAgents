@@ -45,7 +45,7 @@ Base.@kwdef mutable struct Planet <: AbstractAgent
     ancestors::Vector{Planet} ## Planets that phylogenetically preceded this one
     parentplanet::Union{Planet,Nothing} ## Planet that directly preceded this one
     parentlife::Union{<:AbstractAgent,Nothing} #= This is of type Life, but I can't force
-                                                  because it would cause a mutually 
+                                                  because it would cause a mutually
                                                   recursive declaration b/w Planet and Life
                                                =#
     parentcomposition::Union{Vector{Int},Nothing}
@@ -63,7 +63,7 @@ Base.@kwdef mutable struct Life <: AbstractAgent
 end
 
 """
-Set up the galaxy model (not user facing). 
+Set up the galaxy model (not user facing).
 
 Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
 """
@@ -120,7 +120,7 @@ end
 """
     galaxy_model_basic(nplanets; <keyword arguments>)
 
-Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. Galaxy starts 
+Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. Galaxy starts
 with `nplanets` number of planets.
 
 ...
@@ -173,7 +173,7 @@ end
 """
     galaxy_model_advanced(; pos, vel, planetcompositions, <keyword arguments>)
 
-Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. One of `pos`, 
+Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. One of `pos`,
 `vel` or `planetcompositions` are required.
 
 ...
@@ -183,12 +183,12 @@ Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. One 
 - `dt::Real = 1.0`: Model timestep
 - `interaction_radius::Union{Real,Nothing} = nothing`: How close `Life` and destination
     `Planet` have to be to interact via `interacting_pairs`. Default is `dt*lifespeed`.
-- `allowed_diff::Real = 3`: How similar each element of a `Planet`'s `composition` and 
+- `allowed_diff::Real = 3`: How similar each element of a `Planet`'s `composition` and
     `Life`'s `composition` have to be in order to be compatible for terraformation.
 - `lifespeed::Real = 0.2`: Distance `Life` can move in one timestep.
-- `pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` 
+- `pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet`
     positions
-- `vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet` 
+- `vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet`
     velocities
 - `planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing`: `Planet` compositions
 - `compositionmaxvalue::Int = 10`: Max possible value within `composition` vector.
@@ -251,7 +251,7 @@ function initialize_planets_unsafe(
     compositionsize::Int = 10,
 )
 
-    ## Initialize arguments which are not provided 
+    ## Initialize arguments which are not provided
     ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
     isnothing(pos) && (
         pos = [
@@ -319,7 +319,7 @@ end
 """
     providedargs(args::Dict)
 
-Return `args`, with pairs containing `nothing` values removed, as long as one pair has a 
+Return `args`, with pairs containing `nothing` values removed, as long as one pair has a
 non-`nothing` value. Used to check inputs of [`initialize_planets_advanced`](@ref)
 (not user facing).
 """
@@ -335,7 +335,7 @@ end
 """
     haveidenticallengths(args)
 
-Return `true` if all args values have identical `length`s. Used to check inputs of 
+Return `true` if all args values have identical `length`s. Used to check inputs of
 [`initialize_planets_advanced`](@ref) (not user facing).
 """
 haveidenticallengths(args::Dict) =
@@ -446,7 +446,7 @@ function spawnlife!(
 
     life = add_agent_pos!(Life(; args...), model)
 
-    !isnothing(destinationplanet) && (destinationplanet.claimed = true) ## destination is only nothing if no compatible planets 
+    !isnothing(destinationplanet) && (destinationplanet.claimed = true) ## destination is only nothing if no compatible planets
     ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
 
     model
@@ -484,18 +484,18 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     planet.parentcomposition = life.composition
     # planet.claimed = true ## Test to make sure this is already true beforehand
 
-    spawnlife!(planet, model, ancestors = push!(life.ancestors, life)) ## This makes new life 
+    spawnlife!(planet, model, ancestors = push!(life.ancestors, life)) ## This makes new life
 
 end
 
 """
     galaxy_model_step(model)
 
-Custom `model_step` to be called by `Agents.step!`. Check all `interacting_pairs`, and 
+Custom `model_step` to be called by `Agents.step!`. Check all `interacting_pairs`, and
 `terraform` a `Planet` if a `Life` has reached its destination; then kill that `Life`.
 """
 function galaxy_model_step!(model)
-    ## I need to scale the interaction radius by dt and the velocity of life or else I can 
+    ## I need to scale the interaction radius by dt and the velocity of life or else I can
     ##   miss some interactions
 
     life_to_kill = Life[]
