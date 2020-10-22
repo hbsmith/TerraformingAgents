@@ -43,18 +43,20 @@ Base.@kwdef mutable struct Planet <: AbstractAgent
 
     composition::Vector{Int} ## Represents the planet's genotype
     initialcomposition::Vector{Int} ## Same as composition until it's terraformed
-    alive::Bool
-    claimed::Bool ## True if any Life has this planet as its destination
 
-    ## Properties of the process, but not the planet itself
-    ancestors::Vector{Planet} ## Planets that phylogenetically preceded this one
-    parentplanet::Union{Planet,Nothing} ## Planet that directly preceded this one
-    parentlife::Union{<:AbstractAgent,Nothing} #= This is of type Life, but I can't force
-                                                  because it would cause a mutually
-                                                  recursive declaration b/w Planet and Life
-                                               =#
-    parentcomposition::Union{Vector{Int},Nothing}
+    alive::Bool = false
+    ## True if any Life has this planet as its destination
+    claimed::Bool = false
 
+    # Properties of the process, but not the planet itself
+
+    ## Planets that phylogenetically preceded this one
+    ancestors::Vector{Planet} = Planet[]
+
+    ## Planet that directly preceded this one
+    parentplanet::Union{Planet, Nothing} = nothing
+    parentlife::Union{<:AbstractAgent, Nothing} = nothing
+    parentcomposition::Union{Vector{Int}, Nothing} = nothing
 end
 
 Base.@kwdef mutable struct Life <: AbstractAgent
@@ -279,12 +281,6 @@ function initialize_planets_unsafe(
             :vel => vel[i],
             :composition => planetcompositions[i],
             :initialcomposition => planetcompositions[i],
-            :alive => false,
-            :claimed => false,
-            :parentplanet => nothing,
-            :parentlife => nothing,
-            :parentcomposition => nothing,
-            :ancestors => Vector{Planet}(undef, 0),
         )
 
         add_agent_pos!(Planet(; pskwargs...), model)
