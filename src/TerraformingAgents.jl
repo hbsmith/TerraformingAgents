@@ -10,15 +10,19 @@ using NearestNeighbors
 export Planet, Life, galaxy_model_basic, galaxy_model_advanced, galaxy_model_step!
 
 """
-    random_agent(model, A, RNG = Random.default_rng())
+    random_agent([rng = Random.default_rng(),] A::Type, model)
 
 Return random agent of type `A` (not user facing).
 """
-Agents.random_agent(
-    model,
-    A::Type{T},
-    RNG::AbstractRNG = Random.default_rng(),
-) where {T<:AbstractAgent} = model[rand(RNG, [k for (k, v) in model.agents if v isa A])]
+function Agents.random_agent(rng::AbstractRNG, A::Type, model)
+    agents = [k for (k, v) in model.agents if v isa A]
+    if !isempty(agents)
+        model[rand(rng, agents)]
+    else
+        error("model has no agents of type $A")
+    end
+end
+Agents.random_agent(A::Type, model) = random_agent(Random.default_rng(), A, model)
 
 magnitude(x::Tuple{<:Real,<:Real}) = sqrt(sum(x .^ 2))
 
@@ -110,7 +114,7 @@ function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
         throw(ArgumentError("`detail` must be `:basic` or `:advanced`"))
     end
 
-    isnothing(ool) ? spawnlife!(random_agent(model, Planet, RNG), model) :
+    isnothing(ool) ? spawnlife!(random_agent(RNG, Planet, model), model) :
     spawnlife!(model.agents[ool], model)
     index!(model)
     model
