@@ -7,7 +7,7 @@ using LinearAlgebra: dot
 using Distributions: Uniform
 using NearestNeighbors
 
-export Planet, Life, galaxy_model_basic, galaxy_model_advanced, galaxy_model_step!
+export Planet, Life, galaxy_model_setup, galaxy_model_step!
 
 """
     random_agent([rng = Random.default_rng(),] A::Type, model)
@@ -148,177 +148,36 @@ function TerraformParameters(rng::AbstractRNG;
     TerraformParameters(rng, nplanets; args...)
 end
 
+nplanets(params::TerraformParameters) = length(params.pos)
+
 """
 Set up the galaxy model (not user facing).
 
 Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
 """
-function galaxy_model_setup(detail::Symbol, kwarg_dict::Dict)
-
-    @unpack RNG,
-    extent,
-    dt,
-    interaction_radius,
-    allowed_diff,
-    lifespeed,
-    compositionmaxvalue,
-    compositionsize = kwarg_dict
-
-    space2d = ContinuousSpace(2; periodic = true, extend = extent)
+function galaxy_model_setup(rng::AbstractRNG, params::TerraformParameters)
+    space2d = ContinuousSpace(2; periodic = true, extend = params.extent)
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
         space2d,
-        properties = @dict(dt, interaction_radius, allowed_diff, lifespeed),
+        properties = Dict(:dt => params.dt,
+                          :interaction_radius => params.interaction_radius,
+                          :allowed_diff => params.allowed_diff,
+                          :lifespeed => params.lifespeed)
     )
 
-    if detail == :basic
-        @unpack nplanets = kwarg_dict
-        initialize_planets_basic!(
-            nplanets,
-            model;
-            @dict(RNG, compositionmaxvalue, compositionsize)...,
-        )
-        ool = nothing
-    elseif detail == :advanced
-        @unpack pos, vel, planetcompositions, ool = kwarg_dict
-        initialize_planets_advanced!(
-            model;
-            @dict(
-                RNG,
-                pos,
-                vel,
-                planetcompositions,
-                compositionmaxvalue,
-                compositionsize
-            )...,
-        )
-    else
-        throw(ArgumentError("`detail` must be `:basic` or `:advanced`"))
-    end
+    initialize_planets!(model, params)
 
-    isnothing(ool) ? spawnlife!(random_agent(RNG, Planet, model), model) :
-    spawnlife!(model.agents[ool], model)
+    agent = isnothing(params.ool) ? random_agent(rng, Planet, model) : model.agents[params.ool]
+    spawnlife!(agent, model)
     index!(model)
     model
-
 end
 
-"""
-    galaxy_model_basic(nplanets; <keyword arguments>)
+galaxy_model_setup(params::TerraformParameters) = galaxy_model_setup(Random.default_rng(), params)
 
-Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. Galaxy starts
-with `nplanets` number of planets.
-
-...
-# Arguments
-- `RNG::AbstractRNG = Random.default_rng()`: RNG object
-- `extent::Tuple{<:Real,<:Real} = (1, 1)`: Bounds of the agent space
-- `dt::Real = 1.0`: Model timestep
-- `interaction_radius::Union{Real,Nothing} = nothing`: How close `Life` and destination
-        `Planet` have to be to interact via `interacting_pairs`. Default is `dt*lifespeed`.
-- `allowed_diff::Real = 3`: How similar each element of a `Planet`'s `composition` and `Life`'s
-        `composition` have to be in order to be compatible for terraformation.
-- `lifespeed::Real = 0.2`: Distance `Life` can move in one timestep.
-- `compositionmaxvalue::Int = 10`: Max possible value within `composition` vector.
-- `compositionsize::Int = 10`: `length` of `composition` vector.
-...
-
-See also: [`galaxy_model_advanced`](@ref)
-"""
-function galaxy_model_basic(
-    nplanets::Int;
-    RNG::AbstractRNG = Random.default_rng(),
-    extent::Tuple{<:Real,<:Real} = (1, 1), ## Size of space
-    dt::Real = 1.0,
-    interaction_radius::Union{Real,Nothing} = nothing, ## How close life and destination planet have to be to interact
-    allowed_diff::Real = 3, ## How similar each element of life and destination planet have to be for terraformation
-    lifespeed::Real = 0.2,
-    compositionmaxvalue::Int = 10,
-    compositionsize::Int = 10,
-) ## Speed that life spreads
-
-    isnothing(interaction_radius) && (interaction_radius = dt * lifespeed)
-
-    galaxy_model_setup(
-        :basic,
-        @dict(
-            nplanets,
-            RNG,
-            extent,
-            dt,
-            interaction_radius,
-            allowed_diff,
-            lifespeed,
-            compositionmaxvalue,
-            compositionsize
-        )
-    )
-
-end
-
-"""
-    galaxy_model_advanced(; pos, vel, planetcompositions, <keyword arguments>)
-
-Create an Agents.jl `ABM` to simulate life spreading throughout the galaxy. One of `pos`,
-`vel` or `planetcompositions` are required.
-
-...
-# Arguments
-- `RNG::AbstractRNG = Random.default_rng()`: RNG object
-- `extent::Tuple{<:Real,<:Real} = (1, 1)`: Bounds of the agent space
-- `dt::Real = 1.0`: Model timestep
-- `interaction_radius::Union{Real,Nothing} = nothing`: How close `Life` and destination
-    `Planet` have to be to interact via `interacting_pairs`. Default is `dt*lifespeed`.
-- `allowed_diff::Real = 3`: How similar each element of a `Planet`'s `composition` and
-    `Life`'s `composition` have to be in order to be compatible for terraformation.
-- `lifespeed::Real = 0.2`: Distance `Life` can move in one timestep.
-- `pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet`
-    positions
-- `vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing`: `Planet`
-    velocities
-- `planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing`: `Planet` compositions
-- `compositionmaxvalue::Int = 10`: Max possible value within `composition` vector.
-- `compositionsize::Int = 10`: `length` of `composition` vector.
-- `ool::Int = nothing`: ID of `Planet` to initialize `Life` on
-...
-
-See also: [`galaxy_model_basic`](@ref)
-"""
-function galaxy_model_advanced(;
-    RNG::AbstractRNG = Random.default_rng(),
-    extent::Tuple{<:Real,<:Real} = (1, 1),
-    dt::Real = 1.0,
-    interaction_radius::Union{Real,Nothing} = nothing,
-    allowed_diff::Real = 3,
-    lifespeed::Real = 0.2,
-    pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing,
-    compositionmaxvalue::Int = 10,
-    compositionsize::Int = 10,
-    ool::Int = nothing,
-)
-
-    isnothing(interaction_radius) && (interaction_radius = dt * lifespeed)
-
-    galaxy_model_setup(
-        :advanced,
-        @dict(
-            RNG,
-            extent,
-            dt,
-            interaction_radius,
-            allowed_diff,
-            pos,
-            vel,
-            planetcompositions,
-            compositionmaxvalue,
-            compositionsize,
-            lifespeed,
-            ool
-        )
-    )
-
+function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
+    galaxy_model_setup(rng, TerraformParameters(rng, args..., kwargs...))
 end
 
 """
@@ -326,130 +185,18 @@ Core function to set up the Planets (not user facing).
 
 Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
 """
-function initialize_planets_unsafe(
-    nplanets::Int,
-    model::AgentBasedModel;
-    RNG::AbstractRNG = Random.default_rng(),
-    pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing,
-    compositionmaxvalue::Int = 10,
-    compositionsize::Int = 10,
-)
+function initialize_planets!(model, params::TerraformParameters)
+    for i = 1:nplanets(params)
+        id = nextid(model)
+        pos = params.pos[i]
+        vel = params.vel[i]
+        composition = params.planetcompositions[:, i]
 
-    ## Initialize arguments which are not provided
-    ## (flat random pos, no velocity, flat random compositions, 1 planet per system)
-    isnothing(pos) && (
-        pos = [
-            (
-                rand(RNG, Uniform(0, model.space.extend[1])),
-                rand(RNG, Uniform(0, model.space.extend[2])),
-            ) for _ = 1:nplanets
-        ]
-    )
-    isnothing(vel) && (vel = [(0, 0) for _ = 1:nplanets])
-    isnothing(planetcompositions) && (
-        planetcompositions =
-            [rand(RNG, 1:compositionmaxvalue, compositionsize) for _ = 1:nplanets]
-    )
+        planet = Planet(; id, pos, vel, composition)
 
-    for i = 1:nplanets
-        pskwargs = Dict(
-            :id => nextid(model),
-            :pos => pos[i],
-            :vel => vel[i],
-            :composition => planetcompositions[i],
-            :initialcomposition => planetcompositions[i],
-        )
-
-        add_agent_pos!(Planet(; pskwargs...), model)
-
+        add_agent_pos!(planet, model)
     end
     model
-
-end
-
-"""
-Set up the Planets based only on `nplanets` (not user facing).
-
-Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
-"""
-function initialize_planets_basic!(
-    nplanets::Int,
-    model::AgentBasedModel;
-    RNG::AbstractRNG = Random.default_rng(),
-    compositionmaxvalue::Int = 10,
-    compositionsize::Int = 10,
-)
-
-    nplanets < 1 && throw(ArgumentError("At least one planetary system required."))
-
-    pos = nothing
-    vel = nothing
-    planetcompositions = nothing
-
-    initialize_planets_unsafe(
-        nplanets,
-        model;
-        @dict(RNG, pos, vel, planetcompositions, compositionmaxvalue, compositionsize)...,
-    )
-
-end
-
-"""
-    providedargs(args::Dict)
-
-Return `args`, with pairs containing `nothing` values removed, as long as one pair has a
-non-`nothing` value. Used to check inputs of [`initialize_planets_advanced`](@ref)
-(not user facing).
-"""
-function providedargs(args::Dict)
-
-    providedargs = filter(x -> !isnothing(x.second), args)
-
-    isempty(providedargs) ? throw(ArgumentError("one of $(keys(args)) must be provided")) :
-    providedargs
-
-end
-
-"""
-    haveidenticallengths(args)
-
-Return `true` if all args values have identical `length`s. Used to check inputs of
-[`initialize_planets_advanced`](@ref) (not user facing).
-"""
-haveidenticallengths(args::Dict) =
-    all(length(i.second) == length(args[collect(keys(args))[1]]) for i in args)
-
-"""
-Set up the `Planet`s based only on `pos`, `vel`, or `planetcompositions` (not user facing).
-
-Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
-"""
-function initialize_planets_advanced!(
-    model::AgentBasedModel;
-    RNG::AbstractRNG = Random.default_rng(),
-    pos::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    vel::Union{Nothing,AbstractArray{<:NTuple{2,<:AbstractFloat}}} = nothing,
-    planetcompositions::Union{Nothing,Vector{Vector{Int}}} = nothing,
-    compositionmaxvalue::Int = 10,
-    compositionsize::Int = 10,
-)
-
-    ## Validate user's args
-    userargs = providedargs(@dict(pos, vel, planetcompositions))
-    haveidenticallengths(userargs) ||
-        throw(ArgumentError("provided arguments $(keys(userargs)) must all be same length"))
-
-    ## Infered from userargs
-    nplanets = length(userargs[collect(keys(userargs))[1]])
-
-    initialize_planets_unsafe(
-        nplanets,
-        model;
-        @dict(RNG, pos, vel, planetcompositions, compositionmaxvalue, compositionsize)...,
-    )
-
 end
 
 """
