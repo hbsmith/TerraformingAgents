@@ -42,7 +42,7 @@ Base.@kwdef mutable struct Planet <: AbstractAgent
     vel::NTuple{2, Float64}
 
     composition::Vector{Int} ## Represents the planet's genotype
-    initialcomposition::Vector{Int} ## Same as composition until it's terraformed
+    initialcomposition::Vector{Int} = composition ## Same as composition until it's terraformed
 
     alive::Bool = false
     ## True if any Life has this planet as its destination
@@ -246,7 +246,7 @@ Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
 function spawnlife!(
     planet::Planet,
     model::ABM;
-    ancestors::Union{Nothing,Vector{Life}} = nothing,
+    ancestors::Vector{Life} = Life[],
 )
     planet.alive = true
     planet.claimed = true ## This should already be true unless this is the first planet
@@ -261,23 +261,22 @@ function spawnlife!(
         vel = direction(planet, destinationplanet) .* model.lifespeed
     end
 
-    args = Dict(
-        :id => nextid(model),
-        :pos => planet.pos,
-        :vel => vel,
-        :parentplanet => planet,
-        :composition => planet.composition,
-        :destination => destinationplanet,
-        :ancestors => isnothing(ancestors) ? Planet[] : ancestors,
+    life = Life(;
+        id = nextid(model),
+        pos = planet.pos,
+        vel = vel,
+        parentplanet = planet,
+        composition = planet.composition,
+        destination = destinationplanet,
+        ancestors
     ) ## Only "first" life won't have ancestors
 
-    life = add_agent_pos!(Life(; args...), model)
+    life = add_agent_pos!(life, model)
 
     !isnothing(destinationplanet) && (destinationplanet.claimed = true) ## destination is only nothing if no compatible planets
     ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
 
     model
-
 end
 
 """
