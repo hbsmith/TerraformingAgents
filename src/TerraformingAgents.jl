@@ -206,16 +206,17 @@ Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation
 facing).
 """
 function compatibleplanets(planet::Planet, model::ABM)
+    function iscandidate((_, p))
+        isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+    end
 
-    candidateplanets = collect(values(filter(p -> isa(p.second, Planet), model.agents)))
-    candidateplanets = collect(values(filter(
-        p -> (p.alive == false) & (p.claimed == false) & (p.id != planet.id),
-        candidateplanets,
-    )))
+    candidateplanets = collect(values(filter(iscandidate, model.agents)))
     compositions = hcat([a.composition for a in candidateplanets]...)
     compositiondiffs = abs.(compositions .- planet.composition)
     compatibleindxs =
         findall(<=(model.allowed_diff), vec(maximum(compositiondiffs, dims = 1)))
+
+    ## Necessary in cased the result is empty
     convert(Vector{Planet}, candidateplanets[compatibleindxs]) ## Returns Planets
 
 end
