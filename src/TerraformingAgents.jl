@@ -69,6 +69,85 @@ Base.@kwdef mutable struct Life <: AbstractAgent
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
 end
 
+function random_positions(rng, (xmax, ymax), n)
+    Ux = Uniform(0, xmax)
+    Uy = Uniform(0, ymax)
+    collect(zip(rand(rng, Ux, n), rand(rng, Uy, n))) :: Vector{NTuple{2, Float64}}
+end
+
+default_velocities(n) = fill((0.0, 0.0), n) :: Vector{NTuple{2, Float64}}
+
+random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
+
+struct TerraformParameters
+    extent::NTuple{2, Float64}
+    dt::Float64
+    lifespeed::Float64
+    interaction_radius::Float64
+    allowed_diff::Float64
+    ool::Union{Int, Nothing}
+    pos::Vector{NTuple{2, Float64}}
+    vel::Vector{NTuple{2, Float64}}
+    planetcompositions::Array{Int64, 2}
+
+    function TerraformParameters(; extent::NTuple{2,<:Real}=(1.0, 1.0),
+                                   dt::Real=10,
+                                   lifespeed::Real=0.2,
+                                   interaction_radius::Real=dt * lifespeed,
+                                   allowed_diff::Real=2.0,
+                                   ool::Union{Real, Nothing}=nothing,
+                                   pos::Vector{<:NTuple{2, <:Real}},
+                                   vel::Vector{<:NTuple{2, <:Real}},
+                                   planetcompositions::Array{<:Integer, 2}
+                                )
+
+        if !(length(pos) == length(vel) == size(planetcompositions, 2))
+            throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
+        end
+
+        new(extent, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel,
+            planetcompositions)
+    end
+end
+
+function TerraformParameters(rng::AbstractRNG, nplanets::Int;
+        extent=(1.0, 1.0), maxcomp=10, compsize=10,
+        pos::Vector{<:NTuple{2, <:Real}} = random_positions(rng, extent, nplanets),
+        vel::Vector{<:NTuple{2, <:Real}} = default_velocities(nplanets),
+        planetcompositions::Array{<:Integer,2} = random_compositions(rng, maxcomp, compsize, nplanets),
+        kwargs...
+    )
+
+    TerraformParameters(; extent, pos, vel, planetcompositions, kwargs...)
+end
+
+function TerraformParameters(rng::AbstractRNG;
+        pos::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
+        vel::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
+        planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
+        kwargs...
+    )
+
+    if !isnothing(pos)
+        nplanets = length(pos)
+    elseif !isnothing(vel)
+        nplanets = length(vel)
+    elseif !isnothing(planetcompositions)
+        nplanets = size(planetcompositions, 2)
+    else
+        msg = "at least one of :pos, :vel or :planetcompositions must be provided as a kwarg"
+        throw(ArgumentError(msg))
+    end
+
+    args = Dict{Symbol,Any}(kwargs)
+
+    !isnothing(pos) && (args[:pos] = pos)
+    !isnothing(vel) && (args[:vel] = vel)
+    !isnothing(planetcompositions) && (args[:planetcompositions] = planetcompositions)
+
+    TerraformParameters(rng, nplanets; args...)
+end
+
 """
 Set up the galaxy model (not user facing).
 
