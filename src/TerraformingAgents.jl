@@ -287,7 +287,7 @@ Return rounded element-averaged composition (not user facing).
 """
 function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
     ## Simple for now; Rounding goes to nearest even number
-    convert(Vector{Int}, round.((lifecomposition .+ planetcomposition) ./ 2))
+    round.(Int, (lifecomposition .+ planetcomposition) ./ 2)
 end
 
 """
@@ -312,7 +312,6 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     # planet.claimed = true ## Test to make sure this is already true beforehand
 
     spawnlife!(planet, model, ancestors = push!(life.ancestors, life)) ## This makes new life
-
 end
 
 """
