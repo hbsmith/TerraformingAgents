@@ -121,6 +121,10 @@ function TerraformParameters(rng::AbstractRNG, nplanets::Int;
     TerraformParameters(; extent, pos, vel, planetcompositions, kwargs...)
 end
 
+function TerraformParameters(nplanets::Int; kwargs...)
+    TerraformParameters(Random.default_rng(), nplanets, kwargs...)
+end
+
 function TerraformParameters(rng::AbstractRNG;
         pos::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
         vel::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
