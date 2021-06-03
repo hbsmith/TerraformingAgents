@@ -1,7 +1,7 @@
 module TerraformingAgents
 
 using Agents, Random, AgentsPlots, Plots
-using DrWatson: @dict, @unpack
+# using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
 using LinearAlgebra: dot
 using Distributions: Uniform
@@ -12,7 +12,7 @@ export Planet, Life, galaxy_model_setup, galaxy_model_step!
 """
     random_agent([rng = Random.default_rng(),] A::Type, model)
 
-Return random agent of type `A` (not user facing).
+Returns random agent of type `A` (not user facing).
 """
 function Agents.random_agent(rng::AbstractRNG, A::Type, model)
     agents = [k for (k, v) in model.agents if v isa A]
@@ -27,9 +27,9 @@ Agents.random_agent(A::Type, model) = random_agent(Random.default_rng(), A, mode
 magnitude(x) = sqrt(sum(x .^ 2))
 
 """
-    direction(start, finish)
+    direction(start::AbstractAgent, finish::AbstractAgent)
 
-Return normalized direction from `start::AbstractAgent` to `finish::AbstractAgent` (not
+Returns normalized direction from `start::AbstractAgent` to `finish::AbstractAgent` (not
 user facing).
 """
 direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- start.pos
@@ -155,9 +155,9 @@ end
 nplanets(params::TerraformParameters) = length(params.pos)
 
 """
-Set up the galaxy model (not user facing).
+    galaxy_model_setup(rng::AbstractRNG, params::TerraformParameters)
 
-Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+Sets up the galaxy model.
 """
 function galaxy_model_setup(rng::AbstractRNG, params::TerraformParameters)
     space2d = ContinuousSpace(2; periodic = true, extend = params.extent)
@@ -185,9 +185,11 @@ function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
 end
 
 """
-Core function to set up the Planets (not user facing).
+    initialize_planets!(model, params::TerraformParameters)
 
-Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+Adds Planets (not user facing).
+
+Called by [`galaxy_model_setup`](@ref).
 """
 function initialize_planets!(model, params::TerraformParameters)
     for i = 1:nplanets(params)
@@ -204,9 +206,9 @@ function initialize_planets!(model, params::TerraformParameters)
 end
 
 """
-    compatibleplanets(planet, model)
+    compatibleplanets(planet::Planet, model::ABM)
 
-Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation (not user
+Returns `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation (not user
 facing).
 """
 function compatibleplanets(planet::Planet, model::ABM)
@@ -226,9 +228,9 @@ function compatibleplanets(planet::Planet, model::ABM)
 end
 
 """
-    nearestcompatibleplanet(planet, candidateplanets)
+    nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{PLanet})
 
-Return `Planet` within `candidateplanets` that is nearest to `planet `(not user facing).
+Returns `Planet` within `candidateplanets` that is nearest to `planet `(not user facing).
 """
 function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet})
 
@@ -244,15 +246,18 @@ function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet
 end
 
 """
-Core function to set up and spawn `Life` (not user facing).
+    spawnlife!(planet::Planet, model::ABM; ancestors::Vector{Life} = Life[])
 
-Called by [`galaxy_model_basic`](@ref) and [`galaxy_model_advanced`](@ref).
+Spawns `Life` (not user facing).
+
+Called by [`galaxy_model_setup`](@ref).
 """
 function spawnlife!(
     planet::Planet,
     model::ABM;
-    ancestors::Vector{Life} = Life[],
-)
+    ancestors::Vector{Life} = Life[]
+    )
+
     planet.alive = true
     planet.claimed = true ## This should already be true unless this is the first planet
     ## No ancestors, parentplanet, parentlife, parentcomposition
@@ -285,9 +290,9 @@ function spawnlife!(
 end
 
 """
-    mixcompositions(lifecomposition, planetcomposition)
+    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
 
-Return rounded element-averaged composition (not user facing).
+Rounds element-averaged composition (not user facing).
 """
 function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
     ## Simple for now; Rounding goes to nearest even number
@@ -295,10 +300,10 @@ function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector
 end
 
 """
-    terraform!(life, planet, model)
+    terraform!(life::Life, planet::Planet, model::ABM)
 
-Perform actions on `life` and `planet` associated with successful terraformation. Takes
-existing `life` and terraforms an exsiting non-alive `planet`.
+Performs actions on `life` and `planet` associated with successful terraformation. Takes
+existing `life` and terraforms an exsiting non-alive `planet` (not user facing).
 - Mix the `composition` of `planet` and `life`
 - Update the `planet` to `alive=true`
 - Update the `planet`'s `ancestors`, `parentplanet`, `parentlife`, and `parentcomposition`
@@ -321,8 +326,8 @@ end
 """
     galaxy_model_step(model)
 
-Custom `model_step` to be called by `Agents.step!`. Check all `interacting_pairs`, and
-`terraform` a `Planet` if a `Life` has reached its destination; then kill that `Life`.
+Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and
+`terraform`s a `Planet` if a `Life` has reached its destination; then kills that `Life`.
 """
 function galaxy_model_step!(model)
     ## I need to scale the interaction radius by dt and the velocity of life or else I can
