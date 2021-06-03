@@ -5,65 +5,72 @@ using DrWatson: @dict
 using Suppressor: @suppress_err
 
 
-@testset "Check provided args includes non-nothing value" begin
+# @testset "Check provided args includes non-nothing value" begin
     
-    argdict = Dict(
-        :pos => [(1, 2), (3.3, 2.0)], 
-        :vel => [(1.1, 2.2), (0.1, 2.0)], 
-        :planetcompositions => [[[1,2,3],[4,5,6]], [[5,6,7],[8,9,10]]])
+#     argdict = Dict(
+#         :pos => [(1, 2), (3.3, 2.0)], 
+#         :vel => [(1.1, 2.2), (0.1, 2.0)], 
+#         :planetcompositions => [[[1,2,3],[4,5,6]], [[5,6,7],[8,9,10]]])
 
-    @test TerraformingAgents.providedargs(argdict) == argdict
+#     @test TerraformingAgents.providedargs(argdict) == argdict
 
-    ## planetcompositions with different lengths
-    argdict = Dict(
-        :pos => [(1, 2), (3.3, 2.0)], 
-        :vel => [(1.1, 2.2), (0.1, 2.0)], 
-        :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
+#     ## planetcompositions with different lengths
+#     argdict = Dict(
+#         :pos => [(1, 2), (3.3, 2.0)], 
+#         :vel => [(1.1, 2.2), (0.1, 2.0)], 
+#         :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
 
-    @test TerraformingAgents.providedargs(argdict) == argdict
+#     @test TerraformingAgents.providedargs(argdict) == argdict
 
-    ## various nothing args
-    argdict = Dict(
-        :pos => nothing, 
-        :vel => nothing, 
-        :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
+#     ## various nothing args
+#     argdict = Dict(
+#         :pos => nothing, 
+#         :vel => nothing, 
+#         :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
 
-    @test TerraformingAgents.providedargs(argdict) == Dict(:planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
+#     @test TerraformingAgents.providedargs(argdict) == Dict(:planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
 
-    argdict = Dict(
-        :pos => [(1, 2), (3.3, 2.0)], 
-        :vel => nothing, 
-        :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
+#     argdict = Dict(
+#         :pos => [(1, 2), (3.3, 2.0)], 
+#         :vel => nothing, 
+#         :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
 
-    @test TerraformingAgents.providedargs(argdict) == Dict( :pos => [(1, 2), (3.3, 2.0)], :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
+#     @test TerraformingAgents.providedargs(argdict) == Dict( :pos => [(1, 2), (3.3, 2.0)], :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])
 
-    @test_throws ArgumentError TerraformingAgents.providedargs(Dict(
-        :pos => nothing, 
-        :vel => nothing, 
-        :planetcompositions => nothing))
+#     @test_throws ArgumentError TerraformingAgents.providedargs(Dict(
+#         :pos => nothing, 
+#         :vel => nothing, 
+#         :planetcompositions => nothing))
 
-end
+# end
 
-@testset "Check if args have identical lengths" begin
+# @testset "Check if args have identical lengths" begin
     
-    @test TerraformingAgents.haveidenticallengths(Dict(
-        :pos => [(1, 2), (3,4)], 
-        :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]]))
+#     @test TerraformingAgents.haveidenticallengths(Dict(
+#         :pos => [(1, 2), (3,4)], 
+#         :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]]))
 
-    ## Length mismatches                                                                   
-    @test TerraformingAgents.haveidenticallengths(Dict(
-        :pos => [(1, 2)], 
-        :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])) == false
+#     ## Length mismatches                                                                   
+#     @test TerraformingAgents.haveidenticallengths(Dict(
+#         :pos => [(1, 2)], 
+#         :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])) == false
 
-    @test TerraformingAgents.haveidenticallengths(Dict(
-        :pos => [(1, 2),(3.0,4.1)], 
-        :vel => [(1, 2)], 
-        :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])) == false
+#     @test TerraformingAgents.haveidenticallengths(Dict(
+#         :pos => [(1, 2),(3.0,4.1)], 
+#         :vel => [(1, 2)], 
+#         :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])) == false
         
-    @test_throws MethodError TerraformingAgents.haveidenticallengths(Dict(
-        :pos => [(1, 2),(3.0,4.1)], 
-        :vel => nothing, 
-        :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])) 
+#     @test_throws MethodError TerraformingAgents.haveidenticallengths(Dict(
+#         :pos => [(1, 2),(3.0,4.1)], 
+#         :vel => nothing, 
+#         :planetcompositions => [[[1,2,3]], [[5,6,7],[8,9,10]]])) 
+
+# end
+@testset "GalaxyParameters setup" begin
+
+    @test_nowarn TerraformingAgents.GalaxyParameters(10)
+    @test_nowarn TerraformingAgents.GalaxyParameters(nplanets=10)
+    @test_throws MethodError TerraformingAgents.GalaxyParameters(10.0)
 
 end
 

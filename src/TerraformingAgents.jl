@@ -79,7 +79,10 @@ default_velocities(n) = fill((0.0, 0.0), n) :: Vector{NTuple{2, Float64}}
 
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
-struct TerraformParameters
+"""
+    GalaxyParameters()
+"""
+struct GalaxyParameters
     extent::NTuple{2, Float64}
     dt::Float64
     lifespeed::Float64
@@ -90,7 +93,7 @@ struct TerraformParameters
     vel::Vector{NTuple{2, Float64}}
     planetcompositions::Array{Int64, 2}
 
-    function TerraformParameters(; extent::NTuple{2,<:Real}=(1.0, 1.0),
+    function GalaxyParameters(; extent::NTuple{2,<:Real}=(1.0, 1.0),
                                    dt::Real=10,
                                    lifespeed::Real=0.2,
                                    interaction_radius::Real=dt * lifespeed,
@@ -110,22 +113,30 @@ struct TerraformParameters
     end
 end
 
-function TerraformParameters(rng::AbstractRNG, nplanets::Int;
-        extent=(1.0, 1.0), maxcomp=10, compsize=10,
-        pos::Vector{<:NTuple{2, <:Real}} = random_positions(rng, extent, nplanets),
-        vel::Vector{<:NTuple{2, <:Real}} = default_velocities(nplanets),
-        planetcompositions::Array{<:Integer,2} = random_compositions(rng, maxcomp, compsize, nplanets),
+function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
+        extent=(1.0, 1.0), 
+        maxcomp=10, 
+        compsize=10,
+        pos=random_positions(rng, extent, nplanets),
+        vel=default_velocities(nplanets),
+        planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
         kwargs...
     )
+    #     ## Do I need the type definitions here if they're going to be invoked when GalaxyParameters is called below?
+    #     pos::Vector{<:NTuple{2, <:Real}} = random_positions(rng, extent, nplanets),
+    #     vel::Vector{<:NTuple{2, <:Real}} = default_velocities(nplanets),
+    #     planetcompositions::Array{<:Integer,2} = random_compositions(rng, maxcomp, compsize, nplanets),
+    #     kwargs...
+    # )
 
-    TerraformParameters(; extent, pos, vel, planetcompositions, kwargs...)
+    GalaxyParameters(; extent, pos, vel, planetcompositions, kwargs...)
 end
 
-function TerraformParameters(nplanets::Int; kwargs...)
-    TerraformParameters(Random.default_rng(), nplanets, kwargs...)
+function GalaxyParameters(nplanets::Int; kwargs...)
+    GalaxyParameters(Random.default_rng(), nplanets, kwargs...)
 end
 
-function TerraformParameters(rng::AbstractRNG;
+function GalaxyParameters(rng::AbstractRNG;
         pos::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
         vel::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
         planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
@@ -149,17 +160,17 @@ function TerraformParameters(rng::AbstractRNG;
     !isnothing(vel) && (args[:vel] = vel)
     !isnothing(planetcompositions) && (args[:planetcompositions] = planetcompositions)
 
-    TerraformParameters(rng, nplanets; args...)
+    GalaxyParameters(rng, nplanets; args...)
 end
 
-nplanets(params::TerraformParameters) = length(params.pos)
+nplanets(params::GalaxyParameters) = length(params.pos)
 
 """
-    galaxy_model_setup(rng::AbstractRNG, params::TerraformParameters)
+    galaxy_model_setup(rng::AbstractRNG, params::GalaxyParameters)
 
 Sets up the galaxy model.
 """
-function galaxy_model_setup(rng::AbstractRNG, params::TerraformParameters)
+function galaxy_model_setup(rng::AbstractRNG, params::GalaxyParameters)
     space2d = ContinuousSpace(2; periodic = true, extend = params.extent)
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
@@ -178,20 +189,20 @@ function galaxy_model_setup(rng::AbstractRNG, params::TerraformParameters)
     model
 end
 
-galaxy_model_setup(params::TerraformParameters) = galaxy_model_setup(Random.default_rng(), params)
+galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(Random.default_rng(), params)
 
 function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
-    galaxy_model_setup(rng, TerraformParameters(rng, args..., kwargs...))
+    galaxy_model_setup(rng, GalaxyParameters(rng, args..., kwargs...))
 end
 
 """
-    initialize_planets!(model, params::TerraformParameters)
+    initialize_planets!(model, params::GalaxyParameters)
 
 Adds Planets (not user facing).
 
 Called by [`galaxy_model_setup`](@ref).
 """
-function initialize_planets!(model, params::TerraformParameters)
+function initialize_planets!(model, params::GalaxyParameters)
     for i = 1:nplanets(params)
         id = nextid(model)
         pos = params.pos[i]
