@@ -79,9 +79,7 @@ default_velocities(n) = fill((0.0, 0.0), n) :: Vector{NTuple{2, Float64}}
 
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
-"""
-    GalaxyParameters()
-"""
+
 struct GalaxyParameters
     extent::NTuple{2, Float64}
     dt::Float64
@@ -93,6 +91,8 @@ struct GalaxyParameters
     vel::Vector{NTuple{2, Float64}}
     planetcompositions::Array{Int64, 2}
 
+    ## Everything is optional here
+    ## Only fields w/o defaults: pos, vel, planetcomposition
     function GalaxyParameters(; extent::NTuple{2,<:Real}=(1.0, 1.0),
                                    dt::Real=10,
                                    lifespeed::Real=0.2,
@@ -104,15 +104,21 @@ struct GalaxyParameters
                                    planetcompositions::Array{<:Integer, 2}
                                 )
 
+        println("struct constructor")
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
         end
+
+        # @show stacktrace()
+        # show(Base.stdout, MIME"text/plain"(), stacktrace())
 
         new(extent, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel,
             planetcompositions)
     end
 end
 
+## Create with random pos, vel, planetcompositions
+## Properties of randomized planetcompositions can be changed with new fields maxomp, compsize
 function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
         extent=(1.0, 1.0), 
         maxcomp=10, 
@@ -128,20 +134,34 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     #     planetcompositions::Array{<:Integer,2} = random_compositions(rng, maxcomp, compsize, nplanets),
     #     kwargs...
     # )
-
+    println("rng,nplanets")
     GalaxyParameters(; extent, pos, vel, planetcompositions, kwargs...)
 end
 
+## Simply only require nplanets
 function GalaxyParameters(nplanets::Int; kwargs...)
-    GalaxyParameters(Random.default_rng(), nplanets, kwargs...)
+    ## Uses constructor above (with optional args of maxcomp, compsize) to randomize unprovided arguments
+    println("nplanets::Int; kwargs...")
+    GalaxyParameters(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
 end
 
+# ## Simply only require nplanets
+# function GalaxyParameters(;nplanets::Int, kwargs...)
+#     ## Uses constructor above (with optional args of maxcomp, compsize) to randomize unprovided arguments
+#     println(";nplanets::Int, kwargs...")
+#     GalaxyParameters(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
+# end
+
+## Requires one of pos, vel, planetcompositions
+## Would it be more clear to write this as 3 separate functions?
 function GalaxyParameters(rng::AbstractRNG;
         pos::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
         vel::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
         planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
         kwargs...
     )
+
+    println("rng;")
 
     if !isnothing(pos)
         nplanets = length(pos)
@@ -160,6 +180,7 @@ function GalaxyParameters(rng::AbstractRNG;
     !isnothing(vel) && (args[:vel] = vel)
     !isnothing(planetcompositions) && (args[:planetcompositions] = planetcompositions)
 
+    ## Uses nplanets constructor for other artuments
     GalaxyParameters(rng, nplanets; args...)
 end
 
