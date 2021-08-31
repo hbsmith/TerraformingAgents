@@ -81,145 +81,150 @@ end
 
 end
 
-# @testset "Initialize life" begin
+@testset "Initialize life" begin
 
-#     dt = 1.0
-#     extent = (1,1) ## Size of space
-#     interaction_radius = 0.02 
-#     allowed_diff = 10
-#     lifespeed = 0.3 ## distance threshold used to decide where to send life from parent planet
-#     space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
-#     model = @suppress_err AgentBasedModel(
-#         Union{Planet,Life}, 
-#         space2d, 
-#         properties = @dict(
-#             dt,
-#             interaction_radius,
-#             allowed_diff,
-#             lifespeed))
+    dt = 1.0
+    extent = (1,1) ## Size of space
+    interaction_radius = 0.02 
+    allowed_diff = 10
+    lifespeed = 0.3 ## distance threshold used to decide where to send life from parent planet
+    space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
+    model = @suppress_err AgentBasedModel(
+        Union{Planet,Life}, 
+        space2d, 
+        properties = @dict(
+            dt,
+            interaction_radius,
+            allowed_diff,
+            lifespeed))
 
-#     RNG = MersenneTwister(3141)
-#     TerraformingAgents.initialize_planets_advanced!(model; pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)], RNG = RNG)
-#     TerraformingAgents.spawnlife!(model.agents[3], model)
-#     ### Test neighbors exist
-#     lifeagents = filter(p->isa(p.second,Life),model.agents)
-#     @test length(lifeagents) == 1
-#     @test model.agents[5].destination == model.agents[2]
-#     @test model.agents[5].ancestors == Planet[]
-#     @test model.agents[2].claimed == true
+    galaxyparams = TerraformingAgents.GalaxyParameters(
+        MersenneTwister(3141),
+        pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)])
+    TerraformingAgents.initialize_planets!(model, galaxyparams)
+    TerraformingAgents.spawnlife!(model.agents[3], model)
+    ### Test neighbors exist
+    lifeagents = filter(p->isa(p.second,Life),model.agents)
+    @test length(lifeagents) == 1
+    @test model.agents[5].destination == model.agents[2]
+    @test model.agents[5].ancestors == Planet[]
+    @test model.agents[2].claimed == true
 
-#     ## @test no compatible planets
+    ## @test no compatible planets
 
-# end
+end
 
-# @testset "compatible planets; nearest compatible planets" begin 
+@testset "compatible planets; nearest compatible planets" begin 
 
-#     dt = 1.0
-#     extent = (1,1) ## Size of space
-#     interaction_radius = 0.02 
-#     lifespeed = 0.3
-#     pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)]
-#     planetcompositions = [[0,0,0],[1,0,2],[3,3,3],[7,7,7]]
+    dt = 1.0
+    extent = (1,1) ## Size of space
+    interaction_radius = 0.02 
+    lifespeed = 0.3
+    pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)]
+    planetcompositions = hcat([[0,0,0],[1,0,2],[3,3,3],[7,7,7]]...)
 
-#     #################
-#     allowed_diff = 3
-#     space2d = ContinuousSpace(2; periodic = true, extend = extent)
-#     model = @suppress_err AgentBasedModel(
-#         Union{Planet,Life}, 
-#         space2d, 
-#         properties = @dict(
-#             dt, 
-#             interaction_radius, 
-#             allowed_diff, 
-#             lifespeed))
+    #################
+    allowed_diff = 3
+    space2d = ContinuousSpace(2; periodic = true, extend = extent)
+    model = @suppress_err AgentBasedModel(
+        Union{Planet,Life}, 
+        space2d, 
+        properties = @dict(
+            dt, 
+            interaction_radius, 
+            allowed_diff, 
+            lifespeed))
 
-#     RNG = MersenneTwister(3141)
-#     TerraformingAgents.initialize_planets_advanced!(model; @dict(RNG , pos, planetcompositions)...)
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[1], model)
-#     @test Set(candidateplanets) == Set([model.agents[2], model.agents[3]])
-#     @test TerraformingAgents.nearestcompatibleplanet(model.agents[1], candidateplanets) == model.agents[2]
+    galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos = pos, planetcompositions=planetcompositions)
+    TerraformingAgents.initialize_planets!(model, galaxyparams)
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[1], model)
+    @test Set(candidateplanets) == Set([model.agents[2], model.agents[3]])
+    @test TerraformingAgents.nearestcompatibleplanet(model.agents[1], candidateplanets) == model.agents[2]
 
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[2], model)
-#     @test Set(candidateplanets) == Set([model.agents[1], model.agents[3]])
-#     @test TerraformingAgents.nearestcompatibleplanet(model.agents[2], candidateplanets) == model.agents[1]
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[2], model)
+    @test Set(candidateplanets) == Set([model.agents[1], model.agents[3]])
+    @test TerraformingAgents.nearestcompatibleplanet(model.agents[2], candidateplanets) == model.agents[1]
 
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[3], model)
-#     @test Set(candidateplanets) == Set([model.agents[1], model.agents[2]])
-#     @test TerraformingAgents.nearestcompatibleplanet(model.agents[3], candidateplanets) == model.agents[2]
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[3], model)
+    @test Set(candidateplanets) == Set([model.agents[1], model.agents[2]])
+    @test TerraformingAgents.nearestcompatibleplanet(model.agents[3], candidateplanets) == model.agents[2]
 
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[4], model)
-#     @test Set(candidateplanets) == Set()
-#     @test_throws ArgumentError TerraformingAgents.nearestcompatibleplanet(model.agents[4], candidateplanets)
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[4], model)
+    @test Set(candidateplanets) == Set()
+    @test_throws ArgumentError TerraformingAgents.nearestcompatibleplanet(model.agents[4], candidateplanets)
 
-#     #################
-#     allowed_diff = 2
-#     space2d = ContinuousSpace(2; periodic = true, extend = extent)
-#     model = @suppress_err AgentBasedModel(
-#         Union{Planet,Life}, 
-#         space2d, 
-#         properties = @dict(
-#             dt, 
-#             interaction_radius, 
-#             allowed_diff, 
-#             lifespeed))
+    #################
+    allowed_diff = 2
+    space2d = ContinuousSpace(2; periodic = true, extend = extent)
+    model = @suppress_err AgentBasedModel(
+        Union{Planet,Life}, 
+        space2d, 
+        properties = @dict(
+            dt, 
+            interaction_radius, 
+            allowed_diff, 
+            lifespeed))
 
-#     RNG = MersenneTwister(3141)
-#     TerraformingAgents.initialize_planets_advanced!(model; @dict(RNG , pos, planetcompositions)...)
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[1], model)
-#     @test Set(candidateplanets) == Set([model.agents[2]])
-#     @test TerraformingAgents.nearestcompatibleplanet(model.agents[1], candidateplanets) == model.agents[2]
+    galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos = pos, planetcompositions=planetcompositions)
+    TerraformingAgents.initialize_planets!(model, galaxyparams)
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[1], model)
+    @test Set(candidateplanets) == Set([model.agents[2]])
+    @test TerraformingAgents.nearestcompatibleplanet(model.agents[1], candidateplanets) == model.agents[2]
 
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[2], model)
-#     @test Set(candidateplanets) == Set([model.agents[1]])
-#     @test TerraformingAgents.nearestcompatibleplanet(model.agents[2], candidateplanets) == model.agents[1]
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[2], model)
+    @test Set(candidateplanets) == Set([model.agents[1]])
+    @test TerraformingAgents.nearestcompatibleplanet(model.agents[2], candidateplanets) == model.agents[1]
 
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[3], model)
-#     @test Set(candidateplanets) == Set()
-#     @test_throws ArgumentError  TerraformingAgents.nearestcompatibleplanet(model.agents[3], candidateplanets)
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[3], model)
+    @test Set(candidateplanets) == Set()
+    @test_throws ArgumentError  TerraformingAgents.nearestcompatibleplanet(model.agents[3], candidateplanets)
 
-#     candidateplanets = TerraformingAgents.compatibleplanets(model.agents[4], model)
-#     @test Set(candidateplanets) == Set()
-#     @test_throws ArgumentError TerraformingAgents.nearestcompatibleplanet(model.agents[4], candidateplanets)
+    candidateplanets = TerraformingAgents.compatibleplanets(model.agents[4], model)
+    @test Set(candidateplanets) == Set()
+    @test_throws ArgumentError TerraformingAgents.nearestcompatibleplanet(model.agents[4], candidateplanets)
 
 
-# end 
+end 
 
-# @testset "mix compositions" begin
+@testset "mix compositions" begin
     
-#     @test TerraformingAgents.mixcompositions([0,0,0],[1,0,2]) == [0,0,1]
-#     @test TerraformingAgents.mixcompositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
-#     @test TerraformingAgents.mixcompositions([8],[8]) == [8]
-#     @test TerraformingAgents.mixcompositions([8,9],[4,2]) == [6,6]
+    @test TerraformingAgents.mixcompositions([0,0,0],[1,0,2]) == [0,0,1]
+    @test TerraformingAgents.mixcompositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
+    @test TerraformingAgents.mixcompositions([8],[8]) == [8]
+    @test TerraformingAgents.mixcompositions([8,9],[4,2]) == [6,6]
 
-# end
+end
 
-# @testset "Agent dies at correct planet" begin
+@testset "Agent dies at correct planet" begin
     
-#     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
-#     model = galaxy_model_advanced(
-#         RNG=MersenneTwister(3141), 
-#         interaction_radius = 0.02,
-#         allowed_diff = 3,
-#         pos = [(.5,.5),(.5,.4),(.5,.3)],
-#         planetcompositions = [[3,2,1],[8,7,6],[6,3,3]],
-#         ool = 1)
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+    RNG = MersenneTwister(3141)
+    galaxyparams = TerraformingAgents.GalaxyParameters(
+        RNG, 
+        interaction_radius = 0.02,
+        allowed_diff = 3,
+        pos = [(.5,.5),(.5,.4),(.5,.3)],
+        planetcompositions = hcat([[3,2,1],[8,7,6],[6,3,3]]...),
+        ool = 1
+        )
+    model = galaxy_model_setup(RNG, galaxyparams)
     
-#     steps = 0
-#     n = 2
-#     for i in 1:n:20
-#         step!(model, agent_step!, galaxy_model_step!, n)
-#         steps+=n
-#         lifeagents = filter(p->isa(p.second,Life),model.agents)
+    steps = 0
+    n = 2
+    for i in 1:n:20
+        step!(model, agent_step!, galaxy_model_step!, n)
+        steps+=n
+        lifeagents = filter(p->isa(p.second,Life),model.agents)
 
-#         steps == 2 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 4 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 6 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 8 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 10 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
-#         steps == 12 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
-#     end
+        steps == 2 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 4 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 6 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 8 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 10 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
+        steps == 12 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
+    end
 
-# end
+end
 
 # @testset "galaxy model basic no error" begin
     

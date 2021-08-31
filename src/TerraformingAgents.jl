@@ -7,7 +7,7 @@ using LinearAlgebra: dot
 using Distributions: Uniform
 using NearestNeighbors
 
-export Planet, Life, galaxy_model_setup, galaxy_model_step!
+export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters
 
 """
     random_agent([rng = Random.default_rng(),] A::Type, model)
@@ -192,7 +192,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 Sets up the galaxy model.
 """
 function galaxy_model_setup(rng::AbstractRNG, params::GalaxyParameters)
-    space2d = ContinuousSpace(2; periodic = true, extend = params.extent)
+    space2d = ContinuousSpace(params.extent; periodic = true)
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
         space2d,
@@ -206,7 +206,7 @@ function galaxy_model_setup(rng::AbstractRNG, params::GalaxyParameters)
 
     agent = isnothing(params.ool) ? random_agent(rng, Planet, model) : model.agents[params.ool]
     spawnlife!(agent, model)
-    index!(model)
+    # index!(model)
     model
 end
 
