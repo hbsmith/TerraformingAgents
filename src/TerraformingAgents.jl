@@ -79,6 +79,58 @@ default_velocities(n) = fill((0.0, 0.0), n) :: Vector{NTuple{2, Float64}}
 
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
+"""
+    All get passed to the ABM model as ABM model properties
+"""
+struct GalaxyProperties
+    dt::Float64
+    lifespeed::Float64
+    interaction_radius::Float64
+    allowed_diff::Float64
+    ool::Union{Int, Nothing}
+    pos::Vector{NTuple{2, Float64}}
+    vel::Vector{NTuple{2, Float64}}
+    planetcompositions::Array{Int64, 2}
+end
+
+"""
+    Other kwargs of ABM besides properties (which fall into GalaxyProperties above)
+    Do I need this or can I wrap it into some other kwargs so that I don't have to copy and paste default kwargs?
+"""
+struct ABMkwargs
+    scheduler
+    rng
+    warn
+end
+
+"""
+    All get passed into ContinuousSpace
+"""
+struct SpaceArgs
+    extent
+    spacing
+    update_vel!
+    periodic
+
+    function SpaceArgs(
+        extent::NTuple{2,<:Real}=(1.0, 1.0),
+        spacing = min(extent...) / 10.0;
+        update_vel! = defvel,
+        periodic = true)
+
+        new(extent, spacing, update_vel!, periodic)
+    end
+
+end
+
+"""
+    Do I need this? Idea would be to include only things which are needed during initializaiton, 
+    e.g. initial_particles in this example: https://juliadynamics.github.io/Agents.jl/stable/examples/fractal_growth/
+    But I think this could be handled by using the initial value of nplanets to create first batch of planets, 
+    and if that number is later updated via slider
+"""
+struct GalaxyInits
+end
 
 struct GalaxyParameters
     extent::NTuple{2, Float64}
