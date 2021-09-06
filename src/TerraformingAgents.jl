@@ -9,23 +9,6 @@ using NearestNeighbors
 
 export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters
 
-# """
-#     random_agent([rng = Random.default_rng(),] A::Type, model)
-
-# Returns random agent of type `A` (not user facing).
-# """
-# function Agents.random_agent(rng::AbstractRNG, A::Type, model)
-#     agents = [k for (k, v) in model.agents if v isa A]
-#     if !isempty(agents)
-#         model[rand(rng, agents)]
-#     else
-#         error("model has no agents of type $A")
-#     end
-# end
-# Agents.random_agent(A::Type, model) = random_agent(Random.default_rng(), A, model)
-
-magnitude(x) = sqrt(sum(x .^ 2))
-
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
 
@@ -33,7 +16,7 @@ Returns normalized direction from `start::AbstractAgent` to `finish::AbstractAge
 user facing).
 """
 direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- start.pos
-    δ ./ magnitude(δ)
+    δ ./ hypot(δ...)
 end
 
 Base.@kwdef mutable struct Planet <: AbstractAgent
