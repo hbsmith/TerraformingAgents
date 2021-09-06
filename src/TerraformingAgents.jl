@@ -66,14 +66,60 @@ random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, 
     All get passed to the ABM model as ABM model properties
 """
 struct GalaxyProperties
-    dt::Float64
-    lifespeed::Float64
-    interaction_radius::Float64
-    allowed_diff::Float64
-    ool::Union{Int, Nothing}
-    pos::Vector{NTuple{2, Float64}}
-    vel::Vector{NTuple{2, Float64}}
-    planetcompositions::Array{Int64, 2}
+    dt
+    lifespeed
+    interaction_radius
+    allowed_diff
+    ool
+    pos
+    vel
+    planetcompositions
+
+    function GalaxyProperties(
+        dt::Real = 10,
+        lifespeed::Real = 0.2,
+        interaction_radius::Real = dt*lifespeed,
+        allowed_diff::Real = 2.0,
+        ool::Union{Vector{Int}, Int, Nothing} = nothing,
+        pos::Vector{<:NTuple{2, <:Real}}
+        vel::Vector{<:NTuple{2, <:Real}}
+        planetcompositions::Array{<:Int, 2})
+
+        if !(length(pos) == length(vel) == size(planetcompositions, 2))
+            throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
+        end
+
+        new(dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel, planetcompositions)
+
+    end
+    
+end
+
+## Create with random pos, vel, planetcompositions
+## Properties of randomized planetcompositions can be changed with new fields maxomp, compsize
+function GalaxyProperties(nplanets::Int;
+    maxcomp=10, 
+    compsize=10,
+    # pos=random_positions(rng, extent, nplanets),
+    # vel=default_velocities(nplanets),
+    # planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
+    kwargs...
+)
+#     ## Do I need the type definitions here if they're going to be invoked when GalaxyParameters is called below?
+#     pos::Vector{<:NTuple{2, <:Real}} = random_positions(rng, extent, nplanets),
+#     vel::Vector{<:NTuple{2, <:Real}} = default_velocities(nplanets),
+#     planetcompositions::Array{<:Integer,2} = random_compositions(rng, maxcomp, compsize, nplanets),
+#     kwargs...
+# )
+GalaxyProperties(; extent, pos, vel, planetcompositions, kwargs...)
+GalaxyProperties(; extent, pos, vel, planetcompositions, kwargs...)
+end
+
+## Simply only require nplanets
+function GalaxyProperties(nplanets::Int; kwargs...)
+    ## Uses constructor above (with optional args of maxcomp, compsize) to randomize unprovided arguments
+    println("nplanets::Int; kwargs...")
+    GalaxyProperties(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
 end
 
 """
@@ -84,6 +130,15 @@ struct ABMkwargs
     scheduler
     rng
     warn
+
+    function ABMkwargs(
+        scheduler = Schedulers.fastest
+        rng::AbstractRNG = Random.default_rng()
+        warn = false)
+
+        new(scheduler, rng, warn)
+
+    end
 end
 
 """
