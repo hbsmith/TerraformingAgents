@@ -9,20 +9,20 @@ using NearestNeighbors
 
 export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters
 
-"""
-    random_agent([rng = Random.default_rng(),] A::Type, model)
+# """
+#     random_agent([rng = Random.default_rng(),] A::Type, model)
 
-Returns random agent of type `A` (not user facing).
-"""
-function Agents.random_agent(rng::AbstractRNG, A::Type, model)
-    agents = [k for (k, v) in model.agents if v isa A]
-    if !isempty(agents)
-        model[rand(rng, agents)]
-    else
-        error("model has no agents of type $A")
-    end
-end
-Agents.random_agent(A::Type, model) = random_agent(Random.default_rng(), A, model)
+# Returns random agent of type `A` (not user facing).
+# """
+# function Agents.random_agent(rng::AbstractRNG, A::Type, model)
+#     agents = [k for (k, v) in model.agents if v isa A]
+#     if !isempty(agents)
+#         model[rand(rng, agents)]
+#     else
+#         error("model has no agents of type $A")
+#     end
+# end
+# Agents.random_agent(A::Type, model) = random_agent(Random.default_rng(), A, model)
 
 magnitude(x) = sqrt(sum(x .^ 2))
 
@@ -256,7 +256,7 @@ function galaxy_model_setup(rng::AbstractRNG, params::GalaxyParameters)
 
     initialize_planets!(model, params)
 
-    agent = isnothing(params.ool) ? random_agent(rng, Planet, model) : model.agents[params.ool]
+    agent = isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
     spawnlife!(agent, model)
     # index!(model)
     model
