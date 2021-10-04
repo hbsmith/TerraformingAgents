@@ -70,6 +70,7 @@ struct GalaxyParameters
     extent # not part of SpaceArgs because it can previously be used for other things
     ABMkwargs
     SpaceArgs
+    SpaceKwargs
     dt
     lifespeed
     interaction_radius
@@ -117,7 +118,7 @@ struct GalaxyParameters
         end
 
         ## SpaceKwargs
-        SpaceKwargs === nothing && SpaceKwargs = Dict(:periodic => true)
+        SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
         new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel, planetcompositions)
 
@@ -221,6 +222,8 @@ end
 
 nplanets(params::GalaxyParameters) = length(params.pos)
 
+center_position(pos::NTuple{2, <:Real}, m::Real) = pos.+((m.-pos)./2)
+
 """
     galaxy_model_setup(params::GalaxyParameters)
 
@@ -228,22 +231,31 @@ Sets up the galaxy model.
 """
 function galaxy_model_setup(params::GalaxyParameters)
 
-    if :spacing in keys(params.SpaceArgs)
-        space2d = ContinuousSpace(params.extent, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
-    else
-        space2d = ContinuousSpace(params.extent; params.SpaceKwargs...)
-    end
+    extent_multiplier = 3
 
-    properties = @dict params.dt, params.lifespeed, params.interaction_radius, params.allowed_diff, params.ool, params.pos, params.vel, planetcompositions
+    if :spacing in keys(params.SpaceArgs)
+        space2d = ContinuousSpace(params.extent.*extent_multiplier, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
+    else
+        space2d = ContinuousSpace(params.extent.*extent_multiplier; params.SpaceKwargs...)
+    end
 
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
         space2d,
-        properties = properties,
-        params.ABMkwargs...
+        properties = Dict(:dt => params.dt,
+                        :lifespeed => params.lifespeed,
+                        :interaction_radius => params.interaction_radius,
+                        :allowed_diff => params.allowed_diff,
+                        :ool => params.ool,
+                        :pos => params.pos,
+                        :vel => params.vel,
+                        :planetcompositions => params.planetcompositions); ## Why does having a semicolon here fix it???
+        # rng=params.ABMkwargs[:rng],
+        # warn=params.ABMkwargs[:warn]
+        params.ABMkwargs... ## Why does this not work??
     )
 
-    initialize_planets!(model, params)
+    initialize_planets!(model, params, extent_multiplier)
 
     agent = isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
     spawnlife!(agent, model)
@@ -264,10 +276,10 @@ Adds Planets (not user facing).
 
 Called by [`galaxy_model_setup`](@ref).
 """
-function initialize_planets!(model, params::GalaxyParameters)
+function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
         id = nextid(model)
-        pos = params.pos[i]
+        pos = center_position(params.pos[i], extent_multiplier)
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
 
