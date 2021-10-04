@@ -1,7 +1,7 @@
 module TerraformingAgents;
 
 using Agents, Random, AgentsPlots, Plots
-# using DrWatson: @dict, @unpack
+using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
 using LinearAlgebra: dot
 using Distributions: Uniform
@@ -84,6 +84,7 @@ struct GalaxyParameters
         extent::NTuple{2,<:Real} = (1.0, 1.0), 
         ABMkwargs::Union{Dict{Symbol},Nothing} = nothing,
         SpaceArgs::Union{Dict{Symbol},Nothing} = nothing,
+        SpaceKwargs::Union{Dict{Symbol},Nothing} = nothing,
         dt::Real = 10,
         lifespeed::Real = 0.2,
         interaction_radius::Real = dt*lifespeed,
@@ -108,14 +109,17 @@ struct GalaxyParameters
 
         ## SpaceArgs
         if SpaceArgs === nothing
-            SpaceArgs = Dict(:extent => extent, :periodic => true)
+            SpaceArgs = Dict(:extent => extent)
         elseif :extent in SpaceArgs
             extent != SpaceArgs[:extent] && throw(ArgumentError("extent and SpaceArgs[:extent] do not match. SpaceArgs[:extent] will inherit from extent if SpaceArgs[:extent] not provided."))
         else
             SpaceArgs[:extent] = extent
         end
+
+        ## SpaceKwargs
+        SpaceKwargs === nothing && SpaceKwargs = Dict(:periodic => true)
         
-        new(rng, extent, ABMkwargs, SpaceArgs, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel, planetcompositions)
 
     end
     
@@ -223,14 +227,20 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 Sets up the galaxy model.
 """
 function galaxy_model_setup(params::GalaxyParameters)
-    space2d = ContinuousSpace(params.extent; periodic = true)
+
+    if :spacing in keys(params.SpaceArgs)
+        space2d = ContinuousSpace(params.extent, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
+    else
+        space2d = ContinuousSpace(params.extent; params.SpaceKwargs...)
+    end
+
+    properties = @dict params.dt, params.lifespeed, params.interaction_radius, params.allowed_diff, params.ool, params.pos, params.vel, planetcompositions
+
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
         space2d,
-        properties = Dict(:dt => params.dt,
-                          :interaction_radius => params.interaction_radius,
-                          :allowed_diff => params.allowed_diff,
-                          :lifespeed => params.lifespeed)
+        properties = properties,
+        params.ABMkwargs...
     )
 
     initialize_planets!(model, params)
@@ -243,9 +253,9 @@ end
 
 # galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(params)
 
-function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
-    galaxy_model_setup(rng, GalaxyParameters(rng, args..., kwargs...))
-end
+# function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
+#     galaxy_model_setup(rng, GalaxyParameters(rng, args..., kwargs...))
+# end
 
 """
     initialize_planets!(model, params::GalaxyParameters)
