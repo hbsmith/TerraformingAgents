@@ -280,9 +280,7 @@ Called by [`galaxy_model_setup`](@ref).
 function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
         id = nextid(model)
-        @show params.pos[i]
         pos = center_position(params.pos[i], params.extent, extent_multiplier)
-        @show pos
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
 
