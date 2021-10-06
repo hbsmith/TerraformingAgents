@@ -65,7 +65,7 @@ random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, 
 """
     All get passed to the ABM model as ABM model properties
 """
-struct GalaxyParameters
+mutable struct GalaxyParameters
     rng # not part of ABMkwargs because it can previously be used for other things
     extent # not part of SpaceArgs because it can previously be used for other things
     ABMkwargs
@@ -222,7 +222,7 @@ end
 
 nplanets(params::GalaxyParameters) = length(params.pos)
 
-center_position(pos::NTuple{2, <:Real}, m::Real) = pos.+((m.-pos)./2)
+center_position(pos::NTuple{2, <:Real}, extent::NTuple{2, <:Real}, m::Real) = pos.+((extent.-(extent./m))./2) #pos.+(
 
 """
     galaxy_model_setup(params::GalaxyParameters)
@@ -232,11 +232,12 @@ Sets up the galaxy model.
 function galaxy_model_setup(params::GalaxyParameters)
 
     extent_multiplier = 3
+    params.extent = extent_multiplier.*params.extent
 
     if :spacing in keys(params.SpaceArgs)
-        space2d = ContinuousSpace(params.extent.*extent_multiplier, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
+        space2d = ContinuousSpace(params.extent, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
     else
-        space2d = ContinuousSpace(params.extent.*extent_multiplier; params.SpaceKwargs...)
+        space2d = ContinuousSpace(params.extent; params.SpaceKwargs...)
     end
 
     model = @suppress_err AgentBasedModel(
@@ -279,7 +280,9 @@ Called by [`galaxy_model_setup`](@ref).
 function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
         id = nextid(model)
-        pos = center_position(params.pos[i], extent_multiplier)
+        @show params.pos[i]
+        pos = center_position(params.pos[i], params.extent, extent_multiplier)
+        @show pos
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
 
