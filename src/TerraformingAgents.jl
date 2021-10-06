@@ -1,7 +1,7 @@
-module TerraformingAgents
+module TerraformingAgents;
 
 using Agents, Random, AgentsPlots, Plots
-# using DrWatson: @dict, @unpack
+using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
 using LinearAlgebra: dot
 using Distributions: Uniform
@@ -10,30 +10,13 @@ using NearestNeighbors
 export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters
 
 """
-    random_agent([rng = Random.default_rng(),] A::Type, model)
-
-Returns random agent of type `A` (not user facing).
-"""
-function Agents.random_agent(rng::AbstractRNG, A::Type, model)
-    agents = [k for (k, v) in model.agents if v isa A]
-    if !isempty(agents)
-        model[rand(rng, agents)]
-    else
-        error("model has no agents of type $A")
-    end
-end
-Agents.random_agent(A::Type, model) = random_agent(Random.default_rng(), A, model)
-
-magnitude(x) = sqrt(sum(x .^ 2))
-
-"""
     direction(start::AbstractAgent, finish::AbstractAgent)
 
 Returns normalized direction from `start::AbstractAgent` to `finish::AbstractAgent` (not
 user facing).
 """
 direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- start.pos
-    δ ./ magnitude(δ)
+    δ ./ hypot(δ...)
 end
 
 Base.@kwdef mutable struct Planet <: AbstractAgent
@@ -82,136 +65,75 @@ random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, 
 """
     All get passed to the ABM model as ABM model properties
 """
-struct GalaxyProperties
-    dt::Float64
-    lifespeed::Float64
-    interaction_radius::Float64
-    allowed_diff::Float64
-    ool::Union{Int, Nothing}
-    pos::Vector{NTuple{2, Float64}}
-    vel::Vector{NTuple{2, Float64}}
-    planetcompositions::Array{Int64, 2}
-end
+mutable struct GalaxyParameters
+    rng # not part of ABMkwargs because it can previously be used for other things
+    extent # not part of SpaceArgs because it can previously be used for other things
+    ABMkwargs
+    SpaceArgs
+    SpaceKwargs
+    dt
+    lifespeed
+    interaction_radius
+    allowed_diff
+    ool
+    pos
+    vel
+    planetcompositions    
 
-"""
-    Other kwargs of ABM besides properties (which fall into GalaxyProperties above)
-    Do I need this or can I wrap it into some other kwargs so that I don't have to copy and paste default kwargs?
-"""
-struct ABMkwargs
-    scheduler
-    rng
-    warn
-end
+    function GalaxyParameters(;
+        rng::AbstractRNG = Random.default_rng(),
+        extent::NTuple{2,<:Real} = (1.0, 1.0), 
+        ABMkwargs::Union{Dict{Symbol},Nothing} = nothing,
+        SpaceArgs::Union{Dict{Symbol},Nothing} = nothing,
+        SpaceKwargs::Union{Dict{Symbol},Nothing} = nothing,
+        dt::Real = 10,
+        lifespeed::Real = 0.2,
+        interaction_radius::Real = dt*lifespeed,
+        allowed_diff::Real = 2.0,
+        ool::Union{Vector{Int}, Int, Nothing} = nothing,
+        pos::Vector{<:NTuple{2, <:Real}},
+        vel::Vector{<:NTuple{2, <:Real}},
+        planetcompositions::Array{<:Int, 2})
 
-"""
-    All get passed into ContinuousSpace
-"""
-struct SpaceArgs
-    extent
-    spacing
-    update_vel!
-    periodic
-
-    function SpaceArgs(
-        extent::NTuple{2,<:Real}=(1.0, 1.0),
-        spacing = min(extent...) / 10.0;
-        update_vel! = defvel,
-        periodic = true)
-
-        new(extent, spacing, update_vel!, periodic)
-    end
-
-end
-
-"""
-    Do I need this? Idea would be to include only things which are needed during initializaiton, 
-    e.g. initial_particles in this example: https://juliadynamics.github.io/Agents.jl/stable/examples/fractal_growth/
-    But I think this could be handled by using the initial value of nplanets to create first batch of planets, 
-    and if that number is later updated via slider
-"""
-struct GalaxyInits
-end
-
-struct GalaxyParameters
-    extent::NTuple{2, Float64}
-    dt::Float64
-    lifespeed::Float64
-    interaction_radius::Float64
-    allowed_diff::Float64
-    ool::Union{Int, Nothing}
-    pos::Vector{NTuple{2, Float64}}
-    vel::Vector{NTuple{2, Float64}}
-    planetcompositions::Array{Int64, 2}
-
-    ## Everything is optional here
-    ## Only fields w/o defaults: pos, vel, planetcomposition
-    function GalaxyParameters(; extent::NTuple{2,<:Real}=(1.0, 1.0),
-                                   dt::Real=10,
-                                   lifespeed::Real=0.2,
-                                   interaction_radius::Real=dt * lifespeed,
-                                   allowed_diff::Real=2.0,
-                                   ool::Union{Real, Nothing}=nothing,
-                                   pos::Vector{<:NTuple{2, <:Real}},
-                                   vel::Vector{<:NTuple{2, <:Real}},
-                                   planetcompositions::Array{<:Integer, 2}
-                                )
-
-        println("struct constructor")
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
         end
 
-        # @show stacktrace()
-        # show(Base.stdout, MIME"text/plain"(), stacktrace())
+        ## ABMkwargs
+        if ABMkwargs === nothing 
+            ABMkwargs = Dict(:rng => rng, :warn => false)
+        elseif :rng in ABMkwargs
+            rng != ABMkwargs[:rng] && throw(ArgumentError("rng and ABMkwargs[:rng] do not match. ABMkwargs[:rng] will inherit from rng if ABMkwargs[:rng] not provided."))
+        else
+            ABMkwargs[:rng] = rng
+        end
 
-        new(extent, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel,
-            planetcompositions)
+        ## SpaceArgs
+        if SpaceArgs === nothing
+            SpaceArgs = Dict(:extent => extent)
+        elseif :extent in SpaceArgs
+            extent != SpaceArgs[:extent] && throw(ArgumentError("extent and SpaceArgs[:extent] do not match. SpaceArgs[:extent] will inherit from extent if SpaceArgs[:extent] not provided."))
+        else
+            SpaceArgs[:extent] = extent
+        end
+
+        ## SpaceKwargs
+        SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
+        
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel, planetcompositions)
+
     end
+    
 end
 
-## Create with random pos, vel, planetcompositions
-## Properties of randomized planetcompositions can be changed with new fields maxomp, compsize
-function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
-        extent=(1.0, 1.0), 
-        maxcomp=10, 
-        compsize=10,
-        pos=random_positions(rng, extent, nplanets),
-        vel=default_velocities(nplanets),
-        planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
-        kwargs...
-    )
-    #     ## Do I need the type definitions here if they're going to be invoked when GalaxyParameters is called below?
-    #     pos::Vector{<:NTuple{2, <:Real}} = random_positions(rng, extent, nplanets),
-    #     vel::Vector{<:NTuple{2, <:Real}} = default_velocities(nplanets),
-    #     planetcompositions::Array{<:Integer,2} = random_compositions(rng, maxcomp, compsize, nplanets),
-    #     kwargs...
-    # )
-    println("rng,nplanets")
-    GalaxyParameters(; extent, pos, vel, planetcompositions, kwargs...)
-end
-
-## Simply only require nplanets
-function GalaxyParameters(nplanets::Int; kwargs...)
-    ## Uses constructor above (with optional args of maxcomp, compsize) to randomize unprovided arguments
-    println("nplanets::Int; kwargs...")
-    GalaxyParameters(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
-end
-
-# ## Simply only require nplanets
-# function GalaxyParameters(;nplanets::Int, kwargs...)
-#     ## Uses constructor above (with optional args of maxcomp, compsize) to randomize unprovided arguments
-#     println(";nplanets::Int, kwargs...")
-#     GalaxyParameters(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
-# end
 
 ## Requires one of pos, vel, planetcompositions
 ## Would it be more clear to write this as 3 separate functions?
 function GalaxyParameters(rng::AbstractRNG;
-        pos::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
-        vel::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
-        planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
-        kwargs...
-    )
+    pos::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
+    vel::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
+    planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
+    kwargs...)
 
     println("rng;")
 
@@ -232,41 +154,121 @@ function GalaxyParameters(rng::AbstractRNG;
     !isnothing(vel) && (args[:vel] = vel)
     !isnothing(planetcompositions) && (args[:planetcompositions] = planetcompositions)
 
-    ## Uses nplanets constructor for other artuments
+    ## Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
     GalaxyParameters(rng, nplanets; args...)
 end
 
+function GalaxyParameters(nplanets::Int; kwargs...)
+    ## Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
+    GalaxyParameters(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
+end
+
+## Main external constructor for GalaxyParameters (other external constructors call it)
+## Create with random pos, vel, planetcompositions
+## Properties of randomized planetcompositions can be changed with new fields maxcomp, compsize
+function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
+    extent=(1.0, 1.0), 
+    maxcomp=10, 
+    compsize=10,
+    pos=random_positions(rng, extent, nplanets),
+    vel=default_velocities(nplanets),
+    planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
+    kwargs...)
+
+    ## Calls the internal constructor
+    GalaxyParameters(; extent, pos, vel, planetcompositions, kwargs...)
+end
+
+
+
+# """
+#     Other kwargs of ABM besides properties (which fall into GalaxyProperties above)
+#     Do I need this or can I wrap it into some other kwargs so that I don't have to copy and paste default kwargs?
+# """
+# struct ABMkwargs
+#     scheduler
+#     rng
+#     warn
+
+#     function ABMkwargs(
+#         scheduler = Schedulers.fastest
+#         rng::AbstractRNG = Random.default_rng()
+#         warn = false)
+
+#         new(scheduler, rng, warn)
+
+#     end
+# end
+
+# """
+#     All get passed into ContinuousSpace
+# """
+# struct SpaceArgs
+#     extent
+#     spacing
+#     update_vel!
+#     periodic
+
+#     function SpaceArgs(
+#         extent::NTuple{2,<:Real}=(1.0, 1.0),
+#         spacing = min(extent...) / 10.0;
+#         update_vel! = defvel,
+#         periodic = true)
+
+#         new(extent, spacing, update_vel!, periodic)
+#     end
+
+# end
+
 nplanets(params::GalaxyParameters) = length(params.pos)
 
+center_position(pos::NTuple{2, <:Real}, extent::NTuple{2, <:Real}, m::Real) = pos.+((extent.-(extent./m))./2) #pos.+(
+
 """
-    galaxy_model_setup(rng::AbstractRNG, params::GalaxyParameters)
+    galaxy_model_setup(params::GalaxyParameters)
 
 Sets up the galaxy model.
 """
-function galaxy_model_setup(rng::AbstractRNG, params::GalaxyParameters)
-    space2d = ContinuousSpace(params.extent; periodic = true)
+function galaxy_model_setup(params::GalaxyParameters)
+
+    extent_multiplier = 3
+    params.extent = extent_multiplier.*params.extent
+
+    if :spacing in keys(params.SpaceArgs)
+        space2d = ContinuousSpace(params.extent, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
+    else
+        space2d = ContinuousSpace(params.extent; params.SpaceKwargs...)
+    end
+
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
         space2d,
         properties = Dict(:dt => params.dt,
-                          :interaction_radius => params.interaction_radius,
-                          :allowed_diff => params.allowed_diff,
-                          :lifespeed => params.lifespeed)
+                        :lifespeed => params.lifespeed,
+                        :interaction_radius => params.interaction_radius,
+                        :allowed_diff => params.allowed_diff,
+                        :ool => params.ool,
+                        :pos => params.pos,
+                        :vel => params.vel,
+                        :planetcompositions => params.planetcompositions); ## Why does having a semicolon here fix it???
+        # rng=params.ABMkwargs[:rng],
+        # warn=params.ABMkwargs[:warn]
+        params.ABMkwargs... ## Why does this not work??
     )
 
-    initialize_planets!(model, params)
+    initialize_planets!(model, params, extent_multiplier)
 
-    agent = isnothing(params.ool) ? random_agent(rng, Planet, model) : model.agents[params.ool]
+    agent = isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
     spawnlife!(agent, model)
     # index!(model)
     model
 end
 
-galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(Random.default_rng(), params)
+# galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(params)
 
-function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
-    galaxy_model_setup(rng, GalaxyParameters(rng, args..., kwargs...))
-end
+# function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
+#     galaxy_model_setup(rng, GalaxyParameters(rng, args..., kwargs...))
+# end
 
 """
     initialize_planets!(model, params::GalaxyParameters)
@@ -275,10 +277,10 @@ Adds Planets (not user facing).
 
 Called by [`galaxy_model_setup`](@ref).
 """
-function initialize_planets!(model, params::GalaxyParameters)
+function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
         id = nextid(model)
-        pos = params.pos[i]
+        pos = center_position(params.pos[i], params.extent, extent_multiplier)
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
 
