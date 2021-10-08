@@ -62,6 +62,8 @@ default_velocities(n) = fill((0.0, 0.0), n) :: Vector{NTuple{2, Float64}}
 
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
+random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
+
 """
     All get passed to the ABM model as ABM model properties
 """
@@ -247,10 +249,13 @@ function galaxy_model_setup(params::GalaxyParameters)
                         :lifespeed => params.lifespeed,
                         :interaction_radius => params.interaction_radius,
                         :allowed_diff => params.allowed_diff,
-                        :ool => params.ool,
-                        :pos => params.pos,
-                        :vel => params.vel,
-                        :planetcompositions => params.planetcompositions); ## Why does having a semicolon here fix it???
+                        :nplanets => nplanets(params)),
+                        :GalaxyParameters => params;
+                        # :nlife => length(params.ool)
+                        # :ool => params.ool,
+                        # :pos => params.pos,
+                        # :vel => params.vel,
+                        # :planetcompositions => params.planetcompositions); ## Why does having a semicolon here fix it???
         # rng=params.ABMkwargs[:rng],
         # warn=params.ABMkwargs[:warn]
         params.ABMkwargs... ## Why does this not work??
@@ -410,15 +415,15 @@ function terraform!(life::Life, planet::Planet, model::ABM)
 end
 
 """
-    galaxy_model_step(model)
+    update_planets_and_life(model::ABM)
 
-Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and
-`terraform`s a `Planet` if a `Life` has reached its destination; then kills that `Life`.
+Checks pairs of planets, identifying which should be terraformed. Kills life that
+terraforms.  
 """
-function galaxy_model_step!(model)
+function update_planets_and_life!(model::ABM)
     ## I need to scale the interaction radius by dt and the velocity of life or else I can
     ##   miss some interactions
-
+    
     life_to_kill = Life[]
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
         life, planet = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
@@ -432,6 +437,83 @@ function galaxy_model_step!(model)
     for life in life_to_kill
         kill_agent!(life, model)
     end
+
+    model
+
+end
+
+"""
+    add_planet!(model::ABM)
+
+Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
+and outside the interaction radius of all living planets.
+
+"""
+function add_planet!(model::ABM, min_dist=model.interaction_radius/10, max_dist=model.interaction_radius)
+    id = nextid(model)
+    ## select a random planet that isn't within a living planets interaction radius
+    ## select a random point in that planets interaction radius
+    ## place the planet
+    ## HOW TO SELECT FOR POINT WHICH IS AS FAR AWAY FROM OTHER PLANETS AS POSSIBLE?
+    ##      - or else i could just keep generating planets closer and closer together
+    
+    # random_agent(model, x -> x isa Planet)
+
+    #Randomize list of planets
+    # Random.shuffle(collect(filter(kv -> kv.second isa Planet, model.agents)))
+
+    ## generate a random R, theta within an R or min_dist, max_dist
+    ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
+    ## Choose a random planet
+    ## Check if Agents.nearest_neighbor returns anything within min_dist
+    ## If not, add planet there
+    valid_pos = False
+    while valid_pos == False
+        r = random_radius(model.rng, min_dist, max_dist)
+        theta = rand(model.rng)*2*π
+
+        for (id,planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet, model.agents)))
+            pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
+            
+            if length(collect(Agents.nearby_ids(pos,model,min_dist))) == 0
+                valid_pos = True
+                vel = default_velocities(1) 
+                composition = random_compositions(model.rng, model.maxcomp, model.compsize, 1)
+                planet = Planet(; id, pos, vel, composition)
+                add_agent_pos!(planet, model)
+                return model
+            end
+
+        end
+
+    end
+
+    model
+
+end
+
+"""
+    update_nplanets!(model::ABM)
+
+Adds planets to the model at random positions.
+"""
+function update_nplanets!(model)
+    while model.properties[:nplanets] > nplanets(model.properties[:GalaxyParameters])
+        add_planet!(model::ABM)
+    end
+end
+
+"""
+    galaxy_model_step(model)
+
+Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and
+`terraform`s a `Planet` if a `Life` has reached its destination; then kills that `Life`.
+"""
+function galaxy_model_step!(model)
+    
+    update_planets_and_life!(model)
+    update_nplanets!(model)
+
 
 end
 
