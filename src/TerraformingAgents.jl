@@ -443,39 +443,59 @@ function update_planets_and_life!(model::ABM)
 end
 
 """
-    add_planet!(model::ABM)
+    pos_is_inside_life_radius(pos::Tuple, model::ABM)
 
-Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
-and outside the interaction radius of all living planets.
+Returns false if provided position lies within any life's interaction radii    
+"""
+function pos_is_inside_life_radius(pos::Tuple, model::ABM)
+
+    neighbor_ids = collect(nearby_ids(pos,model,model.interaction_radius,exact=true))
+
+    ## Need not to just look for life, but with planets that are already alive
+    ## (it might actually be OK to add a planet within radius of a Life agent itself)
+    filter(kv -> kv.second isa Planet && kv.second.alive == false, model.agents)
+
+    ## need to filter the dict of agents by the ids
+    if length(filter(kv -> kv.first in neighbor_ids && kv.second isa Life, model.agents)) > 0
+        return true
+    else
+        return false
+    end
+
+end
 
 """
-function add_planet!(model::ABM, min_dist=model.interaction_radius/10, max_dist=model.interaction_radius)
+    add_planet!(model::ABM, min_dist, max_dist, max_attempts)
+
+Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
+and outside the interaction radius of all living planets. Max attempts sets the limit of
+iterations in the while loop to find a valid planet position (default = 10*nplanets).
+
+"""
+function add_planet!(model::ABM, 
+    min_dist=model.interaction_radius/10, 
+    max_dist=model.interaction_radius, 
+    max_attempts=length(filter(kv -> kv.second isa Planet, model.agents))
+)
+
     id = nextid(model)
     ## select a random planet that isn't within a living planets interaction radius
-    ## select a random point in that planets interaction radius
-    ## place the planet
-    ## HOW TO SELECT FOR POINT WHICH IS AS FAR AWAY FROM OTHER PLANETS AS POSSIBLE?
-    ##      - or else i could just keep generating planets closer and closer together
-    
-    # random_agent(model, x -> x isa Planet)
+    ## This is NOT the same thing as already being claimed or not--because life will only claim
+    ##  compatible planets within its interation radius--but random planets shouldn't pop into existence 
+    ##  in the area where life is searching for a new world
 
-    #Randomize list of planets
-    # Random.shuffle(collect(filter(kv -> kv.second isa Planet, model.agents)))
-
-    ## generate a random R, theta within an R or min_dist, max_dist
     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
-    ## Choose a random planet
-    ## Check if Agents.nearest_neighbor returns anything within min_dist
-    ## If not, add planet there
+    n_attempts = 0
     valid_pos = False
-    while valid_pos == False
+    while valid_pos == False && n_attempts < max_attempts
         r = random_radius(model.rng, min_dist, max_dist)
         theta = rand(model.rng)*2*π
 
+        ## CHANGE TO ONLY LOOK AROUND PLANETS THAT AREN'T ALIVE (claimed should be OK)
         for (id,planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet, model.agents)))
             pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
             
-            if length(collect(Agents.nearby_ids(pos,model,min_dist))) == 0
+            if length(collect(nearby_ids(pos,model,min_dist))) == 0 && ~pos_is_inside_life_radius(pos,model)
                 valid_pos = True
                 vel = default_velocities(1) 
                 composition = random_compositions(model.rng, model.maxcomp, model.compsize, 1)
@@ -483,6 +503,8 @@ function add_planet!(model::ABM, min_dist=model.interaction_radius/10, max_dist=
                 add_agent_pos!(planet, model)
                 return model
             end
+
+            n_attempts += 1
 
         end
 
@@ -514,12 +536,12 @@ function galaxy_model_step!(model)
     update_planets_and_life!(model)
     update_nplanets!(model)
 
-
 end
 
 ## Fun with colors
 # col_to_hex(col) = "#"*hex(col)
 # hex_to_col(hex) = convert(RGB{Float64}, parse(Colorant, hex))
 # mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
+
 
 end # module

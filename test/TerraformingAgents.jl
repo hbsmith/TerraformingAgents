@@ -226,6 +226,27 @@ end
 
 end
 
+@testset "pos_is_inside_life_radius" begin
+    
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt)
+    rng = MersenneTwister(3141)
+    galaxyparams = GalaxyParameters(
+        rng,
+        100,
+        extent = (100,100),
+        dt = 10,
+        allowed_diff = 7,
+        maxcomp = 16,
+        compsize = 6)
+    model = galaxy_model_setup(galaxyparams)
+
+    lifedict = filter(kv -> kv.second isa Life, model.agents)
+    for (id,life) in lifedict
+        testpos = life.pos
+
+
+end
+
 # @testset "galaxy model basic no error" begin
     
 #     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
