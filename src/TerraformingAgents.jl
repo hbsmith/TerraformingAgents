@@ -108,8 +108,8 @@ mutable struct GalaxyParameters
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
         end
 
-        if ~all(x->len(x)==compsize, eachcol(planetcompositions)))
-            throw(ArgumentError("All planets must have `compsize` for their compositions"))
+        if ~all(x->length(x)==compsize, eachcol(planetcompositions)))
+            throw(ArgumentError("All planets compositions must have length of `compsize`"))
         end
         
         ## ABMkwargs
