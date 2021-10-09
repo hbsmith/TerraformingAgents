@@ -66,6 +66,9 @@ random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
 """
     All get passed to the ABM model as ABM model properties
+
+maxcomp is used for any planets that are not specified when the model is initialized.
+compsize must match any compositions provided.
 """
 mutable struct GalaxyParameters
     rng # not part of ABMkwargs because it can previously be used for other things
@@ -80,6 +83,8 @@ mutable struct GalaxyParameters
     ool
     pos
     vel
+    maxcomp
+    compsize
     planetcompositions    
 
     function GalaxyParameters(;
@@ -95,12 +100,18 @@ mutable struct GalaxyParameters
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
         pos::Vector{<:NTuple{2, <:Real}},
         vel::Vector{<:NTuple{2, <:Real}},
+        maxcomp::Int,
+        compsize::Int,
         planetcompositions::Array{<:Int, 2})
 
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
         end
 
+        if ~all(x->len(x)==compsize, eachcol(planetcompositions)))
+            throw(ArgumentError("All planets must have `compsize` for their compositions"))
+        end
+        
         ## ABMkwargs
         if ABMkwargs === nothing 
             ABMkwargs = Dict(:rng => rng, :warn => false)
