@@ -447,16 +447,11 @@ end
 
 Returns false if provided position lies within any life's interaction radii    
 """
-function pos_is_inside_life_radius(pos::Tuple, model::ABM)
+function pos_is_inside_alive_radius(pos::Tuple, model::ABM)
 
     neighbor_ids = collect(nearby_ids(pos,model,model.interaction_radius,exact=true))
 
-    ## Need not to just look for life, but with planets that are already alive
-    ## (it might actually be OK to add a planet within radius of a Life agent itself)
-    filter(kv -> kv.second isa Planet && kv.second.alive == false, model.agents)
-
-    ## need to filter the dict of agents by the ids
-    if length(filter(kv -> kv.first in neighbor_ids && kv.second isa Life, model.agents)) > 0
+    if length(filter(kv -> kv.first in neighbor_ids && kv.second isa Planet && kv.second.alive, model.agents)) > 0
         return true
     else
         return false
