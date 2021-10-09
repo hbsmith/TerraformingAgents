@@ -189,7 +189,7 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     kwargs...)
 
     ## Calls the internal constructor
-    GalaxyParameters(; extent, pos, vel, planetcompositions, kwargs...)
+    GalaxyParameters(; extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
 end
 
 
@@ -261,6 +261,8 @@ function galaxy_model_setup(params::GalaxyParameters)
                         :interaction_radius => params.interaction_radius,
                         :allowed_diff => params.allowed_diff,
                         :nplanets => nplanets(params)),
+                        :maxcomp => params.maxcomp,
+                        :compsize => params.compsize,
                         :GalaxyParameters => params;
                         # :nlife => length(params.ool)
                         # :ool => params.ool,
