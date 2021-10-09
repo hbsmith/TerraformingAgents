@@ -260,10 +260,10 @@ function galaxy_model_setup(params::GalaxyParameters)
                         :lifespeed => params.lifespeed,
                         :interaction_radius => params.interaction_radius,
                         :allowed_diff => params.allowed_diff,
-                        :nplanets => nplanets(params)),
+                        :nplanets => nplanets(params),
                         :maxcomp => params.maxcomp,
                         :compsize => params.compsize,
-                        :GalaxyParameters => params;
+                        :GalaxyParameters => params);
                         # :nlife => length(params.ool)
                         # :ool => params.ool,
                         # :pos => params.pos,
@@ -505,10 +505,11 @@ function add_planet!(model::ABM,
             # print(pos)
             if length(collect(nearby_ids(pos,model,min_dist,exact=true))) == 0 && ~pos_is_inside_alive_radius(pos,model)
                 valid_pos = true
-                vel = default_velocities(1) 
-                composition = random_compositions(model.rng, model.maxcomp, model.compsize, 1)
+                vel = default_velocities(1)[1] 
+                composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
                 planet = Planet(; id, pos, vel, composition)
                 add_agent_pos!(planet, model)
+                println("Planet added at $pos")
                 return model
             end
 
