@@ -443,7 +443,7 @@ function update_planets_and_life!(model::ABM)
 end
 
 """
-    pos_is_inside_life_radius(pos::Tuple, model::ABM)
+    pos_is_inside_alive_radius(pos::Tuple, model::ABM)
 
 Returns false if provided position lies within any life's interaction radii    
 """
@@ -470,7 +470,7 @@ iterations in the while loop to find a valid planet position (default = 10*nplan
 function add_planet!(model::ABM, 
     min_dist=model.interaction_radius/10, 
     max_dist=model.interaction_radius, 
-    max_attempts=length(filter(kv -> kv.second isa Planet, model.agents))
+    max_attempts=10*length(filter(kv -> kv.second isa Planet, model.agents))
 )
 
     id = nextid(model)
@@ -481,17 +481,17 @@ function add_planet!(model::ABM,
 
     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
     n_attempts = 0
-    valid_pos = False
-    while valid_pos == False && n_attempts < max_attempts
+    valid_pos = false
+    while valid_pos == false && n_attempts < max_attempts
         r = random_radius(model.rng, min_dist, max_dist)
         theta = rand(model.rng)*2*π
 
         ## CHANGE TO ONLY LOOK AROUND PLANETS THAT AREN'T ALIVE (claimed should be OK)
-        for (id,planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet, model.agents)))
+        for (id,planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
             pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
-            
-            if length(collect(nearby_ids(pos,model,min_dist))) == 0 && ~pos_is_inside_life_radius(pos,model)
-                valid_pos = True
+            # print(pos)
+            if length(collect(nearby_ids(pos,model,min_dist,exact=true))) == 0 && ~pos_is_inside_alive_radius(pos,model)
+                valid_pos = true
                 vel = default_velocities(1) 
                 composition = random_compositions(model.rng, model.maxcomp, model.compsize, 1)
                 planet = Planet(; id, pos, vel, composition)
@@ -504,6 +504,8 @@ function add_planet!(model::ABM,
         end
 
     end
+
+    println("Planet unable to be added in valid position within `max_attempts`")
 
     model
 

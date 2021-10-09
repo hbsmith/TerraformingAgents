@@ -226,7 +226,7 @@ end
 
 end
 
-@testset "pos_is_inside_life_radius" begin
+@testset "pos_is_inside_alive_radius" begin
     
     agent_step!(agent, model) = move_agent!(agent, model, model.dt)
     rng = MersenneTwister(3141)
