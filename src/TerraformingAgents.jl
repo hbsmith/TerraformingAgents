@@ -487,10 +487,6 @@ function add_planet!(model::ABM,
 )
 
     id = nextid(model)
-    ## select a random planet that isn't within a living planets interaction radius
-    ## This is NOT the same thing as already being claimed or not--because life will only claim
-    ##  compatible planets within its interation radius--but random planets shouldn't pop into existence 
-    ##  in the area where life is searching for a new world
 
     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
     n_attempts = 0
@@ -499,10 +495,8 @@ function add_planet!(model::ABM,
         r = random_radius(model.rng, min_dist, max_dist)
         theta = rand(model.rng)*2*π
 
-        ## CHANGE TO ONLY LOOK AROUND PLANETS THAT AREN'T ALIVE (claimed should be OK)
         for (id,planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
             pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
-            # print(pos)
             if length(collect(nearby_ids(pos,model,min_dist,exact=true))) == 0 && ~pos_is_inside_alive_radius(pos,model)
                 valid_pos = true
                 vel = default_velocities(1)[1] 
