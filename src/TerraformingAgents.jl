@@ -495,14 +495,14 @@ function add_planet!(model::ABM,
         r = random_radius(model.rng, min_dist, max_dist)
         theta = rand(model.rng)*2*π
 
-        for (id,planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
+        for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
             pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
             if length(collect(nearby_ids(pos,model,min_dist,exact=true))) == 0 && ~pos_is_inside_alive_radius(pos,model)
                 valid_pos = true
                 vel = default_velocities(1)[1] 
                 composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
-                planet = Planet(; id, pos, vel, composition)
-                add_agent_pos!(planet, model)
+                newplanet = Planet(; id, pos, vel, composition)
+                add_agent_pos!(newplanet, model)
                 println("Planet added at $pos")
                 return model
             end
