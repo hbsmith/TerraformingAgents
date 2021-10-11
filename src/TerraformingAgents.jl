@@ -525,7 +525,7 @@ end
 Adds planets to the model at random positions.
 """
 function update_nplanets!(model)
-    while model.properties[:nplanets] > nplanets(model.properties[:GalaxyParameters])
+    while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
         add_planet!(model::ABM)
     end
 end
