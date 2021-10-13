@@ -6,8 +6,9 @@ using Suppressor: @suppress_err
 using LinearAlgebra: dot
 using Distributions: Uniform
 using NearestNeighbors
+using Distances
 
-export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters
+export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters, filter_agents
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -63,6 +64,8 @@ default_velocities(n) = fill((0.0, 0.0), n) :: Vector{NTuple{2, Float64}}
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
 random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
+
+filter_agents(model,agenttype) = filter(kv->kv.second isa agenttype, model.agents)
 
 """
     All get passed to the ABM model as ABM model properties
@@ -542,6 +545,73 @@ function galaxy_model_step!(model)
     update_nplanets!(model)
 
 end
+
+#######################################
+## Distances, Correlations and permutations
+"""
+
+    concatenate_planet_fields(field, model, planet_condition=nothing)
+
+Concatenate all the of a model's planet's fields into a single m x n matrix.
+
+Planets are filtered by the provided optional `planet_condition` arg.
+
+e.g. Concatonate the :composition of every planet into a single matrix.
+
+"""
+function concatenate_planet_fields(field, model, planet_condition=nothing)
+
+    field_values = []
+    for (id,planet) in filter_agents(model,Planet)
+
+        if planet_condition != nothing             
+            planet_condition(planet) && push!(field_values, collect(getfield(planet, field)))
+        else
+            push!(field_values, collect(getfield(planet, field)))
+        end
+
+    end
+
+    hcat(field_values...)
+
+end
+
+# function planet_distance_matrix(field, model, dist_metric=Euclidean(), planet_condition=nothing)
+    
+#     pairwise(dist_metric, hcat(field_values...), dims=2)
+
+# end
+
+# function position_distance_matrix(dist_metric, model, planet_condition)
+
+#     positions = [collect(kv.second.pos) for kv in filter_agents(model,Planet)]
+#     pairwise(dist_metric, hcat(positions...), dims=2)
+# end
+"""
+
+    PlanetMantelTest(model, xfield=:composition, yfield=:pos, dist_metric=Euclidean();  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
+
+xfield::symbol is meant to be one of (:composition, :pos)
+yfield::symbol is meant to be one of (:composition, :pos)
+dist_metric::dist from Distances.jl (default: Euclidean())
+"""
+function PlanetMantelTest(model, xfield=:composition, yfield=:pos, dist_metric=Euclidean();  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
+
+    x = pairwise(dist_metric, concatenate_planet_fields(xfield, model, planet_condition), dims=2)
+    y = pairwise(dist_metric, concatenate_planet_fields(yfield, model, planet_condition), dims=2)
+
+    # MantelTest(x, y; method=method, permutations=permutations, alternative=alternative)
+
+end
+
+function MantelTest(x, y;  method=:pearson, permutations=999, alternative=:twosided)
+
+    ## Base this off of https://github.com/biocore/scikit-bio/blob/0.1.3/skbio/math/stats/distance/_mantel.py#L23
+    return coeff, pvalue
+
+end
+
+
 
 ## Fun with colors
 # col_to_hex(col) = "#"*hex(col)
