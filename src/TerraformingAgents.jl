@@ -634,7 +634,7 @@ function MantelTest(x, y;  dist_metric=Euclidean(), method=:pearson, permutation
     if (permutations == 0) | isnan(orig_stat)
         p_value = NaN
     else
-        perm_gen = (corr_func(Random.shuffle(x), y) for _ in 1:permutations)
+        perm_gen = (corr_func(Random.shuffle(x_flat), y_flat) for _ in 1:permutations)
         permuted_stats = collect(Iterators.flatten(perm_gen))
 
         if alternative == :twosided
