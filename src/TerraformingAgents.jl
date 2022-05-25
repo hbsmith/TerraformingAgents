@@ -654,69 +654,6 @@ function MantelTest(x, y;  dist_metric=Euclidean(), method=:pearson, permutation
 
 end
 
-# function squareform(X; force=:no, checks=true)
-#     ## Used in MantelTest
-#     ## From: https://github.com/scipy/scipy/blob/v1.8.1/scipy/spatial/distance.py#L2267-L2384
-
-#     s = size(X)
-
-#     if force == :tomatrix
-#         length(s) != 1 && throw(ArgumentError("Forcing 'tomatrix' but input X is not a distance vector."))
-#     elseif force == :tovector:
-#         length(s) != 2 && throw(ArgumentError("Forcing 'tovector' but input X is not a distance matrix."))
-#     end
-
-#     ## X = squareform(v)
-#     if length(s) == 1
-#         s[1] == 0 && return zeros(eltype(X),1,1)
-
-#         # Grab the closest value to the square root of the number
-#         # of elements times 2 to see if the number of elements
-#         # is indeed a binomial coefficient.
-#         d = Int(ceil(sqrt(s[1] * 2)))
-
-#         # Check that v is of valid dimensions.
-#         if d * (d - 1) != s[1] * 2
-#             throw(ArgumentError("Incompatible vector size. It must be a binomial coefficient n choose 2 for some integer n >= 2."))
-#         end
-
-#         # Allocate memory for the distance matrix.
-#         M = zeros(eltype(X),d, d)
-
-#         # Fill in the values of the distance matrix.
-#         _distance_wrap.to_squareform_from_vector_wrap(M, X)
-
-#         # Return the distance matrix.
-#         return M
-#     elif len(s) == 2:
-#         if s[0] != s[1]:
-#             raise ValueError('The matrix argument must be square.')
-#         if checks:
-#             is_valid_dm(X, throw=True, name='X')
-
-#         # One-side of the dimensions is set here.
-#         d = s[0]
-
-#         if d <= 1:
-#             return np.array([], dtype=X.dtype)
-
-#         # Create a vector.
-#         v = np.zeros((d * (d - 1)) // 2, dtype=X.dtype)
-
-#         # Since the C code does not support striding using strides.
-#         # The dimensions are used instead.
-#         X = _copy_array_if_base_present(X)
-
-#         # Convert the vector to squareform.
-#         _distance_wrap.to_vector_from_squareform_wrap(X, v)
-#         return v
-#     else:
-#         raise ValueError(('The first argument must be one or two dimensional '
-#                           'array. A %d-dimensional array is not '
-#                           'permitted') % len(s))
-
-#     end
-
 x = [[0,1,2],[1,0,3],[2,3,0]]
 y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
 MantelTest(hcat(x...),hcat(y...))
