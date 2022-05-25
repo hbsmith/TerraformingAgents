@@ -1,6 +1,7 @@
 module TerraformingAgents;
 
 using Agents, Random, AgentsPlots, Plots
+using Statistics: cor
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
 using LinearAlgebra: dot
@@ -604,14 +605,116 @@ function PlanetMantelTest(model, xfield=:composition, yfield=:pos, dist_metric=E
 
 end
 
-function MantelTest(x, y;  method=:pearson, permutations=999, alternative=:twosided)
-
+function MantelTest(x, y;  dist_metric=Euclidean(), method=:pearson, permutations=999, alternative=:twosided)
     ## Base this off of https://github.com/biocore/scikit-bio/blob/0.1.3/skbio/math/stats/distance/_mantel.py#L23
-    return coeff, pvalue
+
+    method == :pearson ? corr_func = cor : throw(ArgumentError("Not yet implemented")) 
+
+    permutations < 0 && throw(ArgumentError("Number of permutations must be greater than or equal to zero."))
+    alternative ∉ [:twosided, :greater, :less] && throw(ArgumentError("Invalid alternative hypothesis $alternative."))
+
+    x = pairwise(dist_metric, x, dims=2)
+    y = pairwise(dist_metric, y, dims=2)
+
+    size(x) != size(y) && throw(ArgumentError("Distance matrices must have the same shape."))
+    size(x)[1] < 3 && throw(ArgumentError("Distance matrices must be at least 3x3 in size."))
+
+    ## I think these are unneeded
+    # x_flat = x.condensed_form()
+    # y_flat = y.condensed_form()
+
+    orig_stat = corr_func(x, y)
+    println(orig_stat)
+
+    if (permutations == 0) | isnan(orig_stat)
+        p_value = NaN
+    else
+        perm_gen = (corr_func(Random.shuffle(x), y) for _ in 1:permutations)
+        permuted_stats = collect(Iterators.flatten(perm_gen))
+
+        if alternative == :twosided
+            count_better = sum(abs.(permuted_stats) .>= abs(orig_stat))
+        elseif alternative == :greater
+            count_better = sum(permuted_stats .>= orig_stat)
+        else
+            count_better = sum(permuted_stats .<= orig_stat)
+        end
+
+        p_value = (count_better + 1) / (permutations + 1)
+        
+    end
+
+
+    return orig_stat, p_value
 
 end
 
+function squareform(X; force=:no, checks=true)
+    ## Used in MantelTest
+    ## From: https://github.com/scipy/scipy/blob/v1.8.1/scipy/spatial/distance.py#L2267-L2384
 
+    s = size(X)
+
+    if force == :tomatrix
+        length(s) != 1 && throw(ArgumentError("Forcing 'tomatrix' but input X is not a distance vector."))
+    elseif force == :tovector:
+        length(s) != 2 && throw(ArgumentError("Forcing 'tovector' but input X is not a distance matrix."))
+    end
+
+    ## X = squareform(v)
+    if length(s) == 1
+        s[1] == 0 && return zeros(eltype(X),1,1)
+
+        # Grab the closest value to the square root of the number
+        # of elements times 2 to see if the number of elements
+        # is indeed a binomial coefficient.
+        d = Int(ceil(sqrt(s[1] * 2)))
+
+        # Check that v is of valid dimensions.
+        if d * (d - 1) != s[1] * 2
+            throw(ArgumentError("Incompatible vector size. It must be a binomial coefficient n choose 2 for some integer n >= 2."))
+        end
+
+        # Allocate memory for the distance matrix.
+        M = zeros(eltype(X),d, d)
+
+        # Fill in the values of the distance matrix.
+        _distance_wrap.to_squareform_from_vector_wrap(M, X)
+
+        # Return the distance matrix.
+        return M
+    elif len(s) == 2:
+        if s[0] != s[1]:
+            raise ValueError('The matrix argument must be square.')
+        if checks:
+            is_valid_dm(X, throw=True, name='X')
+
+        # One-side of the dimensions is set here.
+        d = s[0]
+
+        if d <= 1:
+            return np.array([], dtype=X.dtype)
+
+        # Create a vector.
+        v = np.zeros((d * (d - 1)) // 2, dtype=X.dtype)
+
+        # Since the C code does not support striding using strides.
+        # The dimensions are used instead.
+        X = _copy_array_if_base_present(X)
+
+        # Convert the vector to squareform.
+        _distance_wrap.to_vector_from_squareform_wrap(X, v)
+        return v
+    else:
+        raise ValueError(('The first argument must be one or two dimensional '
+                          'array. A %d-dimensional array is not '
+                          'permitted') % len(s))
+
+    end
+
+x = [[0,1,2],[1,0,3],[2,3,0]]
+y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
+MantelTest(hcat(x...),hcat(y...))
 
 ## Fun with colors
 # col_to_hex(col) = "#"*hex(col)
