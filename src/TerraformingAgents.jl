@@ -595,13 +595,14 @@ end
 xfield::symbol is meant to be one of (:composition, :pos)
 yfield::symbol is meant to be one of (:composition, :pos)
 dist_metric::dist from Distances.jl (default: Euclidean())
+planet_condition takes an optional function which can be used to filter planets. For example, filtering by only planets which are alive. 
 """
-function PlanetMantelTest(model, xfield=:composition, yfield=:pos, dist_metric=Euclidean();  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
+function PlanetMantelTest(model, xfield=:composition, yfield=:pos; rng::AbstractRNG = Random.default_rng(), dist_metric=Euclidean(),  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
 
     x = pairwise(dist_metric, concatenate_planet_fields(xfield, model, planet_condition), dims=2)
     y = pairwise(dist_metric, concatenate_planet_fields(yfield, model, planet_condition), dims=2)
 
-    # MantelTest(x, y; method=method, permutations=permutations, alternative=alternative)
+    MantelTest(x, y;  rng=rng, dist_metric=dist_metric, method=method, permutations=permutations, alternative=alternative)
 
 end
 
