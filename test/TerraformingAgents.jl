@@ -277,7 +277,12 @@ end
         compsize = 6)
     model = galaxy_model_setup(galaxyparams)
     corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model,rng=rng)
-    println(corr_coeff, p_value)
+    println(corr_coeff)
+    println(p_value)
+
+    @test_nowarn corr_coeff
+
+    
 
 
 end
