@@ -247,6 +247,20 @@ end
 
 end
 
+@testset "mantel" begin
+
+    ## Same test used in skbio here:
+    ## https://github.com/biocore/scikit-bio/blob/ecdfc7941d8c21eb2559ff1ab313d6e9348781da/skbio/stats/distance/_mantel.py
+    ## http://scikit-bio.org/docs/0.5.3/generated/generated/skbio.stats.distance.mantel.html
+    rng = MersenneTwister(3141)
+    x = [[0,1,2],[1,0,3],[2,3,0]]
+    y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
+    corr_coeff, p_value = MantelTest(hcat(x...),hcat(y...),rng=rng)
+    @test round(corr_coeff, digits=5) == 0.75593
+    @test p_value == 0.662
+
+end
+
 # @testset "galaxy model basic no error" begin
     
 #     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)

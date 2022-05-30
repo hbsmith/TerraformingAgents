@@ -605,8 +605,8 @@ function PlanetMantelTest(model, xfield=:composition, yfield=:pos, dist_metric=E
 
 end
 
-function MantelTest(x, y;  dist_metric=Euclidean(), method=:pearson, permutations=999, alternative=:twosided)
-    ## Base this off of https://github.com/biocore/scikit-bio/blob/0.1.3/skbio/math/stats/distance/_mantel.py#L23
+function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=Euclidean(), method=:pearson, permutations=999, alternative=:twosided)
+    ## Based this off of https://github.com/biocore/scikit-bio/blob/0.1.3/skbio/math/stats/distance/_mantel.py#L23
 
     method == :pearson ? corr_func = cor : throw(ArgumentError("Not yet implemented")) 
 
@@ -628,13 +628,12 @@ function MantelTest(x, y;  dist_metric=Euclidean(), method=:pearson, permutation
     y_flat = y[tril!(trues(size(y)), -1)]
 
     orig_stat = corr_func(x_flat, y_flat)
-    println(x_flat, y_flat)
-    println(orig_stat)
 
+    ## Permutation tests
     if (permutations == 0) | isnan(orig_stat)
         p_value = NaN
     else
-        perm_gen = (corr_func(Random.shuffle(x_flat), y_flat) for _ in 1:permutations)
+        perm_gen = (corr_func(Random.shuffle(rng, x_flat), y_flat) for _ in 1:permutations)
         permuted_stats = collect(Iterators.flatten(perm_gen))
 
         if alternative == :twosided
@@ -654,9 +653,10 @@ function MantelTest(x, y;  dist_metric=Euclidean(), method=:pearson, permutation
 
 end
 
+rng = MersenneTwister(3141)
 x = [[0,1,2],[1,0,3],[2,3,0]]
 y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
-MantelTest(hcat(x...),hcat(y...))
+MantelTest(hcat(x...),hcat(y...), rng=rng)
 
 ## Fun with colors
 # col_to_hex(col) = "#"*hex(col)
