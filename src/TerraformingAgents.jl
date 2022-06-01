@@ -649,10 +649,11 @@ function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=
         
     end
 
-
     return orig_stat, p_value
 
 end
+
+
 
 # rng = MersenneTwister(3141)
 # x = [[0,1,2],[1,0,3],[2,3,0]]
