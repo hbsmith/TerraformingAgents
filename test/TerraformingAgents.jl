@@ -276,15 +276,44 @@ end
         maxcomp = 16,
         compsize = 6)
     model = galaxy_model_setup(galaxyparams)
-    corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model,rng=rng)
+    corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
     println(corr_coeff)
     println(p_value)
 
     @test_nowarn corr_coeff
 
+end
+
+@testset "Propogation of model rng" begin
     
+    ## First model creation
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt)
+    rng = MersenneTwister(3141)
+    galaxyparams = GalaxyParameters(
+        rng,
+        100,
+        extent = (100,100),
+        dt = 10,
+        allowed_diff = 7,
+        maxcomp = 16,
+        compsize = 6)
+    model = galaxy_model_setup(galaxyparams)
+    corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
 
-
+    ## Second model creation
+    rng = MersenneTwister(3141)
+    galaxyparams = GalaxyParameters(
+        rng,
+        100,
+        extent = (100,100),
+        dt = 10,
+        allowed_diff = 7,
+        maxcomp = 16,
+        compsize = 6)
+    model = galaxy_model_setup(galaxyparams)
+    corr_coeff2, p_value2 = TerraformingAgents.PlanetMantelTest(model)
+    @test corr_coeff == corr_coeff2
+    @test p_value == p_value2
 end
 
 # @testset "galaxy model basic no error" begin

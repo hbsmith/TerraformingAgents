@@ -192,8 +192,8 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
     kwargs...)
 
-    ## Calls the internal constructor
-    GalaxyParameters(; extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
+    ## Calls the internal constructor. I still don't understand how this works and passes the correct keyword arguments to the correct places
+    GalaxyParameters(; rng, extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
 end
 
 
@@ -597,12 +597,12 @@ yfield::symbol is meant to be one of (:composition, :pos)
 dist_metric::dist from Distances.jl (default: Euclidean())
 planet_condition takes an optional function which can be used to filter planets. For example, filtering by only planets which are alive. 
 """
-function PlanetMantelTest(model, xfield=:composition, yfield=:pos; rng::AbstractRNG = Random.default_rng(), dist_metric=Euclidean(),  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
+function PlanetMantelTest(model, xfield=:composition, yfield=:pos; dist_metric=Euclidean(),  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
 
     x = pairwise(dist_metric, concatenate_planet_fields(xfield, model, planet_condition), dims=2)
     y = pairwise(dist_metric, concatenate_planet_fields(yfield, model, planet_condition), dims=2)
 
-    MantelTest(x, y;  rng=rng, dist_metric=dist_metric, method=method, permutations=permutations, alternative=alternative)
+    MantelTest(x, y;  rng=model.rng, dist_metric=dist_metric, method=method, permutations=permutations, alternative=alternative)
 
 end
 
@@ -654,10 +654,10 @@ function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=
 
 end
 
-rng = MersenneTwister(3141)
-x = [[0,1,2],[1,0,3],[2,3,0]]
-y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
-MantelTest(hcat(x...),hcat(y...), rng=rng)
+# rng = MersenneTwister(3141)
+# x = [[0,1,2],[1,0,3],[2,3,0]]
+# y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
+# MantelTest(hcat(x...),hcat(y...), rng=rng)
 
 ## Fun with colors
 # col_to_hex(col) = "#"*hex(col)
