@@ -16,3 +16,4 @@ LinearAlgebra
 Distributions
 NearestNeighbors
 Distances
+GLMakie
