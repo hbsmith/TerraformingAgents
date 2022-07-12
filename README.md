@@ -9,3 +9,10 @@ Install Julia, then install all following packages
 
 Agents
 AgentsPlots
+Plots
+DrWatson
+Suppressor
+LinearAlgebra
+Distributions
+NearestNeighbors
+Distances
