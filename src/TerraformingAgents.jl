@@ -1,6 +1,6 @@
 module TerraformingAgents;
 
-using Agents, Random, AgentsPlots, Plots
+using Agents, Random
 using Statistics: cor
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
