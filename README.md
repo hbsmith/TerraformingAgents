@@ -100,3 +100,5 @@ julia scripts/TA_data-interactive.jl
 - The green dots show Planet agents which have been visited by Life. The moving green dot shows the Life agent that's currently traveling to terraform a Planet. The red dot shows the Life agent's destination Planet agent.
 
 - One plot shows the Mandel coefficient, which can be thought of at the correlation between distance and relatedness of planets. The other plot shows the p-value of this coefficient. 
+
+> *Note*: Due to a few factors (slow calculation of the Mandel coefficient; overhead of the Makie interactive program), the interactive window may take a few minutes to appear. You can close the window, but to exit the process it is often necessary to hit `ENTER` in the running terminal.
