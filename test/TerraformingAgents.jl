@@ -4,37 +4,38 @@ using Agents, Random
 using DrWatson: @dict
 using Suppressor: @suppress_err
 
-# @testset "GalaxyParameters setup" begin
+@testset "GalaxyParameters setup" begin
 
-#     @test_nowarn TerraformingAgents.GalaxyParameters(10)
-#     # @test_nowarn TerraformingAgents.GalaxyParameters(nplanets=10) ## I don't know why I can't figure out a way to make this happen, but i'm going to ignore for now
-#     @test_throws MethodError TerraformingAgents.GalaxyParameters(10.0)
+    @test_nowarn TerraformingAgents.GalaxyParameters(10)
+    # @test_nowarn TerraformingAgents.GalaxyParameters(nplanets=10) ## I don't know why I can't figure out a way to make this happen, but i'm going to ignore for now
+    @test_throws MethodError TerraformingAgents.GalaxyParameters(10.0)
 
-#     # TerraformingAgents.GalaxyParameters(pos=[(1,2)],vel=[(1,2)],planetcompositions=hcat([1]))
-#     # ## ^^This doesn't throw, should it? Seems weird to not allow construction with just pos, yet allow...
-#     # TerraformingAgents.GalaxyParameters(Random.default_rng(),pos=[(1,2)])
-#     # ## Or is it? I guess with the above ^^ you're acknowledging there's randomness in your setup,
-#     # ## Whereas if you specify all of pos, vel, compositions, then everything is determined and it 
-#     # ## then makes sense you don't need to provide a RNG for setup
-#     # ## With that philosophy, then maybe I shouldn't allow something like this after all...
-#     # TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0)) 
-#     # ## ... because it silently does randomization during parameter assignments
+    # # TerraformingAgents.GalaxyParameters(pos=[(1,2)],vel=[(1,2)],planetcompositions=hcat([1]))
+    # # ## ^^This doesn't throw, should it? Seems weird to not allow construction with just pos, yet allow...
+    # # TerraformingAgents.GalaxyParameters(Random.default_rng(),pos=[(1,2)])
+    # # ## Or is it? I guess with the above ^^ you're acknowledging there's randomness in your setup,
+    # # ## Whereas if you specify all of pos, vel, compositions, then everything is determined and it 
+    # # ## then makes sense you don't need to provide a RNG for setup
+    # # ## With that philosophy, then maybe I shouldn't allow something like this after all...
+    # # TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0)) 
+    # # ## ... because it silently does randomization during parameter assignments
 
-#     @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141),10)
-#     @test_throws ArgumentError TerraformingAgents.GalaxyParameters(MersenneTwister(3141),-1)
+    @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141),10)
+    @test_throws ArgumentError TerraformingAgents.GalaxyParameters(MersenneTwister(3141),-1)
 
-#     pos = [(0.1, 0.1),(0.2, 0.2)]
-#     vel = [(2.0, 2.0),(2.0, 3.0)]
-#     planetcompositions = hcat([[0,0,0],[1,0,2]]...)
+    pos = [(0.1, 0.1),(0.2, 0.2)]
+    vel = [(2.0, 2.0),(2.0, 3.0)]
+    planetcompositions = hcat([[0,0,0],[1,0,2]]...)
+    compsize = length(planetcompositions[:,1])
 
-#     @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos)
-#     @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), vel=vel, planetcompositions=planetcompositions)
-#     @test_throws TypeError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=(0,1)) ## Pos is tuple
-#     @test_throws TypeError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=[(0.1,1)]) ## Pos mixed type
-#     @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=vel, planetcompositions=planetcompositions)
-#     @test_throws ArgumentError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=[(2.0, 2.0)]) ## Mismatched arg lengths
+    @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos)
+    @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), vel=vel, compsize=compsize, planetcompositions=planetcompositions)
+    @test_throws TypeError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=(0,1)) ## Pos is tuple
+    @test_throws TypeError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=[(0.1,1)]) ## Pos mixed type
+    @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=vel, compsize=compsize, planetcompositions=planetcompositions)
+    @test_throws ArgumentError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=[(2.0, 2.0)]) ## Mismatched arg lengths
 
-# end
+end
 
 # @testset "Initialize planetary systems" begin 
     
@@ -249,93 +250,93 @@ using Suppressor: @suppress_err
 
 # # end
 
-@testset "mantel" begin
+# @testset "mantel" begin
 
-    ## Same test used in skbio here:
-    ## https://github.com/biocore/scikit-bio/blob/ecdfc7941d8c21eb2559ff1ab313d6e9348781da/skbio/stats/distance/_mantel.py
-    ## http://scikit-bio.org/docs/0.5.3/generated/generated/skbio.stats.distance.mantel.html
-    rng = MersenneTwister(3141)
-    x = [[0,1,2],[1,0,3],[2,3,0]]
-    y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
-    corr_coeff, p_value = TerraformingAgents.MantelTest(hcat(x...),hcat(y...),rng=rng)
-    @test round(corr_coeff, digits=5) == 0.75593
-    @test p_value == 0.666
-
-end
-
-@testset "PlanetMantelTest" begin
-    
-    agent_step!(agent, model) = move_agent!(agent, model, model.dt)
-    rng = MersenneTwister(3141)
-    galaxyparams = GalaxyParameters(
-        rng,
-        100,
-        extent = (100,100),
-        dt = 10,
-        allowed_diff = 7,
-        maxcomp = 16,
-        compsize = 6)
-    model = galaxy_model_setup(galaxyparams)
-    corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
-    println(corr_coeff)
-    println(p_value)
-
-    @test_nowarn corr_coeff
-
-end
-
-@testset "Propogation of model rng" begin
-    
-    ## First model creation
-    agent_step!(agent, model) = move_agent!(agent, model, model.dt)
-    rng = MersenneTwister(3141)
-    galaxyparams = GalaxyParameters(
-        rng,
-        100,
-        extent = (100,100),
-        dt = 10,
-        allowed_diff = 7,
-        maxcomp = 16,
-        compsize = 6)
-    model = galaxy_model_setup(galaxyparams)
-    corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
-
-    ## Second model creation
-    rng = MersenneTwister(3141)
-    galaxyparams = GalaxyParameters(
-        rng,
-        100,
-        extent = (100,100),
-        dt = 10,
-        allowed_diff = 7,
-        maxcomp = 16,
-        compsize = 6)
-    model = galaxy_model_setup(galaxyparams)
-    corr_coeff2, p_value2 = TerraformingAgents.PlanetMantelTest(model)
-    @test corr_coeff == corr_coeff2
-    @test p_value == p_value2
-end
-
-# @testset "galaxy model basic no error" begin
-    
-#     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
-#     model = galaxy_model_basic(10, RNG = MersenneTwister(3141))
-#     for i in 1:1:20
-#         step!(model, agent_step!, galaxy_model_step!)
-#     end
+#     ## Same test used in skbio here:
+#     ## https://github.com/biocore/scikit-bio/blob/ecdfc7941d8c21eb2559ff1ab313d6e9348781da/skbio/stats/distance/_mantel.py
+#     ## http://scikit-bio.org/docs/0.5.3/generated/generated/skbio.stats.distance.mantel.html
+#     rng = MersenneTwister(3141)
+#     x = [[0,1,2],[1,0,3],[2,3,0]]
+#     y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
+#     corr_coeff, p_value = TerraformingAgents.MantelTest(hcat(x...),hcat(y...),rng=rng)
+#     @test round(corr_coeff, digits=5) == 0.75593
+#     @test p_value == 0.666
 
 # end
 
-# @testset "galaxy model basic w/modified planet compositions" begin
+# @testset "PlanetMantelTest" begin
     
-#     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
-#     model = galaxy_model_basic(10, RNG = MersenneTwister(3141), compositionmaxvalue = 16, compositionsize = 6)
-#     for a in values(model.agents)
-#         @test length(a.composition) == 6
-#         @test maximum(a.composition) <= 16
-#     end
-#     for i in 1:1:20
-#         step!(model, agent_step!, galaxy_model_step!)
-#     end
+#     agent_step!(agent, model) = move_agent!(agent, model, model.dt)
+#     rng = MersenneTwister(3141)
+#     galaxyparams = GalaxyParameters(
+#         rng,
+#         100,
+#         extent = (100,100),
+#         dt = 10,
+#         allowed_diff = 7,
+#         maxcomp = 16,
+#         compsize = 6)
+#     model = galaxy_model_setup(galaxyparams)
+#     corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
+#     println(corr_coeff)
+#     println(p_value)
+
+#     @test_nowarn corr_coeff
 
 # end
+
+# @testset "Propogation of model rng" begin
+    
+#     ## First model creation
+#     agent_step!(agent, model) = move_agent!(agent, model, model.dt)
+#     rng = MersenneTwister(3141)
+#     galaxyparams = GalaxyParameters(
+#         rng,
+#         100,
+#         extent = (100,100),
+#         dt = 10,
+#         allowed_diff = 7,
+#         maxcomp = 16,
+#         compsize = 6)
+#     model = galaxy_model_setup(galaxyparams)
+#     corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
+
+#     ## Second model creation
+#     rng = MersenneTwister(3141)
+#     galaxyparams = GalaxyParameters(
+#         rng,
+#         100,
+#         extent = (100,100),
+#         dt = 10,
+#         allowed_diff = 7,
+#         maxcomp = 16,
+#         compsize = 6)
+#     model = galaxy_model_setup(galaxyparams)
+#     corr_coeff2, p_value2 = TerraformingAgents.PlanetMantelTest(model)
+#     @test corr_coeff == corr_coeff2
+#     @test p_value == p_value2
+# end
+
+# # @testset "galaxy model basic no error" begin
+    
+# #     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+# #     model = galaxy_model_basic(10, RNG = MersenneTwister(3141))
+# #     for i in 1:1:20
+# #         step!(model, agent_step!, galaxy_model_step!)
+# #     end
+
+# # end
+
+# # @testset "galaxy model basic w/modified planet compositions" begin
+    
+# #     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
+# #     model = galaxy_model_basic(10, RNG = MersenneTwister(3141), compositionmaxvalue = 16, compositionsize = 6)
+# #     for a in values(model.agents)
+# #         @test length(a.composition) == 6
+# #         @test maximum(a.composition) <= 16
+# #     end
+# #     for i in 1:1:20
+# #         step!(model, agent_step!, galaxy_model_step!)
+# #     end
+
+# # end
