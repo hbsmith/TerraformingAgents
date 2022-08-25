@@ -37,83 +37,69 @@ using Suppressor: @suppress_err
 
 end
 
-# @testset "Initialize planetary systems" begin 
-    
-#     extent = (1,1) ## Size of space
-#     dt = 1.0 
-#     lifespeed = 0.2 ## distance threshold used to decide where to send life from parent planet
-#     interaction_radius = 1e-4 ## how close life and destination planet have to be to interact
-#     allowed_diff = 3 ## how similar life and destination planet have to be for terraformation
+@testset "Initialize planetary systems" begin 
 
-#     space2d = ContinuousSpace(2; periodic = true, extend = extent)
-#     model = @suppress_err AgentBasedModel(
-#                 Union{Planet,Life}, 
-#                 space2d, 
-#                 properties = @dict(
-#                     dt, 
-#                     interaction_radius, 
-#                     allowed_diff, 
-#                     lifespeed))
+    params = TerraformingAgents.GalaxyParameters(MersenneTwister(3141),10)
 
-#     @testset "simple no warn" begin
+    @testset "simple no warn" begin
 
-#         galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141),10)
-#         @test_nowarn TerraformingAgents.initialize_planets!(model, galaxyparams)
+        @test_nowarn TerraformingAgents.galaxy_model_setup(params)
         
-#     end
+    end
 
-#     @testset "Advanced" begin 
+    @testset "pos/vel/composition specific no warn" begin 
 
-#         ## For advanced only
-#         pos = [(0.1, 0.1),(0.2, 0.2)]
-#         vel = [(2.0, 2.0),(2.0, 3.0)]
-#         planetcompositions = hcat([[0,0,0],[1,0,2]]...)
+        ## For advanced only
+        pos = [(0.1, 0.1),(0.2, 0.2)]
+        vel = [(2.0, 2.0),(2.0, 3.0)]
+        planetcompositions = hcat([[0,0,0],[1,0,2]]...)
+        compsize = length(planetcompositions[:,1])
 
-#         galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos)
-#         @test_nowarn TerraformingAgents.initialize_planets!(model, galaxyparams)
+        galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos)
+        @test_nowarn TerraformingAgents.galaxy_model_setup(params)
             
-#         galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), vel=vel, planetcompositions=planetcompositions)
-#         @test_nowarn TerraformingAgents.initialize_planets!(model, galaxyparams)
+        galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), vel=vel, compsize=compsize, planetcompositions=planetcompositions)
+        @test_nowarn TerraformingAgents.galaxy_model_setup(params)
 
-#         galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=vel, planetcompositions=planetcompositions)
-#         @test_nowarn TerraformingAgents.initialize_planets!(model, galaxyparams)
+        galaxyparams = TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=vel, compsize=compsize, planetcompositions=planetcompositions)
+        @test_nowarn TerraformingAgents.galaxy_model_setup(params)
             
-#     end
+    end
 
-# end
+end
 
-# @testset "Initialize life" begin
+@testset "Initialize life" begin
 
-#     dt = 1.0
-#     extent = (1,1) ## Size of space
-#     interaction_radius = 0.02 
-#     allowed_diff = 10
-#     lifespeed = 0.3 ## distance threshold used to decide where to send life from parent planet
-#     space2d = ContinuousSpace(2; periodic = true, extend = extent, metric = :euclidean)
-#     model = @suppress_err AgentBasedModel(
-#         Union{Planet,Life}, 
-#         space2d, 
-#         properties = @dict(
-#             dt,
-#             interaction_radius,
-#             allowed_diff,
-#             lifespeed))
+    dt = 1.0
+    extent = (1,1) ## Size of space
+    interaction_radius = 0.02 
+    allowed_diff = 10
+    lifespeed = 0.3 ## distance threshold used to decide where to send life from parent planet
+    pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)]
+    ool = 3
 
-#     galaxyparams = TerraformingAgents.GalaxyParameters(
-#         MersenneTwister(3141),
-#         pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)])
-#     TerraformingAgents.initialize_planets!(model, galaxyparams)
-#     TerraformingAgents.spawnlife!(model.agents[3], model)
-#     ### Test neighbors exist
-#     lifeagents = filter(p->isa(p.second,Life),model.agents)
-#     @test length(lifeagents) == 1
-#     @test model.agents[5].destination == model.agents[2]
-#     @test model.agents[5].ancestors == Planet[]
-#     @test model.agents[2].claimed == true
+    galaxyparams = TerraformingAgents.GalaxyParameters(
+        MersenneTwister(3141),
+        dt=dt,
+        extent=extent,
+        interaction_radius=interaction_radius,
+        allowed_diff=allowed_diff,
+        lifespeed=lifespeed,
+        pos=pos,
+        ool=ool)
 
-#     ## @test no compatible planets
+    model = TerraformingAgents.galaxy_model_setup(galaxyparams)
 
-# end
+    ### Test neighbors exist
+    lifeagents = filter(p->isa(p.second,Life),model.agents)
+    @test length(lifeagents) == 1
+    @test model.agents[5].destination == model.agents[2]
+    @test model.agents[5].ancestors == Planet[]
+    @test model.agents[2].claimed == true
+
+    ## @test no compatible planets
+
+end
 
 # @testset "compatible planets; nearest compatible planets" begin 
 
