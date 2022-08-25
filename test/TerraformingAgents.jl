@@ -183,45 +183,58 @@ end
 
 end 
 
-# @testset "mix compositions" begin
+@testset "mix compositions" begin
     
-#     @test TerraformingAgents.mixcompositions([0,0,0],[1,0,2]) == [0,0,1]
-#     @test TerraformingAgents.mixcompositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
-#     @test TerraformingAgents.mixcompositions([8],[8]) == [8]
-#     @test TerraformingAgents.mixcompositions([8,9],[4,2]) == [6,6]
+    @test TerraformingAgents.mixcompositions([0,0,0],[1,0,2]) == [0,0,1]
+    @test TerraformingAgents.mixcompositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
+    @test TerraformingAgents.mixcompositions([8],[8]) == [8]
+    @test TerraformingAgents.mixcompositions([8,9],[4,2]) == [6,6]
 
-# end
+end
 
-# @testset "Agent dies at correct planet" begin
+@testset "Agent dies at correct planet" begin
     
-#     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
-#     RNG = MersenneTwister(3141)
-#     galaxyparams = TerraformingAgents.GalaxyParameters(
-#         RNG, 
-#         interaction_radius = 0.02,
-#         allowed_diff = 3,
-#         pos = [(.5,.5),(.5,.4),(.5,.3)],
-#         planetcompositions = hcat([[3,2,1],[8,7,6],[6,3,3]]...),
-#         ool = 1
-#         )
-#     model = galaxy_model_setup(RNG, galaxyparams)
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)  ## if model.dt is 10, and lifespeed = 0.2, then the agent goes .2 per step
+    galaxyparams = TerraformingAgents.GalaxyParameters(
+        MersenneTwister(3141), 
+        dt = 1.0,
+        lifespeed = 0.2,
+        interaction_radius = 0.02,
+        allowed_diff = 3,
+        pos = [(.5,.5),(.5,.4),(.5,.3)],
+        planetcompositions = hcat([[3,2,1],[8,7,6],[6,3,3]]...),
+        compsize = 3,
+        ool = 1
+        )
+    model = galaxy_model_setup(galaxyparams)
+
+    @show model.dt
     
-#     steps = 0
-#     n = 2
-#     for i in 1:n:20
-#         step!(model, agent_step!, galaxy_model_step!, n)
-#         steps+=n
-#         lifeagents = filter(p->isa(p.second,Life),model.agents)
+    steps = 0
+    n = 2
 
-#         steps == 2 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 4 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 6 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 8 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-#         steps == 10 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
-#         steps == 12 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
-#     end
+    # dump(model.agents)
 
-# end
+    lifeagents = filter(p->isa(p.second,Life),model.agents)
+    @show keys(lifeagents)
+    @show keys(model.agents)
+
+    for i in 1:n:20
+        step!(model, agent_step!, galaxy_model_step!, n)
+        steps+=n
+        lifeagents = filter(p->isa(p.second,Life),model.agents)
+        @show keys(lifeagents)
+        @show keys(model.agents)
+
+        steps == 2 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 4 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 6 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 8 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
+        steps == 10 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
+        steps == 12 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
+    end
+
+end
 
 # # @testset "pos_is_inside_alive_radius" begin
     
