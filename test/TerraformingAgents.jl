@@ -206,25 +206,15 @@ end
         compsize = 3,
         ool = 1
         )
-    model = galaxy_model_setup(galaxyparams)
-
-    @show model.dt
     
+    model = galaxy_model_setup(galaxyparams)    
     steps = 0
     n = 2
-
-    # dump(model.agents)
-
-    lifeagents = filter(p->isa(p.second,Life),model.agents)
-    @show keys(lifeagents)
-    @show keys(model.agents)
 
     for i in 1:n:20
         step!(model, agent_step!, galaxy_model_step!, n)
         steps+=n
         lifeagents = filter(p->isa(p.second,Life),model.agents)
-        @show keys(lifeagents)
-        @show keys(model.agents)
 
         steps == 2 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
         steps == 4 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
@@ -259,93 +249,69 @@ end
 
 # # end
 
-# @testset "mantel" begin
+@testset "mantel" begin
 
-#     ## Same test used in skbio here:
-#     ## https://github.com/biocore/scikit-bio/blob/ecdfc7941d8c21eb2559ff1ab313d6e9348781da/skbio/stats/distance/_mantel.py
-#     ## http://scikit-bio.org/docs/0.5.3/generated/generated/skbio.stats.distance.mantel.html
-#     rng = MersenneTwister(3141)
-#     x = [[0,1,2],[1,0,3],[2,3,0]]
-#     y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
-#     corr_coeff, p_value = TerraformingAgents.MantelTest(hcat(x...),hcat(y...),rng=rng)
-#     @test round(corr_coeff, digits=5) == 0.75593
-#     @test p_value == 0.666
+    ## Same test used in skbio here:
+    ## https://github.com/biocore/scikit-bio/blob/ecdfc7941d8c21eb2559ff1ab313d6e9348781da/skbio/stats/distance/_mantel.py
+    ## http://scikit-bio.org/docs/0.5.3/generated/generated/skbio.stats.distance.mantel.html
+    rng = MersenneTwister(3141)
+    x = [[0,1,2],[1,0,3],[2,3,0]]
+    y = [[0, 2, 7],[2, 0, 6],[7, 6, 0]]
+    corr_coeff, p_value = TerraformingAgents.MantelTest(hcat(x...),hcat(y...),rng=rng)
+    @test round(corr_coeff, digits=5) == 0.75593
+    @test p_value == 0.666
 
-# end
+end
 
-# @testset "PlanetMantelTest" begin
+@testset "PlanetMantelTest" begin
     
-#     agent_step!(agent, model) = move_agent!(agent, model, model.dt)
-#     rng = MersenneTwister(3141)
-#     galaxyparams = GalaxyParameters(
-#         rng,
-#         100,
-#         extent = (100,100),
-#         dt = 10,
-#         allowed_diff = 7,
-#         maxcomp = 16,
-#         compsize = 6)
-#     model = galaxy_model_setup(galaxyparams)
-#     corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
-#     println(corr_coeff)
-#     println(p_value)
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt)
+    rng = MersenneTwister(3141)
+    galaxyparams = GalaxyParameters(
+        rng,
+        100,
+        extent = (100,100),
+        dt = 10,
+        allowed_diff = 7,
+        maxcomp = 16,
+        compsize = 6)
+    model = galaxy_model_setup(galaxyparams)
+    corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
+    println(corr_coeff)
+    println(p_value)
 
-#     @test_nowarn corr_coeff
+    @test_nowarn corr_coeff
 
-# end
+end
 
-# @testset "Propogation of model rng" begin
+@testset "Propogation of model rng" begin
     
-#     ## First model creation
-#     agent_step!(agent, model) = move_agent!(agent, model, model.dt)
-#     rng = MersenneTwister(3141)
-#     galaxyparams = GalaxyParameters(
-#         rng,
-#         100,
-#         extent = (100,100),
-#         dt = 10,
-#         allowed_diff = 7,
-#         maxcomp = 16,
-#         compsize = 6)
-#     model = galaxy_model_setup(galaxyparams)
-#     corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
+    ## First model creation
+    agent_step!(agent, model) = move_agent!(agent, model, model.dt)
+    rng = MersenneTwister(3141)
+    galaxyparams = GalaxyParameters(
+        rng,
+        100,
+        extent = (100,100),
+        dt = 10,
+        allowed_diff = 7,
+        maxcomp = 16,
+        compsize = 6)
+    model = galaxy_model_setup(galaxyparams)
+    corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
 
-#     ## Second model creation
-#     rng = MersenneTwister(3141)
-#     galaxyparams = GalaxyParameters(
-#         rng,
-#         100,
-#         extent = (100,100),
-#         dt = 10,
-#         allowed_diff = 7,
-#         maxcomp = 16,
-#         compsize = 6)
-#     model = galaxy_model_setup(galaxyparams)
-#     corr_coeff2, p_value2 = TerraformingAgents.PlanetMantelTest(model)
-#     @test corr_coeff == corr_coeff2
-#     @test p_value == p_value2
-# end
-
-# # @testset "galaxy model basic no error" begin
-    
-# #     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
-# #     model = galaxy_model_basic(10, RNG = MersenneTwister(3141))
-# #     for i in 1:1:20
-# #         step!(model, agent_step!, galaxy_model_step!)
-# #     end
-
-# # end
-
-# # @testset "galaxy model basic w/modified planet compositions" begin
-    
-# #     agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)
-# #     model = galaxy_model_basic(10, RNG = MersenneTwister(3141), compositionmaxvalue = 16, compositionsize = 6)
-# #     for a in values(model.agents)
-# #         @test length(a.composition) == 6
-# #         @test maximum(a.composition) <= 16
-# #     end
-# #     for i in 1:1:20
-# #         step!(model, agent_step!, galaxy_model_step!)
-# #     end
-
-# # end
+    ## Second model creation
+    rng = MersenneTwister(3141)
+    galaxyparams = GalaxyParameters(
+        rng,
+        100,
+        extent = (100,100),
+        dt = 10,
+        allowed_diff = 7,
+        maxcomp = 16,
+        compsize = 6)
+    model = galaxy_model_setup(galaxyparams)
+    corr_coeff2, p_value2 = TerraformingAgents.PlanetMantelTest(model)
+    @test corr_coeff == corr_coeff2
+    @test p_value == p_value2
+end
