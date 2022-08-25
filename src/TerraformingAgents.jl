@@ -248,6 +248,14 @@ Sets up the galaxy model.
 """
 function galaxy_model_setup(params::GalaxyParameters)
 
+    model = galaxy_planet_setup(params)
+    model = galaxy_life_setup(model, params::GalaxyParameters)
+    model
+
+end
+
+function galaxy_planet_setup(params::GalaxyParameters)
+
     extent_multiplier = 3
     params.extent = extent_multiplier.*params.extent
 
@@ -279,12 +287,19 @@ function galaxy_model_setup(params::GalaxyParameters)
     )
 
     initialize_planets!(model, params, extent_multiplier)
+    model
+
+end
+
+function galaxy_life_setup(model, params::GalaxyParameters)
 
     agent = isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
     spawnlife!(agent, model)
     # index!(model)
     model
+
 end
+
 
 # galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(params)
 
