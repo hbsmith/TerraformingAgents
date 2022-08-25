@@ -152,7 +152,7 @@ function GalaxyParameters(rng::AbstractRNG;
     planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
     kwargs...)
 
-    println("rng;")
+    # println("rng;")
 
     if !isnothing(pos)
         nplanets = length(pos)
