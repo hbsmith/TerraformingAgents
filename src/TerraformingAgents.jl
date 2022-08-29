@@ -481,8 +481,8 @@ Returns false if provided position lies within any life's interaction radii
 """
 function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
 
-    if exact==true:
-        neighbor_ids = collect(nearby_ids_exact(pos,model,model.interaction_radius)
+    if exact==true
+        neighbor_ids = collect(nearby_ids_exact(pos,model,model.interaction_radius))
     else
         neighbor_ids = collect(nearby_ids(pos,model,model.interaction_radius))
     end
