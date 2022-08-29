@@ -479,9 +479,13 @@ end
 
 Returns false if provided position lies within any life's interaction radii    
 """
-function pos_is_inside_alive_radius(pos::Tuple, model::ABM)
+function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
 
-    neighbor_ids = collect(nearby_ids(pos,model,model.interaction_radius,exact=true))
+    if exact==true:
+        neighbor_ids = collect(nearby_ids_exact(pos,model,model.interaction_radius)
+    else
+        neighbor_ids = collect(nearby_ids(pos,model,model.interaction_radius))
+    end
 
     if length(filter(kv -> kv.first in neighbor_ids && kv.second isa Planet && kv.second.alive, model.agents)) > 0
         return true
@@ -516,7 +520,7 @@ function add_planet!(model::ABM,
 
         for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
             pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
-            if length(collect(nearby_ids(pos,model,min_dist,exact=true))) == 0 && ~pos_is_inside_alive_radius(pos,model)
+            if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
                 valid_pos = true
                 vel = default_velocities(1)[1] 
                 composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
