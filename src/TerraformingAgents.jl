@@ -457,7 +457,7 @@ function update_planets_and_life!(model::ABM)
     ##   miss some interactions
     
     life_to_kill = Life[]
-    for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types)
+    for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
         life, planet = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
         if planet == life.destination
             terraform!(life, planet, model)
