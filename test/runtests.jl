@@ -1,4 +1,5 @@
 using Test
 using TerraformingAgents
-
-include("TerraformingAgents.jl")
+@testset "All test files" begin
+    include("TerraformingAgents.jl")
+end
