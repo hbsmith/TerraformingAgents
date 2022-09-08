@@ -25,8 +25,8 @@ end
 
 Base.@kwdef mutable struct Planet <: AbstractAgent
     id::Int
-    pos::NTuple{2, Float64}
-    vel::NTuple{2, Float64}
+    pos::NTuple{D,X} where {D,X<:Real}
+    vel::NTuple{D,X} where {D,X<:Real}
 
     composition::Vector{Int} ## Represents the planet's genotype
     initialcomposition::Vector{Int} = composition ## Same as composition until it's terraformed
@@ -48,21 +48,25 @@ end
 
 Base.@kwdef mutable struct Life <: AbstractAgent
     id::Int
-    pos::NTuple{2, Float64}
-    vel::NTuple{2, Float64}
+    pos::NTuple{D,X} where {D,X<:Real}
+    vel::NTuple{D,X} where {D,X<:Real}
     parentplanet::Planet
     composition::Vector{Int} ## Taken from parentplanet
     destination::Union{Planet, Nothing}
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
 end
 
-function random_positions(rng, (xmax, ymax), n)
-    Ux = Uniform(0, xmax)
-    Uy = Uniform(0, ymax)
-    collect(zip(rand(rng, Ux, n), rand(rng, Uy, n))) :: Vector{NTuple{2, Float64}}
+"""
+Accomodates length(maxdims) number of dimensions (>0)
+
+maxdims::a tuple of the maximum dimensions of the space
+n::number of random positions to generate
+"""
+function random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
+    collect(zip([rand(rng, Uniform(0, imax), n) for imax in maxdims]...)) :: Vector{NTuple{length(maxdims), Float64}}
 end
 
-default_velocities(n) = fill((0.0, 0.0), n) :: Vector{NTuple{2, Float64}}
+default_velocities(D,n) = fill(Tuple([0.0 for i in 1:D]), n) :: Vector{NTuple{D, Float64}}
 
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
@@ -190,7 +194,7 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     maxcomp=10, 
     compsize=10,
     pos=random_positions(rng, extent, nplanets),
-    vel=default_velocities(nplanets),
+    vel=default_velocities(length(extent), nplanets),
     planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
     kwargs...)
 
@@ -524,7 +528,7 @@ function add_planet!(model::ABM,
             pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
             if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
                 valid_pos = true
-                vel = default_velocities(1)[1] 
+                vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
                 composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
                 newplanet = Planet(; id, pos, vel, composition)
                 add_agent_pos!(newplanet, model)
