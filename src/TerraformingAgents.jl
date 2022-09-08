@@ -108,8 +108,8 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
-        pos::Vector{<:NTuple{D,X}},
-        vel::Vector{<:NTuple{D,X}},
+        pos::Vector{NTuple{D,X}},
+        vel::Vector{NTuple{D,X}},
         maxcomp::Int,
         compsize::Int,
         planetcompositions::Array{<:Int, 2}) where {D,X<:Real}
@@ -153,8 +153,8 @@ end
 ## Requires one of pos, vel, planetcompositions
 ## Would it be more clear to write this as 3 separate functions?
 function GalaxyParameters(rng::AbstractRNG;
-    pos::Union{<:Vector{<:NTuple{D,X}}, Nothing} = nothing,
-    vel::Union{<:Vector{<:NTuple{D,X}}, Nothing} = nothing,
+    pos::Union{Vector{NTuple{D,X}}, Nothing} = nothing,
+    vel::Union{Vector{NTuple{D,X}}, Nothing} = nothing,
     planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
     kwargs...) where {D,X<:Real}
 
@@ -373,6 +373,7 @@ function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet
     for (i, a) in enumerate(candidateplanets)
         for d in 1:ndims
             planetpositions[d, i] = a.pos[d]
+        end
     end
     idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
     candidateplanets[idx] ## Returns Planet
