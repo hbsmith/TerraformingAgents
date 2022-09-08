@@ -99,7 +99,7 @@ mutable struct GalaxyParameters
 
     function GalaxyParameters(;
         rng::AbstractRNG = Random.default_rng(),
-        extent::NTuple{2,<:Real} = (1.0, 1.0), 
+        extent::NTuple{D,X} = (1.0, 1.0), 
         ABMkwargs::Union{Dict{Symbol},Nothing} = nothing,
         SpaceArgs::Union{Dict{Symbol},Nothing} = nothing,
         SpaceKwargs::Union{Dict{Symbol},Nothing} = nothing,
@@ -108,11 +108,11 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
-        pos::Vector{<:NTuple{2, <:Real}},
-        vel::Vector{<:NTuple{2, <:Real}},
+        pos::Vector{<:NTuple{D,X}},
+        vel::Vector{<:NTuple{D,X}},
         maxcomp::Int,
         compsize::Int,
-        planetcompositions::Array{<:Int, 2})
+        planetcompositions::Array{<:Int, 2}) where {D,X<:Real}
 
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
@@ -153,10 +153,10 @@ end
 ## Requires one of pos, vel, planetcompositions
 ## Would it be more clear to write this as 3 separate functions?
 function GalaxyParameters(rng::AbstractRNG;
-    pos::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
-    vel::Union{<:Vector{<:NTuple{2, <:Real}}, Nothing} = nothing,
+    pos::Union{<:Vector{<:NTuple{D,X}}, Nothing} = nothing,
+    vel::Union{<:Vector{<:NTuple{D,X}}, Nothing} = nothing,
     planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
-    kwargs...)
+    kwargs...) where {D,X<:Real}
 
     # println("rng;")
 
@@ -245,7 +245,11 @@ end
 
 nplanets(params::GalaxyParameters) = length(params.pos)
 
-center_position(pos::NTuple{2, <:Real}, extent::NTuple{2, <:Real}, m::Real) = pos.+((extent.-(extent./m))./2) #pos.+(
+"""
+Assuming that the provided position is for the original extent size (of extent./m = original_extent), find 
+    the equivilent position at the center of current extent (original_extent.*m)
+"""
+center_position(pos::NTuple{D,X}, extent::NTuple{D,X}, m::Real) where {D,X<:Real} = pos.+((extent.-(extent./m))./2) #pos.+(
 
 """
     galaxy_model_setup(params::GalaxyParameters)
@@ -266,14 +270,14 @@ function galaxy_planet_setup(params::GalaxyParameters)
     params.extent = extent_multiplier.*params.extent
 
     if :spacing in keys(params.SpaceArgs)
-        space2d = ContinuousSpace(params.extent, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
+        space = ContinuousSpace(params.extent, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
     else
-        space2d = ContinuousSpace(params.extent; params.SpaceKwargs...)
+        space = ContinuousSpace(params.extent; params.SpaceKwargs...)
     end
 
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
-        space2d,
+        space,
         properties = Dict(:dt => params.dt,
                         :lifespeed => params.lifespeed,
                         :interaction_radius => params.interaction_radius,
@@ -364,10 +368,11 @@ Returns `Planet` within `candidateplanets` that is nearest to `planet `(not user
 function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet})
 
     length(candidateplanets) == 0 && throw(ArgumentError("candidateplanets is empty"))
-    planetpositions = Array{Float64}(undef, 2, length(candidateplanets))
+    ndims = length(candidateplanets[1].pos)
+    planetpositions = Array{Float64}(undef, ndims, length(candidateplanets))
     for (i, a) in enumerate(candidateplanets)
-        planetpositions[1, i] = a.pos[1]
-        planetpositions[2, i] = a.pos[2]
+        for d in 1:ndims
+            planetpositions[d, i] = a.pos[d]
     end
     idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
     candidateplanets[idx] ## Returns Planet
@@ -508,6 +513,7 @@ Adds a planet to the galaxy that is within the interaction radius of a non-livin
 and outside the interaction radius of all living planets. Max attempts sets the limit of
 iterations in the while loop to find a valid planet position (default = 10*nplanets).
 
+TODO: UPDATE TO WORK IN NDIMENSIONS
 """
 function add_planet!(model::ABM, 
     min_dist=model.interaction_radius/10, 
