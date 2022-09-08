@@ -1,9 +1,3 @@
-# import TerraformingAgents
-using TerraformingAgents
-using Agents, Random
-using DrWatson: @dict
-using Suppressor: @suppress_err
-
 function TestGalaxyParametersSetup()
     @testset "GalaxyParameters Setup" begin
 
@@ -46,7 +40,7 @@ function TestInitializePlanetarySystems()
 
         @testset "simple no warn" begin
 
-            @test_nowarn TerraformingAgents.galaxy_model_setup(params)
+            @test_logs min_level=Logging.Warn TerraformingAgents.galaxy_model_setup(params)
             
         end
 
@@ -334,7 +328,7 @@ function TestPropogationOfModelRNG()
     end
 end
 
-@testset "All"
+@testset "All" begin
     TestGalaxyParametersSetup()
     TestInitializePlanetarySystems()
     TestInitializeLife()

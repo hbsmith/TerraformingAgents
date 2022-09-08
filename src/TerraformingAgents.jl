@@ -388,7 +388,7 @@ function spawnlife!(
     ## No ancestors, parentplanet, parentlife, parentcomposition
     candidateplanets = compatibleplanets(planet, model)
     if length(candidateplanets) == 0
-        @warn "Life on Planet $(planet.id) has no compatible planets. It's the end of its line."
+        println("Life on Planet $(planet.id) has no compatible planets. It's the end of its line.")
         destinationplanet = nothing
         vel = planet.pos .* 0.0
     else
