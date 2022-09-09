@@ -23,10 +23,19 @@ direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- 
     δ ./ hypot(δ...)
 end
 
-Base.@kwdef mutable struct Planet{D,X<:AbstractFloat} <: AbstractAgent
+# abstract type Planet <: AbstractAgent end
+
+## I can't figure out why a parametrically typed Planet{2, FLoat64} 
+##  cannot be made a subtype of Planet, such that typeof(Planet{2, FLoat64}) == Planet 
+##  can return true... Or why I can't at least make Planet a subtype of both itself, and 
+##  also Abstract agent (supertype) so that supertype(Planet{2, Float64}) == Planet, and
+##  supertype(Planet) == AbstractAgent. I don't know. Parameteric structures seem to
+##  make things much more confusing.
+
+Base.@kwdef mutable struct Planet<: AbstractAgent#{D,X<:AbstractFloat} <: AbstractAgent
     id::Int
-    pos::NTuple{D,X} #where {D,X<:AbstractFloat}
-    vel::NTuple{D,X} #where {D,X<:AbstractFloat}
+    pos::NTuple{D,<:AbstractFloat} where {D} #where {D,X<:AbstractFloat}
+    vel::NTuple{D,<:AbstractFloat} where {D}#where {D,X<:AbstractFloat}
 
     composition::Vector{Int} ## Represents the planet's genotype
     initialcomposition::Vector{Int} = composition ## Same as composition until it's terraformed
@@ -46,10 +55,12 @@ Base.@kwdef mutable struct Planet{D,X<:AbstractFloat} <: AbstractAgent
     parentcomposition::Union{Vector{Int}, Nothing} = nothing
 end
 
-Base.@kwdef mutable struct Life{D,X<:AbstractFloat} <: AbstractAgent
+# abstract type Life <: AbstractAgent end
+
+Base.@kwdef mutable struct Life<:AbstractAgent#{D,X<:AbstractFloat}#<: AbstractAgent
     id::Int
-    pos::NTuple{D,X}# where {D,X<:AbstractFloat}
-    vel::NTuple{D,X}# where {D,X<:AbstractFloat}
+    pos::NTuple{D,<:AbstractFloat} where {D} #where {D,X<:AbstractFloat}
+    vel::NTuple{D,<:AbstractFloat} where {D}#where {D,X<:AbstractFloat}
     parentplanet::Planet
     composition::Vector{Int} ## Taken from parentplanet
     destination::Union{Planet, Nothing}
