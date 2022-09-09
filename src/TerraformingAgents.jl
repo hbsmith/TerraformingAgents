@@ -23,10 +23,10 @@ direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- 
     δ ./ hypot(δ...)
 end
 
-Base.@kwdef mutable struct Planet <: AbstractAgent
+Base.@kwdef mutable struct Planet{D,X<:AbstractFloat} <: AbstractAgent
     id::Int
-    pos::NTuple{D,X} where {D,X<:Real}
-    vel::NTuple{D,X} where {D,X<:Real}
+    pos::NTuple{D,X} #where {D,X<:AbstractFloat}
+    vel::NTuple{D,X} #where {D,X<:AbstractFloat}
 
     composition::Vector{Int} ## Represents the planet's genotype
     initialcomposition::Vector{Int} = composition ## Same as composition until it's terraformed
@@ -46,10 +46,10 @@ Base.@kwdef mutable struct Planet <: AbstractAgent
     parentcomposition::Union{Vector{Int}, Nothing} = nothing
 end
 
-Base.@kwdef mutable struct Life <: AbstractAgent
+Base.@kwdef mutable struct Life{D,X<:AbstractFloat} <: AbstractAgent
     id::Int
-    pos::NTuple{D,X} where {D,X<:Real}
-    vel::NTuple{D,X} where {D,X<:Real}
+    pos::NTuple{D,X}# where {D,X<:AbstractFloat}
+    vel::NTuple{D,X}# where {D,X<:AbstractFloat}
     parentplanet::Planet
     composition::Vector{Int} ## Taken from parentplanet
     destination::Union{Planet, Nothing}
@@ -99,7 +99,7 @@ mutable struct GalaxyParameters
 
     function GalaxyParameters(;
         rng::AbstractRNG = Random.default_rng(),
-        extent::NTuple{D,X} = (1.0, 1.0), 
+        extent::NTuple{D,<:Real} = (1.0, 1.0), 
         ABMkwargs::Union{Dict{Symbol},Nothing} = nothing,
         SpaceArgs::Union{Dict{Symbol},Nothing} = nothing,
         SpaceKwargs::Union{Dict{Symbol},Nothing} = nothing,
@@ -108,11 +108,11 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
-        pos::Vector{NTuple{D,X}},
-        vel::Vector{NTuple{D,X}},
+        pos,#::Vector{NTuple{D,<:AbstractFloat}},
+        vel,#::Vector{NTuple{D,<:AbstractFloat}},
         maxcomp::Int,
         compsize::Int,
-        planetcompositions::Array{<:Int, 2}) where {D,X<:Real}
+        planetcompositions::Array{<:Int, 2}) where {D}
 
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
@@ -153,10 +153,10 @@ end
 ## Requires one of pos, vel, planetcompositions
 ## Would it be more clear to write this as 3 separate functions?
 function GalaxyParameters(rng::AbstractRNG;
-    pos::Union{Vector{NTuple{D,X}}, Nothing} = nothing,
-    vel::Union{Vector{NTuple{D,X}}, Nothing} = nothing,
+    pos::Union{Vector{NTuple{D,<:AbstractFloat}}, Nothing} = nothing,
+    vel::Union{Vector{NTuple{D,<:AbstractFloat}}, Nothing} = nothing,
     planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
-    kwargs...) where {D,X<:Real}
+    kwargs...) where {D}
 
     # println("rng;")
 
@@ -198,8 +198,20 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
     kwargs...)
 
+    # @show extent
+    # @show pos
+    # @show typeof(pos)
+    # println()
+    # @show vel
+    # @show typeof(vel)
+    # @show kwargs
+    # println()
+    # println()
+
+    
+
     ## Calls the internal constructor. I still don't understand how this works and passes the correct keyword arguments to the correct places
-    GalaxyParameters(; rng, extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
+    GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
 end
 
 
@@ -249,7 +261,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 Assuming that the provided position is for the original extent size (of extent./m = original_extent), find 
     the equivilent position at the center of current extent (original_extent.*m)
 """
-center_position(pos::NTuple{D,X}, extent::NTuple{D,X}, m::Real) where {D,X<:Real} = pos.+((extent.-(extent./m))./2) #pos.+(
+center_position(pos::NTuple{D,<:AbstractFloat}, extent::NTuple{D,<:Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) #pos.+(
 
 """
     galaxy_model_setup(params::GalaxyParameters)
@@ -327,6 +339,11 @@ Called by [`galaxy_model_setup`](@ref).
 function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
         id = nextid(model)
+        # @show params.pos[i]
+        # @show typeof(params.pos[i])
+        # @show params.extent
+        # @show typeof(params.extent)
+        # println()
         pos = center_position(params.pos[i], params.extent, extent_multiplier)
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
