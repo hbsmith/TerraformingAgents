@@ -25,8 +25,8 @@ function TestGalaxyParametersSetup()
 
         @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos)
         @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), vel=vel, compsize=compsize, planetcompositions=planetcompositions)
-        @test_throws TypeError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=(0,1)) ## Pos is tuple
-        @test_throws TypeError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=[(0.1,1)]) ## Pos mixed type
+        @test_throws MethodError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=(0,1)) ## Pos is tuple
+        @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=[(0.1,1)]) ## Pos mixed type OK
         @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=vel, compsize=compsize, planetcompositions=planetcompositions)
         @test_throws ArgumentError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=[(2.0, 2.0)]) ## Mismatched arg lengths
 
@@ -257,9 +257,9 @@ end
 
 function TestCenterPositions()
     @testset "center positions" begin 
-        @test center_position((1,),(9,),3) == (4.0,)
-        @test center_position((1,1),(9,9),3) == (4.0, 4.0)
-        @test center_position((1,1,1),(9,9,9),3) == (4.0, 4.0, 4.0)
+        @test TerraformingAgents.center_position((1,),(9,),3) == (4.0,)
+        @test TerraformingAgents.center_position((1,1),(9,9),3) == (4.0, 4.0)
+        @test TerraformingAgents.center_position((1,1,1),(9,9,9),3) == (4.0, 4.0, 4.0)
     end
 end
 

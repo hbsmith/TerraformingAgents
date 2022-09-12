@@ -119,8 +119,8 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
-        pos,#::Vector{NTuple{D,<:AbstractFloat}},
-        vel,#::Vector{NTuple{D,<:AbstractFloat}},
+        pos::Vector{<:NTuple{D,Real}},
+        vel::Vector{<:NTuple{D,Real}},
         maxcomp::Int,
         compsize::Int,
         planetcompositions::Array{<:Int, 2}) where {D}
@@ -164,9 +164,9 @@ end
 ## Requires one of pos, vel, planetcompositions
 ## Would it be more clear to write this as 3 separate functions?
 function GalaxyParameters(rng::AbstractRNG;
-    pos::Union{Vector{NTuple{D,<:AbstractFloat}}, Nothing} = nothing,
-    vel::Union{Vector{NTuple{D,<:AbstractFloat}}, Nothing} = nothing,
-    planetcompositions::Union{<:Array{<:Integer,2}, Nothing} = nothing,
+    pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+    vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+    planetcompositions::Union{Array{<:Integer,2}, Nothing} = nothing,
     kwargs...) where {D}
 
     # println("rng;")
@@ -272,7 +272,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 Assuming that the provided position is for the original extent size (of extent./m = original_extent), find 
     the equivilent position at the center of current extent (original_extent.*m)
 """
-center_position(pos::NTuple{D,<:AbstractFloat}, extent::NTuple{D,<:Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) #pos.+(
+center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) #pos.+(
 
 """
     galaxy_model_setup(params::GalaxyParameters)
