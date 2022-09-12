@@ -23,31 +23,20 @@ direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- 
     δ ./ hypot(δ...)
 end
 
-# abstract type Planet <: AbstractAgent end
-
-## I can't figure out why a parametrically typed Planet{2, FLoat64} 
-##  cannot be made a subtype of Planet, such that typeof(Planet{2, FLoat64}) == Planet 
-##  can return true... Or why I can't at least make Planet a subtype of both itself, and 
-##  also Abstract agent (supertype) so that supertype(Planet{2, Float64}) == Planet, and
-##  supertype(Planet) == AbstractAgent. I don't know. Parameteric structures seem to
-##  make things much more confusing.
-
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
-    pos::NTuple{D,<:AbstractFloat} #where {D} #where {D,X<:AbstractFloat}
-    vel::NTuple{D,<:AbstractFloat} #where {D}#where {D,X<:AbstractFloat}
+    pos::NTuple{D,<:AbstractFloat} 
+    vel::NTuple{D,<:AbstractFloat} 
 
     composition::Vector{Int} ## Represents the planet's genotype
     initialcomposition::Vector{Int} = composition ## Same as composition until it's terraformed
 
     alive::Bool = false
-    ## True if any Life has this planet as its destination
-    claimed::Bool = false
+    claimed::Bool = false ## True if any Life has this planet as its destination
 
-    # Properties of the process, but not the planet itself
+    ## Properties of the process, but not the planet itself
 
-    ## Planets that phylogenetically preceded this one
-    ancestors::Vector{Planet} = Planet[]
+    ancestors::Vector{Planet} = Planet[] ## Planets that phylogenetically preceded this one
 
     ## Planet that directly preceded this one
     parentplanet::Union{Planet, Nothing} = nothing
@@ -55,12 +44,10 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     parentcomposition::Union{Vector{Int}, Nothing} = nothing
 end
 
-# abstract type Life <: AbstractAgent end
-
-Base.@kwdef mutable struct Life<:AbstractAgent#{D,X<:AbstractFloat}#<: AbstractAgent
+Base.@kwdef mutable struct Life{D} <:AbstractAgent
     id::Int
-    pos::NTuple{D,<:AbstractFloat} where {D} #where {D,X<:AbstractFloat}
-    vel::NTuple{D,<:AbstractFloat} where {D}#where {D,X<:AbstractFloat}
+    pos::NTuple{D,<:AbstractFloat}  #where {D,X<:AbstractFloat}
+    vel::NTuple{D,<:AbstractFloat} #where {D,X<:AbstractFloat}
     parentplanet::Planet
     composition::Vector{Int} ## Taken from parentplanet
     destination::Union{Planet, Nothing}
@@ -209,23 +196,9 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
     kwargs...)
 
-    # @show extent
-    # @show pos
-    # @show typeof(pos)
-    # println()
-    # @show vel
-    # @show typeof(vel)
-    # @show kwargs
-    # println()
-    # println()
-
-    
-
     ## Calls the internal constructor. I still don't understand how this works and passes the correct keyword arguments to the correct places
     GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
 end
-
-
 
 # """
 #     Other kwargs of ABM besides properties (which fall into GalaxyProperties above)
@@ -332,7 +305,6 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     model
 
 end
-
 
 # galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(params)
 
