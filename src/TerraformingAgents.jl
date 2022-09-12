@@ -32,10 +32,10 @@ end
 ##  supertype(Planet) == AbstractAgent. I don't know. Parameteric structures seem to
 ##  make things much more confusing.
 
-Base.@kwdef mutable struct Planet<: AbstractAgent#{D,X<:AbstractFloat} <: AbstractAgent
+Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
-    pos::NTuple{D,<:AbstractFloat} where {D} #where {D,X<:AbstractFloat}
-    vel::NTuple{D,<:AbstractFloat} where {D}#where {D,X<:AbstractFloat}
+    pos::NTuple{D,<:AbstractFloat} #where {D} #where {D,X<:AbstractFloat}
+    vel::NTuple{D,<:AbstractFloat} #where {D}#where {D,X<:AbstractFloat}
 
     composition::Vector{Int} ## Represents the planet's genotype
     initialcomposition::Vector{Int} = composition ## Same as composition until it's terraformed
@@ -498,7 +498,7 @@ function update_planets_and_life!(model::ABM)
     
     life_to_kill = Life[]
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
-        life, planet = typeof(a1) == Planet ? (a2, a1) : (a1, a2)
+        life, planet = typeof(a1) <: Planet ? (a2, a1) : (a1, a2)
         if planet == life.destination
             terraform!(life, planet, model)
             push!(life_to_kill, life)
