@@ -72,6 +72,17 @@ random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
 filter_agents(model,agenttype) = filter(kv->kv.second isa agenttype, model.agents)
 
+function random_shell(rng, rmin, rmax)
+    valid_pos = false
+    while valid_pos == false
+        x,y,z = random_positions(rng, (rmax,rmax,rmax), 1)
+        sqrt(x^2+y^2+z^2) < rmax && sqrt(x^2+y^2+z^2) > rmin && (valid_pos = true)
+    end
+    x, y, z
+end
+    ## check if x, y, z less than maximum of spherical shell, and greater than minimum of spherical shell
+
+
 """
     All get passed to the ABM model as ABM model properties
 
@@ -514,7 +525,7 @@ Adds a planet to the galaxy that is within the interaction radius of a non-livin
 and outside the interaction radius of all living planets. Max attempts sets the limit of
 iterations in the while loop to find a valid planet position (default = 10*nplanets).
 
-TODO: UPDATE TO WORK IN NDIMENSIONS
+TODO: TEST IN 1, 2, 3 DIMENSIONS
 """
 function add_planet!(model::ABM, 
     min_dist=model.interaction_radius/10, 
@@ -523,16 +534,37 @@ function add_planet!(model::ABM,
 )
 
     id = nextid(model)
+    ndims = model.space.dims
+    ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions")
 
     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
     n_attempts = 0
     valid_pos = false
     while valid_pos == false && n_attempts < max_attempts
-        r = random_radius(model.rng, min_dist, max_dist)
-        theta = rand(model.rng)*2*π
+
+        ## Pick a random radius offset in the allowed interaction radius slice differently based on the dimension of the model
+        ##   There's surely a cleaner way to write this....
+        if ndims == 1
+            r = random_radius(model.rng, min_dist, max_dist)^2
+            r = r*Random.shuffle(model.rng, [-1,1])[1]
+        elseif ndims == 2
+            r = random_radius(model.rng, min_dist, max_dist)
+            theta = rand(model.rng)*2*π
+        elseif ndims == 3
+            x,y,z = random_shell(model.rng, min_dist, max_dist)
+        end
 
         for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
-            pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
+            
+            ## Apply the random radius offset to a specific planet's position differently based on the dimension of the model
+            if ndims == 1
+                pos = (planet.pos[1] + r,)
+            elseif ndims == 2
+                pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
+            elseif ndims == 3
+                pos = (planet.pos[1] + x, planet.pos[2] + y, planet.pos[3] + z)
+            end
+            
             if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
                 valid_pos = true
                 vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
