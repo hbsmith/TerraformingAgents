@@ -534,8 +534,8 @@ function add_planet!(model::ABM,
 )
 
     id = nextid(model)
-    ndims = model.space.dims
-    ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions")
+    ndims = length(model.space.dims)
+    ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions"))
 
     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
     n_attempts = 0
