@@ -43,6 +43,20 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     parentlife::Union{<:AbstractAgent, Nothing} = nothing
     parentcomposition::Union{Vector{Int}, Nothing} = nothing
 end
+function Base.show(io::IO, planet::Planet{D}) where {D}
+    s = "Planet 🪐 in $(D)D space with properties:."
+    s *= "\n id: $(planet.id)"
+    s *= "\n pos: $(planet.pos)"
+    s *= "\n vel: $(planet.vel)"
+    s *= "\n composition: $(planet.composition)"
+    s *= "\n initialcomposition: $(planet.initialcomposition)"
+    s *= "\n alive: $(planet.alive)"
+    s *= "\n claimed: $(planet.claimed)"
+    s *= "\n parentplanet: $(planet.parentplanet == nothing ? "No parentplanet" : string(planet.parentplanet.id)*" (id shown inplace of object)" )"
+    s *= "\n parentlife: $(planet.parentlife == nothing ? "No parentlife" : string(planet.parentlife.id)*" (id shown inplace of object)" )"
+    s *= "\n parentcomposition: $(planet.parentcomposition == nothing ? "No parentcomposition" : planet.parentcomposition)"
+    print(io, s)
+end
 
 Base.@kwdef mutable struct Life{D} <:AbstractAgent
     id::Int
@@ -52,6 +66,17 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     composition::Vector{Int} ## Taken from parentplanet
     destination::Union{Planet, Nothing}
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
+end
+function Base.show(io::IO, life::Life{D}) where {D}
+    s = "Life 🦠 in $(D)D space with properties:."
+    s *= "\n id: $(life.id)"
+    s *= "\n pos: $(life.pos)"
+    s *= "\n vel: $(life.vel)"
+    s *= "\n parentplanet: $(life.parentplanet.id) (id shown inplace of object)"
+    s *= "\n composition: $(life.composition)"
+    s *= "\n destination: $(life.destination == nothing ? "No destination" : string(life.destination.id)*" (id shown inplace of object)" )"
+    s *= "\n ancestors: $(length(life.ancestors) == 0 ? "No ancestors" : [i.id for i in life.ancestors])" ## Haven't tested the else condition here yet
+    print(io, s)
 end
 
 """
@@ -294,6 +319,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :nplanets => nplanets(params),
                         :maxcomp => params.maxcomp,
                         :compsize => params.compsize,
+                        :s => 0, ## track the model step number
                         :GalaxyParameters => params);
                         # :nlife => length(params.ool)
                         # :ool => params.ool,
@@ -484,6 +510,9 @@ function update_planets_and_life!(model::ABM)
     life_to_kill = Life[]
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
         life, planet = typeof(a1) <: Planet ? (a2, a1) : (a1, a2)
+        @show model.s
+        @show life
+        @show planet
         if planet == life.destination
             terraform!(life, planet, model)
             push!(life_to_kill, life)
@@ -506,11 +535,9 @@ Returns false if provided position lies within any life's interaction radii
 """
 function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
 
-    if exact==true
-        neighbor_ids = collect(nearby_ids_exact(pos,model,model.interaction_radius))
-    else
-        neighbor_ids = collect(nearby_ids(pos,model,model.interaction_radius))
-    end
+    exact==true ? neighbor_func = nearby_ids_exact : nearby_ids
+    
+    neighbor_ids = collect(neighbor_func(pos,model,model.interaction_radius))
 
     if length(filter(kv -> kv.first in neighbor_ids && kv.second isa Planet && kv.second.alive, model.agents)) > 0
         return true
@@ -527,7 +554,7 @@ Adds a planet to the galaxy that is within the interaction radius of a non-livin
 and outside the interaction radius of all living planets. Max attempts sets the limit of
 iterations in the while loop to find a valid planet position (default = 10*nplanets).
 
-TODO: TEST IN 1, 2, 3 DIMENSIONS
+TODO: TEST IN 1 DIMENSION
 """
 function add_planet!(model::ABM, 
     min_dist=model.interaction_radius/10, 
@@ -567,6 +594,7 @@ function add_planet!(model::ABM,
                 pos = (planet.pos[1] + x, planet.pos[2] + y, planet.pos[3] + z)
             end
             
+            ## Only add a planet to the galaxy if within the interaction radius of a non-living planet
             if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
                 valid_pos = true
                 vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
@@ -610,6 +638,7 @@ function galaxy_model_step!(model)
     
     update_planets_and_life!(model)
     update_nplanets!(model)
+    model.s += 1
 
 end
 
