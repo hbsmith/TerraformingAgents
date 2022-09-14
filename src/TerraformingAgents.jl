@@ -72,13 +72,15 @@ random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
 filter_agents(model,agenttype) = filter(kv->kv.second isa agenttype, model.agents)
 
-function random_shell(rng, rmin, rmax)
+function random_shell_position(rng, rmin, rmax)
     valid_pos = false
     while valid_pos == false
-        x,y,z = random_positions(rng, (rmax,rmax,rmax), 1)
-        sqrt(x^2+y^2+z^2) < rmax && sqrt(x^2+y^2+z^2) > rmin && (valid_pos = true)
+        x,y,z = random_positions(rng, (rmax,rmax,rmax), 1)[1]
+        # @show(x,y,z)
+        # @show sqrt(x^2+y^2+z^2)
+        (rmax > sqrt(x^2+y^2+z^2) > rmin) && (valid_pos = true)
+        return x, y, z
     end
-    x, y, z
 end
     ## check if x, y, z less than maximum of spherical shell, and greater than minimum of spherical shell
 
@@ -551,7 +553,7 @@ function add_planet!(model::ABM,
             r = random_radius(model.rng, min_dist, max_dist)
             theta = rand(model.rng)*2*π
         elseif ndims == 3
-            x,y,z = random_shell(model.rng, min_dist, max_dist)
+            x,y,z = random_shell_position(model.rng, min_dist, max_dist)
         end
 
         for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
