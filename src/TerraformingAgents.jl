@@ -55,6 +55,7 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     s *= "\n parentplanet: $(planet.parentplanet == nothing ? "No parentplanet" : string(planet.parentplanet.id)*" (id shown inplace of object)" )"
     s *= "\n parentlife: $(planet.parentlife == nothing ? "No parentlife" : string(planet.parentlife.id)*" (id shown inplace of object)" )"
     s *= "\n parentcomposition: $(planet.parentcomposition == nothing ? "No parentcomposition" : planet.parentcomposition)"
+    s *= "\n ancestors: $(length(planet.ancestors) == 0 ? "No ancestors" : [i.id for i in planet.ancestors])" ## Haven't tested the else condition here yet
     print(io, s)
 end
 
