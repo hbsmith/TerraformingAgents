@@ -16,8 +16,7 @@ export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!,
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
 
-Returns normalized direction from `start::AbstractAgent` to `finish::AbstractAgent` (not
-user facing).
+Return normalized direction from `start::AbstractAgent` to `finish::AbstractAgent`.
 """
 direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- start.pos
     δ ./ hypot(δ...)
@@ -26,7 +25,7 @@ end
 """
     distance(p1, p2)
 
-Returns euclidean distance between two points (not user facing).
+Return euclidean distance between two points.
 """
 distance(p1,p2) = hypot((p1 .- p2)...)
 
@@ -104,34 +103,55 @@ function Base.show(io::IO, life::Life{D}) where {D}
 end
 
 """
-Accomodates length(maxdims) number of dimensions (>0)
+    random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
 
-maxdims::a tuple of the maximum dimensions of the space
-n::number of random positions to generate
+Generate `n` random positions of dimension `D` within a tuple of maximum dimensions of the space given by `maxdim`.
 """
 function random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
     collect(zip([rand(rng, Uniform(0, imax), n) for imax in maxdims]...)) :: Vector{NTuple{length(maxdims), Float64}}
 end
 
+"""
+    default_velocities(D,n) :: Vector{NTuple{D, Float64}}
+
+Generate a vector of length `n` of `D` tuples, filled with 0s.
+"""
 default_velocities(D,n) = fill(Tuple([0.0 for i in 1:D]), n) :: Vector{NTuple{D, Float64}}
 
+"""
+    random_compositions(rng, maxcomp, compsize, n)
+
+Generate a `compsize` x `n` matrix of random integers between 1:`maxcomp`.
+"""
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
+"""
+    random_radius(rng, rmin, rmax)
+
+Generate a random radius between `rmin` and `rmax`.
+"""
 random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
+"""
+    filter_agents(model,agenttype)
+
+Return only agents of type `agenttype` from `model`.
+"""
 filter_agents(model,agenttype) = filter(kv->kv.second isa agenttype, model.agents)
 
+"""
+    random_shell_position(rng, rmin, rmax)
+
+Generate a random position within a spherical shell with thickness `rmax`-`rmin`.
+"""
 function random_shell_position(rng, rmin, rmax)
     valid_pos = false
     while valid_pos == false
         x,y,z = random_positions(rng, (rmax,rmax,rmax), 1)[1]
-        # @show(x,y,z)
-        # @show sqrt(x^2+y^2+z^2)
         (rmax > sqrt(x^2+y^2+z^2) > rmin) && (valid_pos = true)
         return x, y, z
     end
 end
-    ## check if x, y, z less than maximum of spherical shell, and greater than minimum of spherical shell
 
 
 """
