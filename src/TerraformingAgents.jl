@@ -375,19 +375,28 @@ end
 #     end
 
 # end
+"""
+    nplanets(params::GalaxyParameters)
 
+Return the number of planets in `params`.
+"""
 nplanets(params::GalaxyParameters) = length(params.pos)
 
 """
-Assuming that the provided position is for the original extent size (of extent./m = original_extent), find 
-    the equivilent position at the center of current extent (original_extent.*m)
+
+    center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D}
+
+Assuming that the provided position is for the original `extent` size (of extent./m = original_extent), 
+return the equivilent position at the center of current `extent` (original_extent.*m).
 """
-center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) #pos.+(
+center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) 
 
 """
     galaxy_model_setup(params::GalaxyParameters)
 
-Sets up the galaxy model.
+Set up the galaxy model (planets and life) according to `params`. 
+
+Calls [`galaxy_planet_setup`](@ref) and [`galaxy_life_setup`](@ref).
 """
 function galaxy_model_setup(params::GalaxyParameters)
 
@@ -397,6 +406,13 @@ function galaxy_model_setup(params::GalaxyParameters)
 
 end
 
+"""
+    galaxy_planet_setup(params::GalaxyParameters)
+
+Set up the galaxy's `Planet`s according to `params`.
+
+Called by [`galaxy_model_setup`](@ref).
+"""
 function galaxy_planet_setup(params::GalaxyParameters)
 
     extent_multiplier = 3
@@ -436,36 +452,36 @@ function galaxy_planet_setup(params::GalaxyParameters)
 
 end
 
+"""
+    galaxy_life_setup(params::GalaxyParameters)
+
+Set up the galaxy's `Planet`s according to `params`.
+
+Called by [`galaxy_model_setup`](@ref).
+"""
 function galaxy_life_setup(model, params::GalaxyParameters)
 
     agent = isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
     spawnlife!(agent, model)
-    # index!(model)
     model
 
 end
 
-# galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(params)
-
-# function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
-#     galaxy_model_setup(rng, GalaxyParameters(rng, args..., kwargs...))
-# end
-
 """
-    initialize_planets!(model, params::GalaxyParameters)
+    initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
 
-Adds Planets (not user facing).
+Initialize `Planet`s in the galaxy.
+
+`Planet` positions are adjusted to `center_position`, based on `extent_multiplier`.
+
+This acts to increase the space seen by the user when plotting, and put the simulation in the center of the space, 
+so that there is room to add more planets.
 
 Called by [`galaxy_model_setup`](@ref).
 """
 function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
         id = nextid(model)
-        # @show params.pos[i]
-        # @show typeof(params.pos[i])
-        # @show params.extent
-        # @show typeof(params.extent)
-        # println()
         pos = center_position(params.pos[i], params.extent, extent_multiplier)
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
@@ -480,8 +496,7 @@ end
 """
     compatibleplanets(planet::Planet, model::ABM)
 
-Returns `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation (not user
-facing).
+Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation.
 """
 function compatibleplanets(planet::Planet, model::ABM)
     function iscandidate((_, p))
@@ -502,7 +517,11 @@ end
 """
     nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{PLanet})
 
-Returns `Planet` within `candidateplanets` that is nearest to `planet `(not user facing).
+Returns `Planet` within `candidateplanets` that is nearest to `planet `.
+
+Used whenever new life is spawned.
+
+See [`spawnlife!`](@ref)
 """
 function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet})
 
@@ -522,9 +541,9 @@ end
 """
     spawnlife!(planet::Planet, model::ABM; ancestors::Vector{Life} = Life[])
 
-Spawns `Life` (not user facing).
+Spawns `Life` at `planet`.
 
-Called by [`galaxy_model_setup`](@ref).
+Called by [`galaxy_model_setup`](@ref) and [`terraform!`](@ref).
 """
 function spawnlife!(
     planet::Planet,
@@ -569,7 +588,14 @@ end
 """
     mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
 
-Rounds element-averaged composition (not user facing).
+Default composition mixing function (`compmix_func`). Rounds element-averaged composition between two compositon vectors.
+
+Can be overridden by providing a custom `compmix_func` when setting up `GalaxyParameters`.
+
+Custom function to use for generating terraformed `Planet`'s composition must likewise take as input two valid composition 
+vectors, and return one valid composition vector.  
+
+See [`GalaxyParameters`](@ref).
 """
 function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
     ## Simple for now; Rounding goes to nearest even number
@@ -585,6 +611,8 @@ existing `life` and terraforms an exsiting non-alive `planet` (not user facing).
 - Update the `planet` to `alive=true`
 - Update the `planet`'s `ancestors`, `parentplanet`, `parentlife`, and `parentcomposition`
 - Call `spawnlife!` to send out `Life` from `planet`.
+
+Called by [`galaxy_agent_step!`](@ref).
 """
 function terraform!(life::Life, planet::Planet, model::ABM)
 
@@ -603,7 +631,7 @@ end
 """
     pos_is_inside_alive_radius(pos::Tuple, model::ABM)
 
-Returns false if provided position lies within any life's interaction radii    
+Return `false` if provided `pos` lies within any life's interaction radii    
 """
 function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
 
@@ -625,6 +653,8 @@ end
 Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
 and outside the interaction radius of all living planets. Max attempts sets the limit of
 iterations in the while loop to find a valid planet position (default = 10*nplanets).
+
+Right now this is only called when using the interactive application, via changing the slider and resetting the simulation.
 
 TODO: TEST IN 1 DIMENSION
 """
@@ -692,7 +722,7 @@ end
 """
     update_nplanets!(model::ABM)
 
-Adds planets to the model at random positions.
+Adds planets to the `model` at random positions if the interactive slider is changed.
 """
 function update_nplanets!(model)
     while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
@@ -703,8 +733,10 @@ end
 """
     galaxy_model_step!(model)
 
-Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and
-`terraform`s a `Planet` if a `Life` has reached its destination; then kills that `Life`.
+Custom `model_step` to be called by `Agents.step!`. 
+
+Notes:
+Right now this only updates the number of planets in the simulation if the interactive slider is changed.
 """
 function galaxy_model_step!(model)
     
@@ -718,15 +750,14 @@ end
 
 Custom `agent_step!` for Life. 
 
-    - Moves life
-    - If life is within 1 step of destination planet, `terraform!`s life's destination, and kills life.
+    - Moves `life`
+    - If `life` is within 1 step of destination planet, `terraform!`s life's destination, and kills `life`.
 
-Avoids using nearby_ids because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
+Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
 """
 function galaxy_agent_step!(life::Life, model)
 
     move_agent!(life, model, model.dt)
-
 
     life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
     
