@@ -23,8 +23,20 @@ direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- 
     δ ./ hypot(δ...)
 end
 
+"""
+    distance(p1, p2)
+
+Returns euclidean distance between two points (not user facing).
+"""
 distance(p1,p2) = hypot((p1 .- p2)...)
 
+"""
+    Planet{D} <: AbstractAgent
+
+One of the two Agent types. Can be terraformed by `Life`. Exists in space of dimension `D`.
+
+See also [`Life`](@ref)
+"""
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
     pos::NTuple{D,<:AbstractFloat} 
@@ -61,6 +73,13 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     print(io, s)
 end
 
+"""
+    Life{D} <: AbstractAgent
+
+One of the two Agent types. Spawns from, travels to, and terraforms `Planet`s. Exists in space of dimension `D`.
+
+See also [`Planet`](@ref)
+"""
 Base.@kwdef mutable struct Life{D} <:AbstractAgent
     id::Int
     pos::NTuple{D,<:AbstractFloat}  #where {D,X<:AbstractFloat}
