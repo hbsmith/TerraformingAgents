@@ -170,18 +170,18 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
 - `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
-- `compmix_func::Function = mixcompositions`: `Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
+- `compmix_func::Function = mixcompositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
 - `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Int`: the max value of any element within the composition vectors.
 - `compsize::Int`: the length of the compositon vectors.
 - `planetcompositions::Array{<:Int, 2}`: an array of default compositon vectors.
 
-Notes:
-`vel` defaults to 0 for all `Planet`s.
-`maxcomp` is used for any planets that are not specified when the model is initialized.
-`planetcompositions` are random for any planets that are not specified when the model is initialized.
-`compsize` must match any compositions provided.
+# Notes:
+- `vel` defaults to 0 for all `Planet`s.
+- `maxcomp` is used for any planets that are not specified when the model is initialized.
+- `planetcompositions` are random for any planets that are not specified when the model is initialized.
+- `compsize` must match any compositions provided.
 ...
 """
 mutable struct GalaxyParameters
@@ -265,7 +265,7 @@ end
 
 Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, plus any number of optional kwargs.
 
-Notes:
+# Notes:
 Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
 """
 function GalaxyParameters(rng::AbstractRNG;
@@ -298,7 +298,7 @@ end
 
 The simplist way to initialize. Can be called with only `nplanets`, plus any number of optional kwargs.
 
-Notes:
+# Notes:
 Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
 """
 function GalaxyParameters(nplanets::Int; kwargs...)
@@ -318,10 +318,10 @@ end
         planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
         kwargs...)
 
-The main external constructor for `GalaxyParameters`` (other external constructors call it). Sets default values for 
+The main external constructor for `GalaxyParameters` (other external constructors call it). Sets default values for 
 `extent`, `maxcomp`, `compsize`, `pos` (random), `vel` (0), `planetcompositions` (random). Allows any number of optional kwargs.
 
-Notes:
+# Notes:
 Calls the internal constructor.
 """
 function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
@@ -735,7 +735,7 @@ end
 
 Custom `model_step` to be called by `Agents.step!`. 
 
-Notes:
+# Notes:
 Right now this only updates the number of planets in the simulation if the interactive slider is changed.
 """
 function galaxy_model_step!(model)
