@@ -509,29 +509,9 @@ function update_planets_and_life!(model::ABM)
     ##   miss some interactions
     
     life_to_kill = Life[]
-    println()
-    println("=============================================================")
-    @show model.s
-    life_obj = collect(values(filter(x->isa(x.second,Life),model.agents)))[1]
-    println("INTERACTING PAIRS EXACT")
-    ipiterator = interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
-    println([(i.id,j.id) for (i,j) in ipiterator])
-    println("life's nearby_ids_exact")
-    println(collect(Agents.nearby_ids_exact(life_obj, model, model.interaction_radius)))
-
-    println("INTERACTING PAIRS INEXACT")
-    ipiterator_inexact = interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids)
-    println([(i.id,j.id) for (i,j) in ipiterator_inexact])
-    println("life's nearby_ids")
-    println(collect(Agents.nearby_ids(life_obj, model, model.interaction_radius)))
-
 
     for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
         life, planet = typeof(a1) <: Planet ? (a2, a1) : (a1, a2)
-        println()
-        println("PLANET AND LIFE IN PAIR")
-        @show life
-        @show planet
         if planet == life.destination
             terraform!(life, planet, model)
             push!(life_to_kill, life)
