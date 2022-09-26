@@ -444,9 +444,11 @@ function spawnlife!(
     if length(candidateplanets) == 0
         println("Life on Planet $(planet.id) has no compatible planets. It's the end of its line.")
         destinationplanet = nothing
+        destination_distance = nothing
         vel = planet.pos .* 0.0
     else
         destinationplanet = nearestcompatibleplanet(planet, candidateplanets)
+        destination_distance = distance(destinationplanet.pos,planet.pos)
         vel = direction(planet, destinationplanet) .* model.lifespeed
     end
 
@@ -457,7 +459,7 @@ function spawnlife!(
         parentplanet = planet,
         composition = planet.composition,
         destination = destinationplanet,
-        destination_distance = distance(destinationplanet.pos,planet.pos),
+        destination_distance = destination_distance,
         ancestors
     ) ## Only "first" life won't have ancestors
 
@@ -630,13 +632,14 @@ function galaxy_agent_step!(life::Life, model)
 
     move_agent!(life, model, model.dt)
 
-    life.destination_distance = distance(life.pos, life.destination.pos)
-    
-    if life.destination_distance < model.dt*hypot((life.vel)...)
 
+    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
+    
+    if life.destination == nothing
+        kill_agent!(life, model)
+    elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
         kill_agent!(life, model)
-
     end
 
 end

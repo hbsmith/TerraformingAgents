@@ -199,10 +199,10 @@ end
 function TestAgentDiesAtCorrectPlanet()
     @testset "Agent dies at correct planet" begin
         
-        agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)  ## if model.dt is 10, and lifespeed = 0.2, then the agent goes .2 per step
+        # agent_step!(agent, model) = move_agent!(agent, model, model.dt/10)  ## if model.dt is 10, and lifespeed = 0.2, then the agent goes .2 per step
         galaxyparams = TerraformingAgents.GalaxyParameters(
             MersenneTwister(3141), 
-            dt = 1.0,
+            dt = 0.1,
             lifespeed = 0.2,
             interaction_radius = 0.02,
             allowed_diff = 3,
@@ -217,7 +217,7 @@ function TestAgentDiesAtCorrectPlanet()
         n = 2
 
         for i in 1:n:20
-            step!(model, agent_step!, galaxy_model_step!, n)
+            step!(model, galaxy_agent_step!, galaxy_model_step!, n)
             steps+=n
             lifeagents = filter(p->isa(p.second,Life),model.agents)
 
@@ -225,8 +225,8 @@ function TestAgentDiesAtCorrectPlanet()
             steps == 4 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
             steps == 6 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
             steps == 8 && @test 4 in keys(model.agents) && 5 ∉ keys(model.agents)
-            steps == 10 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
-            steps == 12 && @test 4 ∉ keys(model.agents) && 5 in keys(model.agents)
+            steps == 10 && @test 4 ∉ keys(model.agents) 
+            steps == 12 && @test 4 ∉ keys(model.agents) 
         end
 
     end
@@ -282,7 +282,6 @@ end
 function TestPlanetMantelTest()
     @testset "PlanetMantelTest" begin
         
-        agent_step!(agent, model) = move_agent!(agent, model, model.dt)
         rng = MersenneTwister(3141)
         galaxyparams = GalaxyParameters(
             rng,
@@ -294,8 +293,6 @@ function TestPlanetMantelTest()
             compsize = 6)
         model = galaxy_model_setup(galaxyparams)
         corr_coeff, p_value = TerraformingAgents.PlanetMantelTest(model)
-        println(corr_coeff)
-        println(p_value)
 
         @test_nowarn corr_coeff
 
@@ -306,7 +303,6 @@ function TestPropogationOfModelRNG()
     @testset "Propogation of model rng" begin
         
         ## First model creation
-        agent_step!(agent, model) = move_agent!(agent, model, model.dt)
         rng = MersenneTwister(3141)
         galaxyparams = GalaxyParameters(
             rng,
