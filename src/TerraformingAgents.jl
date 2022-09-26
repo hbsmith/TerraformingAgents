@@ -116,10 +116,34 @@ end
 
 
 """
-    All get passed to the ABM model as ABM model properties
+    GalaxyParameters
+    
+Defines the AgentBasedModel, Space, and Galaxy
 
-maxcomp is used for any planets that are not specified when the model is initialized.
-compsize must match any compositions provided.
+# Arguments
+- `rng::AbstractRNG = Random.default_rng()`: the rng to pass to all functions.
+- `extent::NTuple{D,<:Real} = (1.0, 1.0)`: the extent of the `Agents` space.
+- `ABMkwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `Agents.AgentBasedModel`.
+- `SpaceArgs::Union{Dict{Symbol},Nothing} = nothing`: args to pass to `Agents.ContinuousSpace`.
+- `SpaceKwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `Agents.ContinuousSpace`.
+- `dt::Real = 10`: `Planet`s move dt*vel every step; `Life` moves dt*lifespeed every step. 
+- `lifespeed::Real = 0.2`: velocity of `Life`.
+- `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
+- `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
+- `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
+- `compmix_func::Function = mixcompositions`: `Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
+- `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
+- `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
+- `maxcomp::Int`: the max value of any element within the composition vectors.
+- `compsize::Int`: the length of the compositon vectors.
+- `planetcompositions::Array{<:Int, 2}`: an array of default compositon vectors.
+
+Notes:
+`vel` defaults to 0 for all `Planet`s.
+`maxcomp` is used for any planets that are not specified when the model is initialized.
+`planetcompositions` are random for any planets that are not specified when the model is initialized.
+`compsize` must match any compositions provided.
+...
 """
 mutable struct GalaxyParameters
     rng # not part of ABMkwargs because it can previously be used for other things
@@ -193,15 +217,23 @@ mutable struct GalaxyParameters
 end
 
 
-## Requires one of pos, vel, planetcompositions
-## Would it be more clear to write this as 3 separate functions?
+"""
+    GalaxyParameters(rng::AbstractRNG;
+        pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+        vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+        planetcompositions::Union{Array{<:Integer,2}, Nothing} = nothing,
+        kwargs...) where {D}
+
+Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, plus any number of optional kwargs.
+
+Notes:
+Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
+"""
 function GalaxyParameters(rng::AbstractRNG;
     pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
     vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
     planetcompositions::Union{Array{<:Integer,2}, Nothing} = nothing,
     kwargs...) where {D}
-
-    # println("rng;")
 
     if !isnothing(pos)
         nplanets = length(pos)
@@ -220,18 +252,39 @@ function GalaxyParameters(rng::AbstractRNG;
     !isnothing(vel) && (args[:vel] = vel)
     !isnothing(planetcompositions) && (args[:planetcompositions] = planetcompositions)
 
-    ## Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
     GalaxyParameters(rng, nplanets; args...)
 end
+"""
+    GalaxyParameters(nplanets::Int; kwargs...)
 
+The simplist way to initialize. Can be called with only `nplanets`, plus any number of optional kwargs.
+
+Notes:
+Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
+"""
 function GalaxyParameters(nplanets::Int; kwargs...)
-    ## Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
     GalaxyParameters(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
 end
 
 ## Main external constructor for GalaxyParameters (other external constructors call it)
 ## Create with random pos, vel, planetcompositions
 ## Properties of randomized planetcompositions can be changed with new fields maxcomp, compsize
+"""
+    GalaxyParameters(rng::AbstractRNG, nplanets::Int;
+        extent=(1.0, 1.0), 
+        maxcomp=10, 
+        compsize=10,
+        pos=random_positions(rng, extent, nplanets),
+        vel=default_velocities(length(extent), nplanets),
+        planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
+        kwargs...)
+
+The main external constructor for `GalaxyParameters`` (other external constructors call it). Sets default values for 
+`extent`, `maxcomp`, `compsize`, `pos` (random), `vel` (0), `planetcompositions` (random). Allows any number of optional kwargs.
+
+Notes:
+Calls the internal constructor.
+"""
 function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     extent=(1.0, 1.0), 
     maxcomp=10, 
