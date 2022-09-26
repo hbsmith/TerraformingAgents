@@ -504,35 +504,6 @@ function terraform!(life::Life, planet::Planet, model::ABM)
 end
 
 """
-    update_planets_and_life(model::ABM)
-
-Checks pairs of planets, identifying which should be terraformed. Kills life that
-terraforms.  
-"""
-function update_planets_and_life!(model::ABM)
-    ## I need to scale the interaction radius by dt and the velocity of life or else I can
-    ##   miss some interactions
-    
-    life_to_kill = Life[]
-
-    for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
-        life, planet = typeof(a1) <: Planet ? (a2, a1) : (a1, a2)
-        if planet == life.destination
-            terraform!(life, planet, model)
-            push!(life_to_kill, life)
-        end
-
-    end
-
-    for life in life_to_kill
-        kill_agent!(life, model)
-    end
-
-    model
-
-end
-
-"""
     pos_is_inside_alive_radius(pos::Tuple, model::ABM)
 
 Returns false if provided position lies within any life's interaction radii    
@@ -640,7 +611,6 @@ Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pair
 """
 function galaxy_model_step!(model)
     
-    update_planets_and_life!(model)
     update_nplanets!(model)
     model.s += 1
 
@@ -651,6 +621,9 @@ end
 
 Custom `agent_step!` for Life. 
 
+    - Moves life
+    - If life is within 1 step of destination planet, `terraform!`s life's destination, and kills life.
+    
 Avoids using nearby_ids because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
 """
 function galaxy_agent_step!(life::Life, model)
