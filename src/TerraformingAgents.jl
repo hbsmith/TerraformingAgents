@@ -23,6 +23,8 @@ direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- 
     δ ./ hypot(δ...)
 end
 
+distance(p1,p2) = hypot(p1 .- p2)
+
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
     pos::NTuple{D,<:AbstractFloat} 
@@ -67,6 +69,7 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     composition::Vector{Int} ## Taken from parentplanet
     destination::Union{Planet, Nothing}
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
+    destination_distance::Union{Real, Nothing}
 end
 function Base.show(io::IO, life::Life{D}) where {D}
     s = "Life 🦠 in $(D)D space with properties:."
@@ -76,6 +79,7 @@ function Base.show(io::IO, life::Life{D}) where {D}
     s *= "\n parentplanet: $(life.parentplanet.id) (id shown inplace of object)"
     s *= "\n composition: $(life.composition)"
     s *= "\n destination: $(life.destination == nothing ? "No destination" : string(life.destination.id)*" (id shown inplace of object)" )"
+    s *= "\n destination_distance: $(life.destination_distance)"
     s *= "\n ancestors: $(length(life.ancestors) == 0 ? "No ancestors" : [i.id for i in life.ancestors])" ## Haven't tested the else condition here yet
     print(io, s)
 end
@@ -453,6 +457,7 @@ function spawnlife!(
         parentplanet = planet,
         composition = planet.composition,
         destination = destinationplanet,
+        destination_distance = distance(planet.pos,life.pos)
         ancestors
     ) ## Only "first" life won't have ancestors
 
@@ -628,7 +633,7 @@ function update_nplanets!(model)
 end
 
 """
-    galaxy_model_step(model)
+    galaxy_model_step!(model)
 
 Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and
 `terraform`s a `Planet` if a `Life` has reached its destination; then kills that `Life`.
@@ -640,6 +645,30 @@ function galaxy_model_step!(model)
     model.s += 1
 
 end
+
+"""
+    galaxy_agent_step!(life::Life, model)
+
+Custom `agent_step!` for Life. 
+
+Avoids using nearby_ids because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
+"""
+function galaxy_agent_step!(life::Life, model)
+
+    move_agent!(life, model, model.dt)
+
+    life.destination_distance = distance(life.pos, life.destination.pos)
+    
+    if life.destination_distance < model.dt*life.vel
+
+        terraform!(life, life.destination, model)
+        kill_agent!(life, model)
+
+    end
+
+end
+
+
 
 #######################################
 ## Distances, Correlations and permutations
