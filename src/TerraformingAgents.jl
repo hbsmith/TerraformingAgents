@@ -132,6 +132,7 @@ mutable struct GalaxyParameters
     interaction_radius
     allowed_diff
     ool
+    compmix_func
     pos
     vel
     maxcomp
@@ -149,6 +150,7 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
+        compmix_func::Function = mixcompositions,
         pos::Vector{<:NTuple{D,Real}},
         vel::Vector{<:NTuple{D,Real}},
         maxcomp::Int,
@@ -184,7 +186,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, compmix_func, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -325,7 +327,8 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :maxcomp => params.maxcomp,
                         :compsize => params.compsize,
                         :s => 0, ## track the model step number
-                        :GalaxyParameters => params);
+                        :GalaxyParameters => params,
+                        :compmix_func => params.compmix_func);
                         # :nlife => length(params.ool)
                         # :ool => params.ool,
                         # :pos => params.pos,
@@ -494,7 +497,7 @@ existing `life` and terraforms an exsiting non-alive `planet` (not user facing).
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
-    planet.composition = mixcompositions(planet.composition, life.composition)
+    planet.composition = model.compmix_func(planet.composition, life.composition)
     planet.alive = true
     push!(planet.ancestors, life.parentplanet)
     planet.parentplanet = life.parentplanet
