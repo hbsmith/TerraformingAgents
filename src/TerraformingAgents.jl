@@ -11,7 +11,7 @@ using Distributions: Uniform
 using NearestNeighbors
 using Distances
 
-export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters, filter_agents
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -23,7 +23,7 @@ direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- 
     δ ./ hypot(δ...)
 end
 
-distance(p1,p2) = hypot(p1 .- p2)
+distance(p1,p2) = hypot((p1 .- p2)...)
 
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
@@ -457,7 +457,7 @@ function spawnlife!(
         parentplanet = planet,
         composition = planet.composition,
         destination = destinationplanet,
-        destination_distance = distance(planet.pos,life.pos)
+        destination_distance = distance(destinationplanet.pos,planet.pos),
         ancestors
     ) ## Only "first" life won't have ancestors
 
@@ -623,7 +623,7 @@ Custom `agent_step!` for Life.
 
     - Moves life
     - If life is within 1 step of destination planet, `terraform!`s life's destination, and kills life.
-    
+
 Avoids using nearby_ids because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
 """
 function galaxy_agent_step!(life::Life, model)
@@ -632,12 +632,24 @@ function galaxy_agent_step!(life::Life, model)
 
     life.destination_distance = distance(life.pos, life.destination.pos)
     
-    if life.destination_distance < model.dt*life.vel
+    if life.destination_distance < model.dt*hypot((life.vel)...)
 
         terraform!(life, life.destination, model)
         kill_agent!(life, model)
 
     end
+
+end
+
+"""
+    galaxy_agent_step!(planet::Planet, model)
+
+Custom `agent_step!` for Planet. Doesn't do anything. Only needed because we have an `agent_step!`
+function for `Life`.
+"""
+function galaxy_agent_step!(planet::Planet, model)
+
+    move_agent!(planet, model, model.dt)
 
 end
 
