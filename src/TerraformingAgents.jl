@@ -11,18 +11,31 @@ using Distributions: Uniform
 using NearestNeighbors
 using Distances
 
-export Planet, Life, galaxy_model_setup, galaxy_model_step!, GalaxyParameters, filter_agents
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
 
-Returns normalized direction from `start::AbstractAgent` to `finish::AbstractAgent` (not
-user facing).
+Return normalized direction from `start::AbstractAgent` to `finish::AbstractAgent`.
 """
 direction(start::AbstractAgent, finish::AbstractAgent) = let δ = finish.pos .- start.pos
     δ ./ hypot(δ...)
 end
 
+"""
+    distance(p1, p2)
+
+Return euclidean distance between two points.
+"""
+distance(p1,p2) = hypot((p1 .- p2)...)
+
+"""
+    Planet{D} <: AbstractAgent
+
+One of the two Agent types. Can be terraformed by `Life`. Exists in space of dimension `D`.
+
+See also [`Life`](@ref)
+"""
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
     pos::NTuple{D,<:AbstractFloat} 
@@ -59,6 +72,13 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     print(io, s)
 end
 
+"""
+    Life{D} <: AbstractAgent
+
+One of the two Agent types. Spawns from, travels to, and terraforms `Planet`s. Exists in space of dimension `D`.
+
+See also [`Planet`](@ref)
+"""
 Base.@kwdef mutable struct Life{D} <:AbstractAgent
     id::Int
     pos::NTuple{D,<:AbstractFloat}  #where {D,X<:AbstractFloat}
@@ -67,6 +87,7 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     composition::Vector{Int} ## Taken from parentplanet
     destination::Union{Planet, Nothing}
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
+    destination_distance::Union{Real, Nothing}
 end
 function Base.show(io::IO, life::Life{D}) where {D}
     s = "Life 🦠 in $(D)D space with properties:."
@@ -76,46 +97,92 @@ function Base.show(io::IO, life::Life{D}) where {D}
     s *= "\n parentplanet: $(life.parentplanet.id) (id shown inplace of object)"
     s *= "\n composition: $(life.composition)"
     s *= "\n destination: $(life.destination == nothing ? "No destination" : string(life.destination.id)*" (id shown inplace of object)" )"
+    s *= "\n destination_distance: $(life.destination_distance)"
     s *= "\n ancestors: $(length(life.ancestors) == 0 ? "No ancestors" : [i.id for i in life.ancestors])" ## Haven't tested the else condition here yet
     print(io, s)
 end
 
 """
-Accomodates length(maxdims) number of dimensions (>0)
+    random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
 
-maxdims::a tuple of the maximum dimensions of the space
-n::number of random positions to generate
+Generate `n` random positions of dimension `D` within a tuple of maximum dimensions of the space given by `maxdim`.
 """
 function random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
     collect(zip([rand(rng, Uniform(0, imax), n) for imax in maxdims]...)) :: Vector{NTuple{length(maxdims), Float64}}
 end
 
+"""
+    default_velocities(D,n) :: Vector{NTuple{D, Float64}}
+
+Generate a vector of length `n` of `D` tuples, filled with 0s.
+"""
 default_velocities(D,n) = fill(Tuple([0.0 for i in 1:D]), n) :: Vector{NTuple{D, Float64}}
 
+"""
+    random_compositions(rng, maxcomp, compsize, n)
+
+Generate a `compsize` x `n` matrix of random integers between 1:`maxcomp`.
+"""
 random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
 
+"""
+    random_radius(rng, rmin, rmax)
+
+Generate a random radius between `rmin` and `rmax`.
+"""
 random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
+"""
+    filter_agents(model,agenttype)
+
+Return only agents of type `agenttype` from `model`.
+"""
 filter_agents(model,agenttype) = filter(kv->kv.second isa agenttype, model.agents)
 
+"""
+    random_shell_position(rng, rmin, rmax)
+
+Generate a random position within a spherical shell with thickness `rmax`-`rmin`.
+"""
 function random_shell_position(rng, rmin, rmax)
     valid_pos = false
     while valid_pos == false
         x,y,z = random_positions(rng, (rmax,rmax,rmax), 1)[1]
-        # @show(x,y,z)
-        # @show sqrt(x^2+y^2+z^2)
         (rmax > sqrt(x^2+y^2+z^2) > rmin) && (valid_pos = true)
         return x, y, z
     end
 end
-    ## check if x, y, z less than maximum of spherical shell, and greater than minimum of spherical shell
 
 
 """
-    All get passed to the ABM model as ABM model properties
+    GalaxyParameters
+    
+Defines the AgentBasedModel, Space, and Galaxy
 
-maxcomp is used for any planets that are not specified when the model is initialized.
-compsize must match any compositions provided.
+# Arguments
+- `rng::AbstractRNG = Random.default_rng()`: the rng to pass to all functions.
+- `extent::NTuple{D,<:Real} = (1.0, 1.0)`: the extent of the `Agents` space.
+- `ABMkwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `Agents.AgentBasedModel`.
+- `SpaceArgs::Union{Dict{Symbol},Nothing} = nothing`: args to pass to `Agents.ContinuousSpace`.
+- `SpaceKwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `Agents.ContinuousSpace`.
+- `dt::Real = 10`: `Planet`s move dt*vel every step; `Life` moves dt*lifespeed every step. 
+- `lifespeed::Real = 0.2`: velocity of `Life`.
+- `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
+- `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
+- `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
+- `compmix_func::Function = mixcompositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
+- `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
+- `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
+- `maxcomp::Int`: the max value of any element within the composition vectors.
+- `compsize::Int`: the length of the compositon vectors.
+- `planetcompositions::Array{<:Int, 2}`: an array of default compositon vectors.
+
+# Notes:
+- `vel` defaults to 0 for all `Planet`s.
+- `maxcomp` is used for any planets that are not specified when the model is initialized.
+- `planetcompositions` are random for any planets that are not specified when the model is initialized.
+- `compsize` must match any compositions provided.
+...
 """
 mutable struct GalaxyParameters
     rng # not part of ABMkwargs because it can previously be used for other things
@@ -128,6 +195,7 @@ mutable struct GalaxyParameters
     interaction_radius
     allowed_diff
     ool
+    compmix_func
     pos
     vel
     maxcomp
@@ -145,6 +213,7 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
+        compmix_func::Function = mixcompositions,
         pos::Vector{<:NTuple{D,Real}},
         vel::Vector{<:NTuple{D,Real}},
         maxcomp::Int,
@@ -180,22 +249,30 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, compmix_func, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
 end
 
 
-## Requires one of pos, vel, planetcompositions
-## Would it be more clear to write this as 3 separate functions?
+"""
+    GalaxyParameters(rng::AbstractRNG;
+        pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+        vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+        planetcompositions::Union{Array{<:Integer,2}, Nothing} = nothing,
+        kwargs...) where {D}
+
+Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, plus any number of optional kwargs.
+
+# Notes:
+Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
+"""
 function GalaxyParameters(rng::AbstractRNG;
     pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
     vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
     planetcompositions::Union{Array{<:Integer,2}, Nothing} = nothing,
     kwargs...) where {D}
-
-    # println("rng;")
 
     if !isnothing(pos)
         nplanets = length(pos)
@@ -214,18 +291,39 @@ function GalaxyParameters(rng::AbstractRNG;
     !isnothing(vel) && (args[:vel] = vel)
     !isnothing(planetcompositions) && (args[:planetcompositions] = planetcompositions)
 
-    ## Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
     GalaxyParameters(rng, nplanets; args...)
 end
+"""
+    GalaxyParameters(nplanets::Int; kwargs...)
 
+The simplist way to initialize. Can be called with only `nplanets`, plus any number of optional kwargs.
+
+# Notes:
+Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
+"""
 function GalaxyParameters(nplanets::Int; kwargs...)
-    ## Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
     GalaxyParameters(Random.default_rng(), nplanets; kwargs...) ## If it's ", kwargs..." instead of "; kwargs...", then I get an error from running something like this: TerraformingAgents.GalaxyParameters(1;extent=(1.0,1.0))
 end
 
 ## Main external constructor for GalaxyParameters (other external constructors call it)
 ## Create with random pos, vel, planetcompositions
 ## Properties of randomized planetcompositions can be changed with new fields maxcomp, compsize
+"""
+    GalaxyParameters(rng::AbstractRNG, nplanets::Int;
+        extent=(1.0, 1.0), 
+        maxcomp=10, 
+        compsize=10,
+        pos=random_positions(rng, extent, nplanets),
+        vel=default_velocities(length(extent), nplanets),
+        planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
+        kwargs...)
+
+The main external constructor for `GalaxyParameters` (other external constructors call it). Sets default values for 
+`extent`, `maxcomp`, `compsize`, `pos` (random), `vel` (0), `planetcompositions` (random). Allows any number of optional kwargs.
+
+# Notes:
+Calls the internal constructor.
+"""
 function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     extent=(1.0, 1.0), 
     maxcomp=10, 
@@ -277,19 +375,28 @@ end
 #     end
 
 # end
+"""
+    nplanets(params::GalaxyParameters)
 
+Return the number of planets in `params`.
+"""
 nplanets(params::GalaxyParameters) = length(params.pos)
 
 """
-Assuming that the provided position is for the original extent size (of extent./m = original_extent), find 
-    the equivilent position at the center of current extent (original_extent.*m)
+
+    center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D}
+
+Assuming that the provided position is for the original `extent` size (of extent./m = original_extent), 
+return the equivilent position at the center of current `extent` (original_extent.*m).
 """
-center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) #pos.+(
+center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) 
 
 """
     galaxy_model_setup(params::GalaxyParameters)
 
-Sets up the galaxy model.
+Set up the galaxy model (planets and life) according to `params`. 
+
+Calls [`galaxy_planet_setup`](@ref) and [`galaxy_life_setup`](@ref).
 """
 function galaxy_model_setup(params::GalaxyParameters)
 
@@ -299,6 +406,13 @@ function galaxy_model_setup(params::GalaxyParameters)
 
 end
 
+"""
+    galaxy_planet_setup(params::GalaxyParameters)
+
+Set up the galaxy's `Planet`s according to `params`.
+
+Called by [`galaxy_model_setup`](@ref).
+"""
 function galaxy_planet_setup(params::GalaxyParameters)
 
     extent_multiplier = 3
@@ -321,7 +435,8 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :maxcomp => params.maxcomp,
                         :compsize => params.compsize,
                         :s => 0, ## track the model step number
-                        :GalaxyParameters => params);
+                        :GalaxyParameters => params,
+                        :compmix_func => params.compmix_func);
                         # :nlife => length(params.ool)
                         # :ool => params.ool,
                         # :pos => params.pos,
@@ -337,36 +452,36 @@ function galaxy_planet_setup(params::GalaxyParameters)
 
 end
 
+"""
+    galaxy_life_setup(params::GalaxyParameters)
+
+Set up the galaxy's `Planet`s according to `params`.
+
+Called by [`galaxy_model_setup`](@ref).
+"""
 function galaxy_life_setup(model, params::GalaxyParameters)
 
     agent = isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
     spawnlife!(agent, model)
-    # index!(model)
     model
 
 end
 
-# galaxy_model_setup(params::GalaxyParameters) = galaxy_model_setup(params)
-
-# function galaxy_model_setup(rng::AbstractRNG, args...; kwargs...)
-#     galaxy_model_setup(rng, GalaxyParameters(rng, args..., kwargs...))
-# end
-
 """
-    initialize_planets!(model, params::GalaxyParameters)
+    initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
 
-Adds Planets (not user facing).
+Initialize `Planet`s in the galaxy.
+
+`Planet` positions are adjusted to `center_position`, based on `extent_multiplier`.
+
+This acts to increase the space seen by the user when plotting, and put the simulation in the center of the space, 
+so that there is room to add more planets.
 
 Called by [`galaxy_model_setup`](@ref).
 """
 function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
         id = nextid(model)
-        # @show params.pos[i]
-        # @show typeof(params.pos[i])
-        # @show params.extent
-        # @show typeof(params.extent)
-        # println()
         pos = center_position(params.pos[i], params.extent, extent_multiplier)
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
@@ -381,8 +496,7 @@ end
 """
     compatibleplanets(planet::Planet, model::ABM)
 
-Returns `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation (not user
-facing).
+Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation.
 """
 function compatibleplanets(planet::Planet, model::ABM)
     function iscandidate((_, p))
@@ -403,7 +517,11 @@ end
 """
     nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{PLanet})
 
-Returns `Planet` within `candidateplanets` that is nearest to `planet `(not user facing).
+Returns `Planet` within `candidateplanets` that is nearest to `planet `.
+
+Used whenever new life is spawned.
+
+See [`spawnlife!`](@ref)
 """
 function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet})
 
@@ -423,9 +541,9 @@ end
 """
     spawnlife!(planet::Planet, model::ABM; ancestors::Vector{Life} = Life[])
 
-Spawns `Life` (not user facing).
+Spawns `Life` at `planet`.
 
-Called by [`galaxy_model_setup`](@ref).
+Called by [`galaxy_model_setup`](@ref) and [`terraform!`](@ref).
 """
 function spawnlife!(
     planet::Planet,
@@ -440,9 +558,11 @@ function spawnlife!(
     if length(candidateplanets) == 0
         println("Life on Planet $(planet.id) has no compatible planets. It's the end of its line.")
         destinationplanet = nothing
+        destination_distance = nothing
         vel = planet.pos .* 0.0
     else
         destinationplanet = nearestcompatibleplanet(planet, candidateplanets)
+        destination_distance = distance(destinationplanet.pos,planet.pos)
         vel = direction(planet, destinationplanet) .* model.lifespeed
     end
 
@@ -453,6 +573,7 @@ function spawnlife!(
         parentplanet = planet,
         composition = planet.composition,
         destination = destinationplanet,
+        destination_distance = destination_distance,
         ancestors
     ) ## Only "first" life won't have ancestors
 
@@ -467,7 +588,14 @@ end
 """
     mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
 
-Rounds element-averaged composition (not user facing).
+Default composition mixing function (`compmix_func`). Rounds element-averaged composition between two compositon vectors.
+
+Can be overridden by providing a custom `compmix_func` when setting up `GalaxyParameters`.
+
+Custom function to use for generating terraformed `Planet`'s composition must likewise take as input two valid composition 
+vectors, and return one valid composition vector.  
+
+See [`GalaxyParameters`](@ref).
 """
 function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
     ## Simple for now; Rounding goes to nearest even number
@@ -483,11 +611,13 @@ existing `life` and terraforms an exsiting non-alive `planet` (not user facing).
 - Update the `planet` to `alive=true`
 - Update the `planet`'s `ancestors`, `parentplanet`, `parentlife`, and `parentcomposition`
 - Call `spawnlife!` to send out `Life` from `planet`.
+
+Called by [`galaxy_agent_step!`](@ref).
 """
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
-    planet.composition = mixcompositions(planet.composition, life.composition)
+    planet.composition = model.compmix_func(planet.composition, life.composition)
     planet.alive = true
     push!(planet.ancestors, life.parentplanet)
     planet.parentplanet = life.parentplanet
@@ -499,58 +629,9 @@ function terraform!(life::Life, planet::Planet, model::ABM)
 end
 
 """
-    update_planets_and_life(model::ABM)
-
-Checks pairs of planets, identifying which should be terraformed. Kills life that
-terraforms.  
-"""
-function update_planets_and_life!(model::ABM)
-    ## I need to scale the interaction radius by dt and the velocity of life or else I can
-    ##   miss some interactions
-    
-    life_to_kill = Life[]
-    println()
-    println("=============================================================")
-    @show model.s
-    life_obj = collect(values(filter(x->isa(x.second,Life),model.agents)))[1]
-    println("INTERACTING PAIRS EXACT")
-    ipiterator = interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
-    println([(i.id,j.id) for (i,j) in ipiterator])
-    println("life's nearby_ids_exact")
-    println(collect(Agents.nearby_ids_exact(life_obj, model, model.interaction_radius)))
-
-    println("INTERACTING PAIRS INEXACT")
-    ipiterator_inexact = interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids)
-    println([(i.id,j.id) for (i,j) in ipiterator_inexact])
-    println("life's nearby_ids")
-    println(collect(Agents.nearby_ids(life_obj, model, model.interaction_radius)))
-
-
-    for (a1, a2) in interacting_pairs(model, model.interaction_radius, :types, nearby_f = nearby_ids_exact)
-        life, planet = typeof(a1) <: Planet ? (a2, a1) : (a1, a2)
-        println()
-        println("PLANET AND LIFE IN PAIR")
-        @show life
-        @show planet
-        if planet == life.destination
-            terraform!(life, planet, model)
-            push!(life_to_kill, life)
-        end
-
-    end
-
-    for life in life_to_kill
-        kill_agent!(life, model)
-    end
-
-    model
-
-end
-
-"""
     pos_is_inside_alive_radius(pos::Tuple, model::ABM)
 
-Returns false if provided position lies within any life's interaction radii    
+Return `false` if provided `pos` lies within any life's interaction radii    
 """
 function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
 
@@ -572,6 +653,8 @@ end
 Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
 and outside the interaction radius of all living planets. Max attempts sets the limit of
 iterations in the while loop to find a valid planet position (default = 10*nplanets).
+
+Right now this is only called when using the interactive application, via changing the slider and resetting the simulation.
 
 TODO: TEST IN 1 DIMENSION
 """
@@ -639,7 +722,7 @@ end
 """
     update_nplanets!(model::ABM)
 
-Adds planets to the model at random positions.
+Adds planets to the `model` at random positions if the interactive slider is changed.
 """
 function update_nplanets!(model)
     while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
@@ -648,18 +731,58 @@ function update_nplanets!(model)
 end
 
 """
-    galaxy_model_step(model)
+    galaxy_model_step!(model)
 
-Custom `model_step` to be called by `Agents.step!`. Checks all `interacting_pairs`, and
-`terraform`s a `Planet` if a `Life` has reached its destination; then kills that `Life`.
+Custom `model_step` to be called by `Agents.step!`. 
+
+# Notes:
+Right now this only updates the number of planets in the simulation if the interactive slider is changed.
 """
 function galaxy_model_step!(model)
     
-    update_planets_and_life!(model)
     update_nplanets!(model)
     model.s += 1
 
 end
+
+"""
+    galaxy_agent_step!(life::Life, model)
+
+Custom `agent_step!` for Life. 
+
+    - Moves `life`
+    - If `life` is within 1 step of destination planet, `terraform!`s life's destination, and kills `life`.
+
+Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
+"""
+function galaxy_agent_step!(life::Life, model)
+
+    move_agent!(life, model, model.dt)
+
+    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
+    
+    if life.destination == nothing
+        kill_agent!(life, model)
+    elseif life.destination_distance < model.dt*hypot((life.vel)...)
+        terraform!(life, life.destination, model)
+        kill_agent!(life, model)
+    end
+
+end
+
+"""
+    galaxy_agent_step!(planet::Planet, model)
+
+Custom `agent_step!` for Planet. Doesn't do anything. Only needed because we have an `agent_step!`
+function for `Life`.
+"""
+function galaxy_agent_step!(planet::Planet, model)
+
+    move_agent!(planet, model, model.dt)
+
+end
+
+
 
 #######################################
 ## Distances, Correlations and permutations
