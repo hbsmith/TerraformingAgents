@@ -49,12 +49,16 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
 
     ## Properties of the process, but not the planet itself
 
-    ancestors::Vector{Planet} = Planet[] ## Planets that phylogenetically preceded this one
+    # ancestors::Vector{Planet} = Planet[] ## Planets that phylogenetically preceded this one
+
+    parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
+    parentlifes::Vector{Life} = Planet[] ## List of Life objects that are this planet's direct parent
+    parentcompositions::Vector{Vector{Int}} = Vector{Int}[] ## List of compositions of the direct parents at time of terraformation (should this be life or planet?)
 
     ## Planet that directly preceded this one
-    parentplanet::Union{Planet, Nothing} = nothing
-    parentlife::Union{<:AbstractAgent, Nothing} = nothing
-    parentcomposition::Union{Vector{Int}, Nothing} = nothing
+    # parentplanet::Union{Planet, Nothing} = nothing
+    # parentlife::Union{<:AbstractAgent, Nothing} = nothing
+    # parentcomposition::Union{Vector{Int}, Nothing} = nothing
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
     s = "Planet 🪐 in $(D)D space with properties:."
@@ -65,9 +69,9 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     s *= "\n initialcomposition: $(planet.initialcomposition)"
     s *= "\n alive: $(planet.alive)"
     s *= "\n claimed: $(planet.claimed)"
-    s *= "\n parentplanet: $(planet.parentplanet == nothing ? "No parentplanet" : string(planet.parentplanet.id)*" (id shown inplace of object)" )"
-    s *= "\n parentlife: $(planet.parentlife == nothing ? "No parentlife" : string(planet.parentlife.id)*" (id shown inplace of object)" )"
-    s *= "\n parentcomposition: $(planet.parentcomposition == nothing ? "No parentcomposition" : planet.parentcomposition)"
+    s *= "\n parentplanets: $(length(planet.parentplanets) == 0 ? "No parentplanet" : string(planet.parentplanets[end].id)*" (id shown inplace of object. Only latest parentplanet id listed.)" )"
+    s *= "\n parentlifes: $(length(planet.parentlifes) == 0 ? "No parentlife" : string(planet.parentlifes[end].id)*" (id shown inplace of object. Only latest parentlife id listed.)" )"
+    s *= "\n parentcompositions: $(length(planet.parentcompositions) == 0 ? "No parentcomposition" : string(planet.parentcomposition[end])*" (Only latest parentcomposition listed.)" )"
     s *= "\n ancestors: $(length(planet.ancestors) == 0 ? "No ancestors" : [i.id for i in planet.ancestors])" ## Haven't tested the else condition here yet
     print(io, s)
 end
