@@ -47,18 +47,9 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     alive::Bool = false
     claimed::Bool = false ## True if any Life has this planet as its destination
 
-    ## Properties of the process, but not the planet itself
-
-    # ancestors::Vector{Planet} = Planet[] ## Planets that phylogenetically preceded this one
-
     parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
-    parentlifes::Vector{Life} = Planet[] ## List of Life objects that are this planet's direct parent
-    parentcompositions::Vector{Vector{Int}} = Vector{Int}[] ## List of compositions of the direct parents at time of terraformation (should this be life or planet?)
-
-    ## Planet that directly preceded this one
-    # parentplanet::Union{Planet, Nothing} = nothing
-    # parentlife::Union{<:AbstractAgent, Nothing} = nothing
-    # parentcomposition::Union{Vector{Int}, Nothing} = nothing
+    parentlifes::Vector{<:AbstractAgent} = AbstractAgent[] ## List of Life objects that are this planet's direct parent
+    parentcompositions::Vector{Vector{Int}} = Vector{Int}[] ## List of compositions of the direct life parent compositions at time of terraformation
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
     s = "Planet 🪐 in $(D)D space with properties:."
@@ -69,10 +60,11 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     s *= "\n initialcomposition: $(planet.initialcomposition)"
     s *= "\n alive: $(planet.alive)"
     s *= "\n claimed: $(planet.claimed)"
-    s *= "\n parentplanets: $(length(planet.parentplanets) == 0 ? "No parentplanet" : string(planet.parentplanets[end].id)*" (id shown inplace of object. Only latest parentplanet id listed.)" )"
-    s *= "\n parentlifes: $(length(planet.parentlifes) == 0 ? "No parentlife" : string(planet.parentlifes[end].id)*" (id shown inplace of object. Only latest parentlife id listed.)" )"
-    s *= "\n parentcompositions: $(length(planet.parentcompositions) == 0 ? "No parentcomposition" : string(planet.parentcomposition[end])*" (Only latest parentcomposition listed.)" )"
-    s *= "\n ancestors: $(length(planet.ancestors) == 0 ? "No ancestors" : [i.id for i in planet.ancestors])" ## Haven't tested the else condition here yet
+    s *= "\n parentplanets (†‡): $(length(planet.parentplanets) == 0 ? "No parentplanet" : planet.parentplanets[end].id)"
+    s *= "\n parentlifes (†‡): $(length(planet.parentlifes) == 0 ? "No parentlife" : planet.parentlifes[end].id)"
+    s *= "\n parentcompositions (‡): $(length(planet.parentcompositions) == 0 ? "No parentcomposition" : planet.parentcompositions[end])"
+    s *= "\n\n (†) id shown in-place of object"
+    s *= "\n (‡) only last value listed"
     print(io, s)
 end
 
@@ -89,20 +81,21 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     vel::NTuple{D,<:AbstractFloat} #where {D,X<:AbstractFloat}
     parentplanet::Planet
     composition::Vector{Int} ## Taken from parentplanet
-    destination::Union{Planet, Nothing}
+    destination::Planet
+    destination_distance::Real
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
-    destination_distance::Union{Real, Nothing}
 end
 function Base.show(io::IO, life::Life{D}) where {D}
     s = "Life 🦠 in $(D)D space with properties:."
     s *= "\n id: $(life.id)"
     s *= "\n pos: $(life.pos)"
     s *= "\n vel: $(life.vel)"
-    s *= "\n parentplanet: $(life.parentplanet.id) (id shown inplace of object)"
+    s *= "\n parentplanet (†): $(life.parentplanet.id)"
     s *= "\n composition: $(life.composition)"
-    s *= "\n destination: $(life.destination == nothing ? "No destination" : string(life.destination.id)*" (id shown inplace of object)" )"
+    s *= "\n destination (†): $(life.destination.id)"
     s *= "\n destination_distance: $(life.destination_distance)"
-    s *= "\n ancestors: $(length(life.ancestors) == 0 ? "No ancestors" : [i.id for i in life.ancestors])" ## Haven't tested the else condition here yet
+    s *= "\n ancestors (†): $(length(life.ancestors) == 0 ? "No ancestors" : [i.id for i in life.ancestors])" ## Haven't tested the else condition here yet
+    s *= "\n\n (†) id shown in-place of object"
     print(io, s)
 end
 
@@ -465,8 +458,17 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function galaxy_life_setup(model, params::GalaxyParameters)
 
-    agent = isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
-    spawnlife!(agent, model)
+    planet = 
+        isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
+    
+    ## Only spawn life if there are compatible Planets
+    candidateplanets = compatibleplanets(planet, model)
+    if length(candidateplanets) == 0
+        println("Planet $(planet.id) has no compatible planets. Cannot spawn life here.")
+    else
+        spawnlife!(planet, candidateplanets, model)
+    end
+
     model
 
 end
@@ -551,24 +553,16 @@ Called by [`galaxy_model_setup`](@ref) and [`terraform!`](@ref).
 """
 function spawnlife!(
     planet::Planet,
+    candidateplanets::Vector{Planet},
     model::ABM;
     ancestors::Vector{Life} = Life[]
     )
 
     planet.alive = true
     planet.claimed = true ## This should already be true unless this is the first planet
-    ## No ancestors, parentplanet, parentlife, parentcomposition
-    candidateplanets = compatibleplanets(planet, model)
-    if length(candidateplanets) == 0
-        println("Life on Planet $(planet.id) has no compatible planets. It's the end of its line.")
-        destinationplanet = nothing
-        destination_distance = nothing
-        vel = planet.pos .* 0.0
-    else
-        destinationplanet = nearestcompatibleplanet(planet, candidateplanets)
-        destination_distance = distance(destinationplanet.pos,planet.pos)
-        vel = direction(planet, destinationplanet) .* model.lifespeed
-    end
+    destinationplanet = nearestcompatibleplanet(planet, candidateplanets)
+    destination_distance = distance(destinationplanet.pos, planet.pos)
+    vel = direction(planet, destinationplanet) .* model.lifespeed
 
     life = Life(;
         id = nextid(model),
@@ -583,10 +577,10 @@ function spawnlife!(
 
     life = add_agent_pos!(life, model)
 
-    !isnothing(destinationplanet) && (destinationplanet.claimed = true) ## destination is only nothing if no compatible planets
+    destinationplanet.claimed = true 
     ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
-
     model
+
 end
 
 """
@@ -623,13 +617,18 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     ## Modify destination planet properties
     planet.composition = model.compmix_func(planet.composition, life.composition)
     planet.alive = true
-    push!(planet.ancestors, life.parentplanet)
-    planet.parentplanet = life.parentplanet
-    planet.parentlife = life
-    planet.parentcomposition = life.composition
+    push!(planet.parentlifes, life)
+    push!(planet.parentplanets, life.parentplanet)
+    push!(planet.parentcompositions, life.composition)
     # planet.claimed = true ## Test to make sure this is already true beforehand
 
-    spawnlife!(planet, model, ancestors = push!(life.ancestors, life)) ## This makes new life
+    ## Only spawn life if there are compatible Planets
+    candidateplanets = compatibleplanets(planet, model)
+    if length(candidateplanets) == 0
+        println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
+    else
+        spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
+    end
 end
 
 """
