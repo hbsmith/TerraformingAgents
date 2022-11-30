@@ -42,7 +42,7 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     vel::NTuple{D,<:AbstractFloat} 
 
     composition::Vector{Int} ## Represents the planet's genotype
-    initialcomposition::Vector{Int} = composition ## Same as composition until it's terraformed
+    initialcomposition::Vector{Int} = copy(composition) ## Same as composition until it's terraformed
 
     alive::Bool = false
     claimed::Bool = false ## True if any Life has this planet as its destination
