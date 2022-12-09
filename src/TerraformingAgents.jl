@@ -600,6 +600,22 @@ function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector
     round.(Int, (lifecomposition .+ planetcomposition) ./ 2)
 end
 
+function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng)
+    ## choose random index to start crossover, making sure that both strands contain 
+    ##  at least 1 element from each parent composition
+    # idx_of_crossover = StatsBase.sample(rng, range(stop=length(lifecomposition)-1))
+    idx_of_crossover = rand(rng, length(lifecomposition)-1)
+    ## coin flip to decide if we keep idx:end of parent1 or parent2
+    strand_1 = vcat(lifecomposition[1:idx_of_crossover], planetcomposition[idx_of_crossover+1:end])
+    strand_2 = vcat(planetcomposition[1:idx_of_crossover], lifecomposition[idx_of_crossover+1:end])
+
+    ## return one of the two strands
+    rand(rng, 0:1) == 0? strand_1 : strand_2
+
+
+end
+
+
 """
     terraform!(life::Life, planet::Planet, model::ABM)
 
