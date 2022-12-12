@@ -36,20 +36,23 @@ One of the two Agent types. Can be terraformed by `Life`. Exists in space of dim
 
 See also [`Life`](@ref)
 """
+## Ideally all arguments inside of Planet and Life would be Float64, or Vector{Float64}, but 
+##  apparently when using Parametric functions you can't coerce Ints into Floats for example.
+## So that's super annoying. See: https://github.com/JuliaLang/julia/issues/35053
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
     pos::NTuple{D,<:AbstractFloat} 
     vel::NTuple{D,<:AbstractFloat} 
 
-    composition::Vector{Float64} ## Represents the planet's genotype
-    initialcomposition::Vector{Float64} = copy(composition) ## Same as composition until it's terraformed
+    composition::Vector{<:Real} ## Represents the planet's genotype
+    initialcomposition::Vector{<:Real} = copy(composition) ## Same as composition until it's terraformed
 
     alive::Bool = false
     claimed::Bool = false ## True if any Life has this planet as its destination
 
     parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
     parentlifes::Vector{<:AbstractAgent} = AbstractAgent[] ## List of Life objects that are this planet's direct parent
-    parentcompositions::Vector{Vector{Float64}} = Float64[] ## List of compositions of the direct life parent compositions at time of terraformation
+    parentcompositions::Vector{<:Vector{<:Real}} = Vector{Float64}[] ## List of compositions of the direct life parent compositions at time of terraformation
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
     s = "Planet 🪐 in $(D)D space with properties:."
@@ -80,7 +83,7 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     pos::NTuple{D,<:AbstractFloat}  #where {D,X<:AbstractFloat}
     vel::NTuple{D,<:AbstractFloat} #where {D,X<:AbstractFloat}
     parentplanet::Planet
-    composition::Vector{Float64} ## Taken from parentplanet
+    composition::Vector{<:Real} ## Taken from parentplanet
     destination::Planet
     destination_distance::Real
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
@@ -213,9 +216,9 @@ mutable struct GalaxyParameters
         compmix_func::Function = mixcompositions,
         pos::Vector{<:NTuple{D,Real}},
         vel::Vector{<:NTuple{D,Real}},
-        maxcomp::Float64,
+        maxcomp::Real,
         compsize::Int,
-        planetcompositions::Array{Float64, 2}) where {D}
+        planetcompositions::Array{<:Real, 2}) where {D}
 
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
@@ -257,7 +260,7 @@ end
     GalaxyParameters(rng::AbstractRNG;
         pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
         vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-        planetcompositions::Union{Array{Float64,2}, Nothing} = nothing,
+        planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
         kwargs...) where {D}
 
 Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, plus any number of optional kwargs.
@@ -268,7 +271,7 @@ Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for othe
 function GalaxyParameters(rng::AbstractRNG;
     pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
     vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-    planetcompositions::Union{Array{Float64,2}, Nothing} = nothing,
+    planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
     kwargs...) where {D}
 
     if !isnothing(pos)
@@ -595,7 +598,7 @@ vectors, and return one valid composition vector.
 
 See [`GalaxyParameters`](@ref).
 """
-function mixcompositions(lifecomposition::Vector{Float64}, planetcomposition::Vector{Float64})
+function mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
     ## Simple for now; Rounding goes to nearest even number
     round.((lifecomposition .+ planetcomposition) ./ 2)
 end
