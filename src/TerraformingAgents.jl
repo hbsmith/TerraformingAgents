@@ -595,26 +595,56 @@ vectors, and return one valid composition vector.
 
 See [`GalaxyParameters`](@ref).
 """
-function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
     ## Simple for now; Rounding goes to nearest even number
     round.(Int, (lifecomposition .+ planetcomposition) ./ 2)
 end
 
-function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng)
-    ## choose random index to start crossover, making sure that both strands contain 
-    ##  at least 1 element from each parent composition
-    # idx_of_crossover = StatsBase.sample(rng, range(stop=length(lifecomposition)-1))
-    idx_of_crossover = rand(rng, length(lifecomposition)-1)
-    ## coin flip to decide if we keep idx:end of parent1 or parent2
-    strand_1 = vcat(lifecomposition[1:idx_of_crossover], planetcomposition[idx_of_crossover+1:end])
-    strand_2 = vcat(planetcomposition[1:idx_of_crossover], lifecomposition[idx_of_crossover+1:end])
+"""
+    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
 
-    ## return one of the two strands
-    rand(rng, 0:1) == 0? strand_1 : strand_2
+A valid `compmix_func`. Performs one-point crossover between the `lifecomposition` and `planetcomposition`.
 
+The crossover point is after the `crossover_after_idx`, which is limited between 1 and length(`lifecomposition`)-1).
 
+The returned strand and crossover point are randomly chosen based on model.rng.
+
+See: https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)
+
+Related: [`mixcompositions`](@ref).
+"""
+function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+    crossover_one_point(lifecomposition, planetcomposition, model.rng)
 end
 
+"""
+    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng::AbstractRNG = Random.default_rng())
+
+Can be called with an rng object directly.
+"""
+function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng::AbstractRNG = Random.default_rng())
+    ## choose random index to start crossover, making sure that both strands contain 
+    ##  at least 1 element from each parent composition
+    crossover_after_idx = rand(rng, 1:length(lifecomposition)-1)
+    ## coin flip to decide if we keep idx:end of parent1 or parent2
+    strand_1, strand_2 = crossover_one_point(lifecomposition, planetcomposition, crossover_after_idx)
+    ## return one of the two strands
+    rand(rng, 0:1) == 0 ? strand_1 : strand_2
+end
+
+"""
+    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, crossover_after_idx::Int)
+
+Deterministic variant that requires specifying the `crossover_after_idx`, and returns both strands.
+"""
+function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, crossover_after_idx::Int)
+
+    strand_1 = vcat(lifecomposition[1:crossover_after_idx], planetcomposition[crossover_after_idx+1:end])
+    strand_2 = vcat(planetcomposition[1:crossover_after_idx], lifecomposition[crossover_after_idx+1:end])
+
+    return strand_1, strand_2
+
+end
 
 """
     terraform!(life::Life, planet::Planet, model::ABM)
@@ -631,7 +661,7 @@ Called by [`galaxy_agent_step!`](@ref).
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
-    planet.composition = model.compmix_func(planet.composition, life.composition)
+    planet.composition = model.compmix_func(planet.composition, life.composition, model)
     planet.alive = true
     push!(planet.parentlifes, life)
     push!(planet.parentplanets, life.parentplanet)
