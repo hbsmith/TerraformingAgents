@@ -584,7 +584,7 @@ function spawnlife!(
 end
 
 """
-    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
 
 Default composition mixing function (`compmix_func`). Rounds element-averaged composition between two compositon vectors.
 
@@ -593,9 +593,23 @@ Can be overridden by providing a custom `compmix_func` when setting up `GalaxyPa
 Custom function to use for generating terraformed `Planet`'s composition must likewise take as input two valid composition 
 vectors, and return one valid composition vector.  
 
+`model::ABM` is a required param in order to have a standardize argumnet list for all `compmix_func`s
+
 See [`GalaxyParameters`](@ref).
+
+Related: [`mixcompositions`](@ref).
 """
 function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+    ## Simple for now; Rounding goes to nearest even number
+    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+end
+
+"""
+    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+
+Can be called without `model::ABM` arg.
+"""
+function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
     ## Simple for now; Rounding goes to nearest even number
     round.(Int, (lifecomposition .+ planetcomposition) ./ 2)
 end
