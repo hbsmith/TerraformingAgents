@@ -668,9 +668,9 @@ end
 
 function mutate_strand(strand::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(lifecomposition))
     positions_to_mutate = rand(rng, length(strand)) .< (ones(length(strand)) .* mutation_rate)
-    rand(rng, Uniform(0,maxcomp))
     ## Need to reroll each position == 1 from the positions_to_mutate 
     ## how to do this in simplist way possible?
+    strand[positions_to_mutate.==1] .= rand(rng, Uniform(0,maxcomp)) ## will all the random values be different here? need to test
 end
 
 """
