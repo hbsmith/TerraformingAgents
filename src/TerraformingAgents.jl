@@ -618,7 +618,7 @@ function mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vec
 end
 
 """
-    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
 
 A valid `compmix_func`. Performs one-point crossover between the `lifecomposition` and `planetcomposition`.
 
@@ -630,16 +630,16 @@ See: https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)
 
 Related: [`mixcompositions`](@ref).
 """
-function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
     crossover_one_point(lifecomposition, planetcomposition, model.rng)
 end
 
 """
-    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng::AbstractRNG = Random.default_rng())
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng())
 
 Can be called with an rng object directly.
 """
-function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng::AbstractRNG = Random.default_rng())
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng())
     ## choose random index to start crossover, making sure that both strands contain 
     ##  at least 1 element from each parent composition
     crossover_after_idx = rand(rng, 1:length(lifecomposition)-1)
@@ -650,11 +650,11 @@ function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Ve
 end
 
 """
-    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, crossover_after_idx::Int)
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
 
 Deterministic variant that requires specifying the `crossover_after_idx`, and returns both strands.
 """
-function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, crossover_after_idx::Int)
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
 
     strand_1 = vcat(lifecomposition[1:crossover_after_idx], planetcomposition[crossover_after_idx+1:end])
     strand_2 = vcat(planetcomposition[1:crossover_after_idx], lifecomposition[crossover_after_idx+1:end])
