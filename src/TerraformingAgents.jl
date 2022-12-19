@@ -123,7 +123,7 @@ default_velocities(D,n) = fill(Tuple([0.0 for i in 1:D]), n) :: Vector{NTuple{D,
 
 Generate a `compsize` x `n` matrix of random integers between 1:`maxcomp`.
 """
-random_compositions(rng, maxcomp, compsize, n) = rand(rng, Uniform(1,10), compsize, n)
+random_compositions(rng, maxcomp, compsize, n) = rand(rng, Uniform(0,maxcomp), compsize, n)
 
 """
     random_radius(rng, rmin, rmax)
