@@ -608,7 +608,7 @@ function mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vec
 end
 
 """
-    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+    mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
 
 Can be called without `model::ABM` arg.
 """
