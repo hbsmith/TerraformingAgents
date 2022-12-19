@@ -200,6 +200,18 @@ function TestMixCompositions()
     end
 end
 
+function TestCrossoverOnePoint()
+    @testset "crossover_one_point" begin
+        
+        @test TerraformingAgents.crossover_one_point([0,0,0],[1,1,1],1) == ([0,1,1],[1,0,0])
+        @test TerraformingAgents.crossover_one_point([0,0,0],[1,1,1],2) == ([0,0,1],[1,1,0])
+        @test_throws BoundsError TerraformingAgents.crossover_one_point([0,0,0],[1,1,1],4)
+        ## first randint between 1:10 is 3, second randint between 0:1 is 1
+        @test TerraformingAgents.crossover_one_point(zeros(Int,10),ones(Int,10), MersenneTwister(3143)) == [1,1,1,0,0,0,0,0,0,0]
+
+    end
+end
+
 function TestAgentDiesAtCorrectPlanet()
     @testset "Agent dies at correct planet" begin
         
@@ -342,6 +354,7 @@ end
     TestInitializeLife()
     TestCompatiblePlanets()
     TestMixCompositions()
+    TestCrossoverOnePoint()
     TestAgentDiesAtCorrectPlanet()
     TestCenterPositions()
     TestMantel()
