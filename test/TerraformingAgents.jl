@@ -192,10 +192,10 @@ end
 function TestMixCompositions()
     @testset "mix compositions" begin
         
-        @test TerraformingAgents.mixcompositions([0,0,0],[1,0,2]) == [0,0,1]
-        @test TerraformingAgents.mixcompositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
-        @test TerraformingAgents.mixcompositions([8],[8]) == [8]
-        @test TerraformingAgents.mixcompositions([8,9],[4,2]) == [6,6]
+        @test TerraformingAgents.average_compositions([0,0,0],[1,0,2]) == [0,0,1]
+        @test TerraformingAgents.average_compositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
+        @test TerraformingAgents.average_compositions([8],[8]) == [8]
+        @test TerraformingAgents.average_compositions([8,9],[4,2]) == [6,6]
 
     end
 end
