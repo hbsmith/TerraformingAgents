@@ -170,7 +170,8 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
 - `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
-- `compmix_func,::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
+- `compmix_func::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
+- `compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compmix_func`.
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
 - `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Float64`: the max value of any element within the composition vectors.
@@ -195,7 +196,7 @@ mutable struct GalaxyParameters
     interaction_radius
     allowed_diff
     ool
-    compmix_func,
+    compmix_func
     compmix_kwargs
     pos
     vel
@@ -214,7 +215,7 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
-        compmix_func,::Function = average_compositions,
+        compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         pos::Vector{<:NTuple{D,Real}},
         vel::Vector{<:NTuple{D,Real}},
@@ -251,7 +252,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, compmix_func,, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -438,7 +439,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :compsize => params.compsize,
                         :s => 0, ## track the model step number
                         :GalaxyParameters => params,
-                        :compmix_func, => params.compmix_func,
+                        :compmix_func => params.compmix_func,
                         :compmix_kwargs => params.compmix_kwargs);
                         # :nlife => length(params.ool)
                         # :ool => params.ool,
@@ -592,14 +593,14 @@ end
 """
     average_compositions(lifecomposition::Vector{Float64}, planetcomposition::Vector{Float64})
 
-Default composition mixing function (`compmix_func,`). Rounds element-averaged composition between two compositon vectors.
+Default composition mixing function (`compmix_func`). Rounds element-averaged composition between two compositon vectors.
 
-Can be overridden by providing a custom `compmix_func,` when setting up `GalaxyParameters`.
+Can be overridden by providing a custom `compmix_func` when setting up `GalaxyParameters`.
 
 Custom function to use for generating terraformed `Planet`'s composition must likewise take as input two valid composition 
 vectors, and return one valid composition vector.  
 
-`model::ABM` is a required param in order to have a standardize argumnet list for all `compmix_func,`s
+`model::ABM` is a required param in order to have a standardize argumnet list for all `compmix_func`s
 
 See [`GalaxyParameters`](@ref).
 
@@ -623,7 +624,7 @@ end
 """
     crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
 
-A valid `compmix_func,`. Performs one-point crossover between the `lifecomposition` and `planetcomposition`.
+A valid `compmix_func`. Performs one-point crossover between the `lifecomposition` and `planetcomposition`.
 
 The crossover point is after the `crossover_after_idx`, which is limited between 1 and length(`lifecomposition`)-1).
 
@@ -636,7 +637,19 @@ Related: [`average_compositions`](@ref).
 function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
     crossover_one_point(lifecomposition, planetcomposition, model.rng; mutation_rate)
 end
+"""
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
 
+Deterministic variant that requires specifying the `crossover_after_idx`, and returns both strands.
+"""
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
+
+    strand_1 = vcat(lifecomposition[1:crossover_after_idx], planetcomposition[crossover_after_idx+1:end])
+    strand_2 = vcat(planetcomposition[1:crossover_after_idx], lifecomposition[crossover_after_idx+1:end])
+
+    return strand_1, strand_2
+
+end
 """
     crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng())
 
@@ -652,26 +665,18 @@ function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition:
     rand(rng, 0:1) == 0 ? strand_1 : strand_2
 end
 
-"""
-    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
-
-Deterministic variant that requires specifying the `crossover_after_idx`, and returns both strands.
-"""
-function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
-
-    strand_1 = vcat(lifecomposition[1:crossover_after_idx], planetcomposition[crossover_after_idx+1:end])
-    strand_2 = vcat(planetcomposition[1:crossover_after_idx], lifecomposition[crossover_after_idx+1:end])
-
-    return strand_1, strand_2
-
-end
-
 function mutate_strand(strand::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(lifecomposition))
-    positions_to_mutate = rand(rng, length(strand)) .< (ones(length(strand)) .* mutation_rate)
-    ## Need to reroll each position == 1 from the positions_to_mutate 
-    ## how to do this in simplist way possible?
-    strand[positions_to_mutate.==1] .= rand(rng, Uniform(0,maxcomp)) ## will all the random values be different here? need to test
+    random_strand = rand(rng, length(strand))
+    position_strand = positions_to_mutate(random_strand, mutation_rate)
+    
+    mutated_values = rand(rng, Uniform(0,maxcomp), sum(position_strand))
+    strand[position_strand.==1] .= mutated_values ## will all the random values be different here? need to test
+    return strand
 end
+
+positions_to_mutate(random_strand, mutation_rate=1/length(random_strand)) = random_strand .< (ones(length(random_strand)) .* mutation_rate)
+
+# function mutate_strand()
 
 """
     terraform!(life::Life, planet::Planet, model::ABM)
@@ -688,10 +693,11 @@ Called by [`galaxy_agent_step!`](@ref).
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
-    if model.compmix_kwargs == nothing:
-        planet.composition = model.compmix_func,(planet.composition, life.composition, model)
-    else:
-        planet.composition = model.compmix_func,(planet.composition, life.composition, model; model.compmix_kwargs...)
+    if model.compmix_kwargs == nothing
+        planet.composition = model.compmix_func(planet.composition, life.composition, model)
+    else
+        planet.composition = model.compmix_func(planet.composition, life.composition, model; model.compmix_kwargs...)
+    end
     planet.alive = true
     push!(planet.parentlifes, life)
     push!(planet.parentplanets, life.parentplanet)
