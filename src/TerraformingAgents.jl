@@ -11,7 +11,7 @@ using Distributions: Uniform
 using NearestNeighbors
 using Distances
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -684,9 +684,7 @@ Related: [`crossover_one_point`](@ref).
 """
 function mutate_strand(strand::Vector{<:Real}, maxcomp, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(strand))
     random_strand = rand(rng, length(strand))
-    position_strand = positions_to_mutate(random_strand, mutation_rate)
-    println(position_strand)
-    
+    position_strand = positions_to_mutate(random_strand, mutation_rate)    
     mutated_values = rand(rng, Uniform(0,maxcomp), sum(position_strand))
     strand[position_strand.==1] .= mutated_values ## will all the random values be different here? need to test
     return strand

@@ -372,6 +372,39 @@ function TestPropogationOfModelRNG()
     end
 end
 
+function TestRunningModelNoErrors()
+    @testset "modify compmix_func and compmix_kwargs" begin 
+
+        galaxyparams = GalaxyParameters(
+            MersenneTwister(3141),
+            100,
+            extent = (100,100),
+            dt = 10,
+            allowed_diff = .5,
+            maxcomp = 1,
+            compsize = 10,
+            compmix_func=crossover_one_point,
+            compmix_kwargs=Dict(:mutation_rate=>0))
+        model = galaxy_model_setup(galaxyparams)    
+        n = 100
+        adata =  [:pos,
+            :vel,
+            :composition, # property of Planet and Life
+            :initialcomposition, # todo rename as initial_composition
+            :alive,
+            :claimed,
+            :parentcompositions,
+            :destination_distance]
+        
+        @test_logs min_level=Logging.Warn df_agent, df_model = run!(model, 
+            galaxy_agent_step!, 
+            galaxy_model_step!, 
+            n,
+            adata=adata, 
+            showprogress=true)
+    end
+end
+
 @testset "All" begin
     TestGalaxyParametersSetup()
     TestInitializePlanetarySystems()
@@ -385,4 +418,5 @@ end
     TestMantel()
     TestPlanetMantelTest()
     TestPropogationOfModelRNG()
+    TestRunningModelNoErrors()
 end
