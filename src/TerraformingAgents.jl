@@ -170,7 +170,7 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
 - `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
-- `compmix_func,::Function = mixcompositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
+- `compmix_func,::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
 - `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Float64`: the max value of any element within the composition vectors.
@@ -214,7 +214,7 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
-        compmix_func,::Function = mixcompositions,
+        compmix_func,::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         pos::Vector{<:NTuple{D,Real}},
         vel::Vector{<:NTuple{D,Real}},
@@ -590,7 +590,7 @@ function spawnlife!(
 end
 
 """
-    mixcompositions(lifecomposition::Vector{Float64}, planetcomposition::Vector{Float64})
+    average_compositions(lifecomposition::Vector{Float64}, planetcomposition::Vector{Float64})
 
 Default composition mixing function (`compmix_func,`). Rounds element-averaged composition between two compositon vectors.
 
@@ -605,17 +605,17 @@ See [`GalaxyParameters`](@ref).
 
 Related: [`crossover_one_point`](@ref).
 """
-function mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
+function average_compositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
     ## Simple for now; Rounding goes to nearest even number
-    mixcompositions(lifecomposition, planetcomposition)
+    average_compositions(lifecomposition, planetcomposition)
 end
 
 """
-    mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
+    average_compositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
 
 Can be called without `model::ABM` arg.
 """
-function mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
+function average_compositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
     ## Simple for now; Rounding goes to nearest even number
     round.((lifecomposition .+ planetcomposition) ./ 2)
 end
@@ -631,7 +631,7 @@ The returned strand and crossover point are randomly chosen based on model.rng.
 
 See: https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)
 
-Related: [`mixcompositions`](@ref).
+Related: [`average_compositions`](@ref).
 """
 function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
     crossover_one_point(lifecomposition, planetcomposition, model.rng; mutation_rate)
