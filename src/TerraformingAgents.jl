@@ -622,20 +622,22 @@ function average_compositions(lifecomposition::Vector{<:Real}, planetcomposition
 end
 
 """
-    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM, mutation_rate=1/length(lifecomposition))
 
 A valid `compmix_func`. Performs one-point crossover between the `lifecomposition` and `planetcomposition`.
 
 The crossover point is after the `crossover_after_idx`, which is limited between 1 and length(`lifecomposition`)-1).
 
-The returned strand and crossover point are randomly chosen based on model.rng.
+The returned strand and crossover point are randomly chosen based on `model.rng``.
+
+If mutated, substitute elements are chosen from random distribution of `Uniform(0, model.maxcomp)`.
 
 See: https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)
 
-Related: [`average_compositions`](@ref).
+Related: [`average_compositions`](@ref), [`mutate_strand`](@ref), [`positions_to_mutate`](@ref).
 """
 function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
-    crossover_one_point(lifecomposition, planetcomposition, model.rng; mutation_rate)
+    crossover_one_point(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
 end
 """
     crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
@@ -651,32 +653,53 @@ function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition:
 
 end
 """
-    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng())
+    crossover_one_point(
+        lifecomposition::Vector{<:Real}, 
+        planetcomposition::Vector{<:Real}, 
+        rng::AbstractRNG = Random.default_rng(),
+        mutation_rate=1/length(lifecomposition), 
+        maxcomp=1)
 
 Can be called with an rng object directly.
 """
-function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition))
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1)
     ## choose random index to start crossover, making sure that both strands contain 
     ##  at least 1 element from each parent composition
     crossover_after_idx = rand(rng, 1:length(lifecomposition)-1)
     ## coin flip to decide if we keep idx:end of parent1 or parent2
     strand_1, strand_2 = crossover_one_point(lifecomposition, planetcomposition, crossover_after_idx)
     ## return one of the two strands
-    rand(rng, 0:1) == 0 ? strand_1 : strand_2
+    return_strand = rand(rng, 0:1) == 0 ? strand_1 : strand_2
+    
+    return mutate_strand(return_strand, maxcomp, rng, mutation_rate)
 end
+"""
+    mutate_strand(strand::Vector{<:Real}, maxcomp, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(strand))
 
-function mutate_strand(strand::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(lifecomposition))
+Mutates elements in provided strand with probability of `mutation_rate`. 
+
+Substituted elements are chosen from random distribution of `Uniform(0, model.maxcomp)`.
+
+Related: [`crossover_one_point`](@ref).
+"""
+function mutate_strand(strand::Vector{<:Real}, maxcomp, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(strand))
     random_strand = rand(rng, length(strand))
     position_strand = positions_to_mutate(random_strand, mutation_rate)
+    println(position_strand)
     
     mutated_values = rand(rng, Uniform(0,maxcomp), sum(position_strand))
     strand[position_strand.==1] .= mutated_values ## will all the random values be different here? need to test
     return strand
 end
 
-positions_to_mutate(random_strand, mutation_rate=1/length(random_strand)) = random_strand .< (ones(length(random_strand)) .* mutation_rate)
+"""
+    positions_to_mutate(random_strand, mutation_rate=1/length(random_strand))
 
-# function mutate_strand()
+Returns a vector of 0s and 1s, where 1s indicate positions that will be mutated by `mutate_strand`.
+
+Related: [`mutate_strand`](@ref).
+"""
+positions_to_mutate(random_strand, mutation_rate=1/length(random_strand)) = random_strand .< (ones(length(random_strand)) .* mutation_rate)
 
 """
     terraform!(life::Life, planet::Planet, model::ABM)

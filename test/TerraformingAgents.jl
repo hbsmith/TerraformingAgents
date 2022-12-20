@@ -207,12 +207,34 @@ function TestCrossoverOnePoint()
         @test TerraformingAgents.crossover_one_point([0,0,0],[1,1,1],2) == ([0,0,1],[1,1,0])
         @test_throws BoundsError TerraformingAgents.crossover_one_point([0,0,0],[1,1,1],4)
         ## first randint between 1:10 is 3, second randint between 0:1 is 1
-        @test TerraformingAgents.crossover_one_point(zeros(Int,10),ones(Int,10), MersenneTwister(3143)) == [1,1,1,0,0,0,0,0,0,0]
-
+        @test TerraformingAgents.crossover_one_point(zeros(10), ones(10), MersenneTwister(3143), mutation_rate=0) == [1,1,1,0,0,0,0,0,0,0]
+        
+        ## positions to mutate below should be [0,0,0,0,0,0,1,1,0,0]
+        crossover_strand = TerraformingAgents.crossover_one_point(zeros(10), ones(10), MersenneTwister(3))
+        @test findall(x->x∉[0,1], crossover_strand) == [7,8]
     end
 end
 
-function Test
+function TestMutation()
+    @testset "positions_to_mutate" begin
+        random_strand =  [0.8116984049958615,
+            0.9884323655013432,
+            0.8076220876500786,
+            0.9700908450487538,
+            0.14006111319509862,
+            0.5094438024440222,
+            0.05869740597593154,
+            0.004257960600515309,
+            0.9746379934512355,
+            0.5572251384524507]
+
+        @test TerraformingAgents.positions_to_mutate(random_strand) == [0,0,0,0,0,0,1,1,0,0]
+        
+        ## should return the same positions_to_mutate as above
+        mutated_strand = TerraformingAgents.mutate_strand(ones(10),1,MersenneTwister(3))
+        @test findall(x->x!=1,mutated_strand) == [7,8]
+    end
+end
 
 function TestAgentDiesAtCorrectPlanet()
     @testset "Agent dies at correct planet" begin
@@ -357,6 +379,7 @@ end
     TestCompatiblePlanets()
     TestMixCompositions()
     TestCrossoverOnePoint()
+    TestMutation()
     TestAgentDiesAtCorrectPlanet()
     TestCenterPositions()
     TestMantel()
