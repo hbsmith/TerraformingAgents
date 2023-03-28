@@ -996,7 +996,42 @@ function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=
 
 end
 
+##############################################################################################################################
+## Data collection utilities 
+##############################################################################################################################
+## Some functions to nest and unnest data for csv saving
+function unnest_agents(df_planets)
+    # inspired from https://bkamins.github.io/julialang/2022/03/11/unnesting.html
+    # TODO streamline naming
+    df = transform(df_planets, :pos => AsTable)
+    new_names = Dict("x1" => "x", "x2" => "y")
+    rename!(df, new_names)
 
+    df = transform(df, :vel => AsTable)
+    new_names = Dict("x1" => "v_x", "x2" => "v_y")
+    rename!(df, new_names)
+
+    df = transform(df, :composition => AsTable)
+    dim = 5
+    new_names = Dict("x$i" => "comp_$(i-1)" for i in 1:dim+1)
+    rename!(df, new_names)
+
+    select!(df, Not([:pos, :vel, :composition]))
+    return df
+end
+
+
+function unnest_planets(df_planets)
+    df = unnest_agents(df_planets)
+
+    df = transform(df, :initialcomposition => AsTable)
+    dim = 5
+    new_names = Dict("x$i" => "init_comp_$(i-1)" for i in 1:dim+1)
+    rename!(df, new_names)
+
+    select!(df, Not([:initialcomposition]))
+    return df
+end
 
 # rng = MersenneTwister(3141)
 # x = [[0,1,2],[1,0,3],[2,3,0]]
