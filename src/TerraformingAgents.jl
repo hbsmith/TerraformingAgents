@@ -10,6 +10,7 @@ using LinearAlgebra: dot, diag, issymmetric, tril!
 using Distributions: Uniform
 using NearestNeighbors
 using Distances
+using DataFrames
 
 export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, unnest_agents, unnest_planets
 
