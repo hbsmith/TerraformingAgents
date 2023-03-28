@@ -30,6 +30,10 @@ function TestGalaxyParametersSetup()
         @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=vel, compsize=compsize, planetcompositions=planetcompositions)
         @test_throws ArgumentError TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=[(2.0, 2.0)]) ## Mismatched arg lengths
 
+        planetcompositions = hcat([[0.,0.,0.],[1.,0.,2.]]...)
+        @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), vel=vel, compsize=compsize, planetcompositions=planetcompositions)
+        @test_nowarn TerraformingAgents.GalaxyParameters(MersenneTwister(3141), pos=pos, vel=vel, compsize=compsize, planetcompositions=planetcompositions)
+
     end
 end
 

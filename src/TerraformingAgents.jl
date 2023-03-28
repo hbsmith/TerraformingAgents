@@ -36,20 +36,23 @@ One of the two Agent types. Can be terraformed by `Life`. Exists in space of dim
 
 See also [`Life`](@ref)
 """
+## Ideally all arguments inside of Planet and Life would be Float64, or Vector{Float64}, but 
+##  apparently when using Parametric functions you can't coerce Ints into Floats for example.
+## So that's super annoying. See: https://github.com/JuliaLang/julia/issues/35053
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
     pos::NTuple{D,<:AbstractFloat} 
     vel::NTuple{D,<:AbstractFloat} 
 
-    composition::Vector{Int} ## Represents the planet's genotype
-    initialcomposition::Vector{Int} = copy(composition) ## Same as composition until it's terraformed
+    composition::Vector{<:Real} ## Represents the planet's genotype
+    initialcomposition::Vector{<:Real} = copy(composition) ## Same as composition until it's terraformed
 
     alive::Bool = false
     claimed::Bool = false ## True if any Life has this planet as its destination
 
     parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
     parentlifes::Vector{<:AbstractAgent} = AbstractAgent[] ## List of Life objects that are this planet's direct parent
-    parentcompositions::Vector{Vector{Int}} = Vector{Int}[] ## List of compositions of the direct life parent compositions at time of terraformation
+    parentcompositions::Vector{<:Vector{<:Real}} = Vector{Float64}[] ## List of compositions of the direct life parent compositions at time of terraformation
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
     s = "Planet 🪐 in $(D)D space with properties:."
@@ -80,7 +83,7 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     pos::NTuple{D,<:AbstractFloat}  #where {D,X<:AbstractFloat}
     vel::NTuple{D,<:AbstractFloat} #where {D,X<:AbstractFloat}
     parentplanet::Planet
-    composition::Vector{Int} ## Taken from parentplanet
+    composition::Vector{<:Real} ## Taken from parentplanet
     destination::Planet
     destination_distance::Real
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
@@ -120,7 +123,7 @@ default_velocities(D,n) = fill(Tuple([0.0 for i in 1:D]), n) :: Vector{NTuple{D,
 
 Generate a `compsize` x `n` matrix of random integers between 1:`maxcomp`.
 """
-random_compositions(rng, maxcomp, compsize, n) = rand(rng, 1:maxcomp, compsize, n)
+random_compositions(rng, maxcomp, compsize, n) = rand(rng, Uniform(0,maxcomp), compsize, n)
 
 """
     random_radius(rng, rmin, rmax)
@@ -170,9 +173,9 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `compmix_func::Function = mixcompositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
 - `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
-- `maxcomp::Int`: the max value of any element within the composition vectors.
+- `maxcomp::Float64`: the max value of any element within the composition vectors.
 - `compsize::Int`: the length of the compositon vectors.
-- `planetcompositions::Array{<:Int, 2}`: an array of default compositon vectors.
+- `planetcompositions::Array{Float64, 2}`: an array of default compositon vectors.
 
 # Notes:
 - `vel` defaults to 0 for all `Planet`s.
@@ -213,9 +216,9 @@ mutable struct GalaxyParameters
         compmix_func::Function = mixcompositions,
         pos::Vector{<:NTuple{D,Real}},
         vel::Vector{<:NTuple{D,Real}},
-        maxcomp::Int,
+        maxcomp::Real,
         compsize::Int,
-        planetcompositions::Array{<:Int, 2}) where {D}
+        planetcompositions::Array{<:Real, 2}) where {D}
 
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
@@ -257,7 +260,7 @@ end
     GalaxyParameters(rng::AbstractRNG;
         pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
         vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-        planetcompositions::Union{Array{<:Integer,2}, Nothing} = nothing,
+        planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
         kwargs...) where {D}
 
 Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, plus any number of optional kwargs.
@@ -268,7 +271,7 @@ Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for othe
 function GalaxyParameters(rng::AbstractRNG;
     pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
     vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-    planetcompositions::Union{Array{<:Integer,2}, Nothing} = nothing,
+    planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
     kwargs...) where {D}
 
     if !isnothing(pos)
@@ -584,7 +587,7 @@ function spawnlife!(
 end
 
 """
-    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+    mixcompositions(lifecomposition::Vector{Float64}, planetcomposition::Vector{Float64})
 
 Default composition mixing function (`compmix_func`). Rounds element-averaged composition between two compositon vectors.
 
@@ -597,25 +600,25 @@ vectors, and return one valid composition vector.
 
 See [`GalaxyParameters`](@ref).
 
-Related: [`mixcompositions`](@ref).
+Related: [`crossover_one_point`](@ref).
 """
-function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+function mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
     ## Simple for now; Rounding goes to nearest even number
-    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+    mixcompositions(lifecomposition, planetcomposition)
 end
 
 """
-    mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+    mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
 
 Can be called without `model::ABM` arg.
 """
-function mixcompositions(lifecomposition::Vector{Int}, planetcomposition::Vector{Int})
+function mixcompositions(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real})
     ## Simple for now; Rounding goes to nearest even number
-    round.(Int, (lifecomposition .+ planetcomposition) ./ 2)
+    round.((lifecomposition .+ planetcomposition) ./ 2)
 end
 
 """
-    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
 
 A valid `compmix_func`. Performs one-point crossover between the `lifecomposition` and `planetcomposition`.
 
@@ -627,16 +630,16 @@ See: https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)
 
 Related: [`mixcompositions`](@ref).
 """
-function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, model::ABM)
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM)
     crossover_one_point(lifecomposition, planetcomposition, model.rng)
 end
 
 """
-    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng::AbstractRNG = Random.default_rng())
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng())
 
 Can be called with an rng object directly.
 """
-function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, rng::AbstractRNG = Random.default_rng())
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng())
     ## choose random index to start crossover, making sure that both strands contain 
     ##  at least 1 element from each parent composition
     crossover_after_idx = rand(rng, 1:length(lifecomposition)-1)
@@ -647,11 +650,11 @@ function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Ve
 end
 
 """
-    crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, crossover_after_idx::Int)
+    crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
 
 Deterministic variant that requires specifying the `crossover_after_idx`, and returns both strands.
 """
-function crossover_one_point(lifecomposition::Vector{Int}, planetcomposition::Vector{Int}, crossover_after_idx::Int)
+function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
 
     strand_1 = vcat(lifecomposition[1:crossover_after_idx], planetcomposition[crossover_after_idx+1:end])
     strand_2 = vcat(planetcomposition[1:crossover_after_idx], lifecomposition[crossover_after_idx+1:end])
