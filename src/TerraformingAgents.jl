@@ -11,7 +11,7 @@ using Distributions: Uniform
 using NearestNeighbors
 using Distances
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, unnest_agents, unnest_planets
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
