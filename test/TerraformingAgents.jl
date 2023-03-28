@@ -192,10 +192,10 @@ end
 function TestMixCompositions()
     @testset "mix compositions" begin
         
-        @test TerraformingAgents.mixcompositions([0,0,0],[1,0,2]) == [0,0,1]
-        @test TerraformingAgents.mixcompositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
-        @test TerraformingAgents.mixcompositions([8],[8]) == [8]
-        @test TerraformingAgents.mixcompositions([8,9],[4,2]) == [6,6]
+        @test TerraformingAgents.average_compositions([0,0,0],[1,0,2]) == [0,0,1]
+        @test TerraformingAgents.average_compositions([1,1,1,9],[8,8,9,2]) == [4,4,5,6]
+        @test TerraformingAgents.average_compositions([8],[8]) == [8]
+        @test TerraformingAgents.average_compositions([8,9],[4,2]) == [6,6]
 
     end
 end
@@ -207,8 +207,32 @@ function TestCrossoverOnePoint()
         @test TerraformingAgents.crossover_one_point([0,0,0],[1,1,1],2) == ([0,0,1],[1,1,0])
         @test_throws BoundsError TerraformingAgents.crossover_one_point([0,0,0],[1,1,1],4)
         ## first randint between 1:10 is 3, second randint between 0:1 is 1
-        @test TerraformingAgents.crossover_one_point(zeros(Int,10),ones(Int,10), MersenneTwister(3143)) == [1,1,1,0,0,0,0,0,0,0]
+        @test TerraformingAgents.crossover_one_point(zeros(10), ones(10), MersenneTwister(3143), mutation_rate=0) == [1,1,1,0,0,0,0,0,0,0]
+        
+        ## positions to mutate below should be [0,0,0,0,0,0,1,1,0,0]
+        crossover_strand = TerraformingAgents.crossover_one_point(zeros(10), ones(10), MersenneTwister(3))
+        @test findall(x->x∉[0,1], crossover_strand) == [7,8]
+    end
+end
 
+function TestMutation()
+    @testset "positions_to_mutate" begin
+        random_strand =  [0.8116984049958615,
+            0.9884323655013432,
+            0.8076220876500786,
+            0.9700908450487538,
+            0.14006111319509862,
+            0.5094438024440222,
+            0.05869740597593154,
+            0.004257960600515309,
+            0.9746379934512355,
+            0.5572251384524507]
+
+        @test TerraformingAgents.positions_to_mutate(random_strand) == [0,0,0,0,0,0,1,1,0,0]
+        
+        ## should return the same positions_to_mutate as above
+        mutated_strand = TerraformingAgents.mutate_strand(ones(10),1,MersenneTwister(3))
+        @test findall(x->x!=1,mutated_strand) == [7,8]
     end
 end
 
@@ -348,6 +372,39 @@ function TestPropogationOfModelRNG()
     end
 end
 
+function TestRunningModelNoErrors()
+    @testset "modify compmix_func and compmix_kwargs" begin 
+
+        galaxyparams = GalaxyParameters(
+            MersenneTwister(3141),
+            100,
+            extent = (100,100),
+            dt = 10,
+            allowed_diff = .5,
+            maxcomp = 1,
+            compsize = 10,
+            compmix_func=crossover_one_point,
+            compmix_kwargs=Dict(:mutation_rate=>0))
+        model = galaxy_model_setup(galaxyparams)    
+        n = 100
+        adata =  [:pos,
+            :vel,
+            :composition, # property of Planet and Life
+            :initialcomposition, # todo rename as initial_composition
+            :alive,
+            :claimed,
+            :parentcompositions,
+            :destination_distance]
+        
+        @test_logs min_level=Logging.Warn df_agent, df_model = run!(model, 
+            galaxy_agent_step!, 
+            galaxy_model_step!, 
+            n,
+            adata=adata, 
+            showprogress=true)
+    end
+end
+
 @testset "All" begin
     TestGalaxyParametersSetup()
     TestInitializePlanetarySystems()
@@ -355,9 +412,11 @@ end
     TestCompatiblePlanets()
     TestMixCompositions()
     TestCrossoverOnePoint()
+    TestMutation()
     TestAgentDiesAtCorrectPlanet()
     TestCenterPositions()
     TestMantel()
     TestPlanetMantelTest()
     TestPropogationOfModelRNG()
+    TestRunningModelNoErrors()
 end
