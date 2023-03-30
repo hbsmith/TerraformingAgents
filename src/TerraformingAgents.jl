@@ -12,7 +12,7 @@ using NearestNeighbors
 using Distances
 using DataFrames
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, unnest_agents, unnest_planets
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, unnest_agents, unnest_planets
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -892,12 +892,14 @@ end
 function galaxy_agent_direct_step!(life::Life, model)
 
     move_agent!(life, life.destination.pos, model)
+    println(model.s)
+    println(life.destination.pos)
 
     life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
     
     if life.destination == nothing
         kill_agent!(life, model)
-    elseif life.destination_distance < model.dt*hypot((life.vel)...)
+    elseif isapprox(life.destination_distance, 0, atol=0.5)
         terraform!(life, life.destination, model)
         kill_agent!(life, model)
     end
@@ -906,7 +908,8 @@ end
 
 function galaxy_agent_direct_step!(planet::Planet, model)
 
-    move_agent!(planet, model, model.dt)
+    # move_agent!(planet, model, model.dt)
+    dummystep(planet, model)
 
 end
 
