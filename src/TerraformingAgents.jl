@@ -685,20 +685,20 @@ end
 # function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
 #     horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
 # end
-function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_planet=1)
-    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_planet)
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_destination=1)
+    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_destination)
 end
 
-function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_planet=1)
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_destination=1)
     # new_strand = Array{typeof(lifecomposition[1])}(undef, length(lifecomposition))
-    idxs_to_keep_from_planet = StatsBase.sample(rng, 1:length(planetcomposition), n_idxs_to_keep_from_planet, replace=false)
-    new_strand = horizontal_gene_transfer(lifecomposition, planetcomposition, idxs_to_keep_from_planet)
+    idxs_to_keep_from_destination = StatsBase.sample(rng, 1:length(planetcomposition), n_idxs_to_keep_from_destination, replace=false)
+    new_strand = horizontal_gene_transfer(lifecomposition, planetcomposition, idxs_to_keep_from_destination)
     return mutate_strand(new_strand, maxcomp, rng, mutation_rate)
 end
 
-function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, idxs_to_keep_from_planet::Vector{Int})
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, idxs_to_keep_from_destination::Vector{Int})
     new_strand = deepcopy(lifecomposition)
-    for i in idxs_to_keep_from_planet
+    for i in idxs_to_keep_from_destination
         new_strand[i] = copy(planetcomposition[i])
     end
     new_strand
@@ -747,9 +747,9 @@ function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
     if model.compmix_kwargs == nothing
-        planet.composition = model.compmix_func(planet.composition, life.composition, model)
+        planet.composition = model.compmix_func(life.composition, planet.composition, model)
     else
-        planet.composition = model.compmix_func(planet.composition, life.composition, model; model.compmix_kwargs...)
+        planet.composition = model.compmix_func(life.composition,planet.composition, model; model.compmix_kwargs...)
     end
     planet.alive = true
     push!(planet.parentlifes, life)
