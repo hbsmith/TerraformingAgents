@@ -10,8 +10,10 @@ using LinearAlgebra: dot, diag, issymmetric, tril!
 using Distributions: Uniform
 using NearestNeighbors
 using Distances
+using DataFrames
+using StatsBase
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, unnest_agents, unnest_planets
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -673,6 +675,30 @@ function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition:
     
     return mutate_strand(return_strand, maxcomp, rng, mutation_rate)
 end
+
+# function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
+#     horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
+# end
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_planet=1)
+    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_planet)
+end
+
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_planet=1)
+    # new_strand = Array{typeof(lifecomposition[1])}(undef, length(lifecomposition))
+    idxs_to_keep_from_planet = StatsBase.sample(rng, 1:length(planetcomposition), n_idxs_to_keep_from_planet, replace=false)
+    new_strand = horizontal_gene_transfer(lifecomposition, planetcomposition, idxs_to_keep_from_planet)
+    return mutate_strand(new_strand, maxcomp, rng, mutation_rate)
+end
+
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, idxs_to_keep_from_planet::Vector{Int})
+    new_strand = deepcopy(lifecomposition)
+    for i in idxs_to_keep_from_planet
+        new_strand[i] = copy(planetcomposition[i])
+    end
+    new_strand
+end
+
+
 """
     mutate_strand(strand::Vector{<:Real}, maxcomp, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(strand))
 
@@ -888,6 +914,30 @@ function galaxy_agent_step!(planet::Planet, model)
 
 end
 
+function galaxy_agent_direct_step!(life::Life, model)
+
+    move_agent!(life, life.destination.pos, model)
+    println(model.s)
+    println(life.destination.pos)
+
+    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
+    
+    if life.destination == nothing
+        kill_agent!(life, model)
+    elseif isapprox(life.destination_distance, 0, atol=0.5)
+        terraform!(life, life.destination, model)
+        kill_agent!(life, model)
+    end
+
+end
+
+function galaxy_agent_direct_step!(planet::Planet, model)
+
+    # move_agent!(planet, model, model.dt)
+    dummystep(planet, model)
+
+end
+
 
 
 #######################################
@@ -996,7 +1046,53 @@ function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=
 
 end
 
+##############################################################################################################################
+## Data collection utilities 
+##############################################################################################################################
+## Some functions to nest and unnest data for csv saving
+function unnest_agents(df_planets, ndims, compsize)
+    # inspired from https://bkamins.github.io/julialang/2022/03/11/unnesting.html
+    # TODO streamline naming
+    df = transform(df_planets, :pos => AsTable)
+    
+    if ndims == 1
+        new_names = Dict("x1" => "x")
+    elseif ndims == 2
+        new_names = Dict("x1" => "x", "x2" => "y")
+    elseif ndims == 3
+        new_names = Dict("x1" => "x", "x2" => "y", "x3" => "z")
+    end
+    rename!(df, new_names)
 
+    df = transform(df, :vel => AsTable)
+    if ndims == 1
+        new_names = Dict("x1" => "v_x")
+    elseif ndims == 2
+        new_names = Dict("x1" => "v_x", "x2" => "v_y")
+    elseif ndims == 3
+        new_names = Dict("x1" => "v_x", "x2" => "v_y", "x3" => "v_z")
+    end
+    rename!(df, new_names)
+
+    df = transform(df, :composition => AsTable)
+    new_names = Dict("x$i" => "comp_$(i)" for i in 1:compsize)
+    rename!(df, new_names)
+
+    select!(df, Not([:pos, :vel, :composition]))
+    return df
+end
+
+
+function unnest_planets(df_planets, ndims, compsize)
+    df = unnest_agents(df_planets, ndims, compsize)
+
+    df = transform(df, :initialcomposition => AsTable)
+    new_names = Dict("x$i" => "init_comp_$(i)" for i in 1:compsize)
+    rename!(df, new_names)
+
+    select!(df, Not([:initialcomposition]))
+    return df
+end
 
 # rng = MersenneTwister(3141)
 # x = [[0,1,2],[1,0,3],[2,3,0]]
