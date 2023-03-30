@@ -11,8 +11,9 @@ using Distributions: Uniform
 using NearestNeighbors
 using Distances
 using DataFrames
+using StatsBase
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, unnest_agents, unnest_planets
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, unnest_agents, unnest_planets
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -674,6 +675,30 @@ function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition:
     
     return mutate_strand(return_strand, maxcomp, rng, mutation_rate)
 end
+
+# function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
+#     horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
+# end
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_planet=1)
+    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_planet)
+end
+
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_planet=1)
+    # new_strand = Array{typeof(lifecomposition[1])}(undef, length(lifecomposition))
+    idxs_to_keep_from_planet = StatsBase.sample(rng, 1:length(planetcomposition), n_idxs_to_keep_from_planet, replace=false)
+    new_strand = horizontal_gene_transfer(lifecomposition, planetcomposition, idxs_to_keep_from_planet)
+    return mutate_strand(new_strand, maxcomp, rng, mutation_rate)
+end
+
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, idxs_to_keep_from_planet::Vector{Int})
+    new_strand = deepcopy(lifecomposition)
+    for i in idxs_to_keep_from_planet
+        new_strand[i] = copy(planetcomposition[i])
+    end
+    new_strand
+end
+
+
 """
     mutate_strand(strand::Vector{<:Real}, maxcomp, rng::AbstractRNG = Random.default_rng(), mutation_rate=1/length(strand))
 
