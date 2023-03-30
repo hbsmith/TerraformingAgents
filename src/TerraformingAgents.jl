@@ -889,6 +889,27 @@ function galaxy_agent_step!(planet::Planet, model)
 
 end
 
+function galaxy_agent_direct_step!(life::Life, model)
+
+    move_agent!(life, life.destination.pos, model)
+
+    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
+    
+    if life.destination == nothing
+        kill_agent!(life, model)
+    elseif life.destination_distance < model.dt*hypot((life.vel)...)
+        terraform!(life, life.destination, model)
+        kill_agent!(life, model)
+    end
+
+end
+
+function galaxy_agent_direct_step!(planet::Planet, model)
+
+    move_agent!(planet, model, model.dt)
+
+end
+
 
 
 #######################################
@@ -1001,20 +1022,32 @@ end
 ## Data collection utilities 
 ##############################################################################################################################
 ## Some functions to nest and unnest data for csv saving
-function unnest_agents(df_planets)
+function unnest_agents(df_planets, ndims, compsize)
     # inspired from https://bkamins.github.io/julialang/2022/03/11/unnesting.html
     # TODO streamline naming
     df = transform(df_planets, :pos => AsTable)
-    new_names = Dict("x1" => "x", "x2" => "y")
+    
+    if ndims == 1
+        new_names = Dict("x1" => "x")
+    elseif ndims == 2
+        new_names = Dict("x1" => "x", "x2" => "y")
+    elseif ndims == 3
+        new_names = Dict("x1" => "x", "x2" => "y", "x3" => "z")
+    end
     rename!(df, new_names)
 
     df = transform(df, :vel => AsTable)
-    new_names = Dict("x1" => "v_x", "x2" => "v_y")
+    if ndims == 1
+        new_names = Dict("x1" => "v_x")
+    elseif ndims == 2
+        new_names = Dict("x1" => "v_x", "x2" => "v_y")
+    elseif ndims == 3
+        new_names = Dict("x1" => "v_x", "x2" => "v_y", "x3" => "v_z")
+    end
     rename!(df, new_names)
 
     df = transform(df, :composition => AsTable)
-    dim = 5
-    new_names = Dict("x$i" => "comp_$(i-1)" for i in 1:dim+1)
+    new_names = Dict("x$i" => "comp_$(i)" for i in 1:compsize)
     rename!(df, new_names)
 
     select!(df, Not([:pos, :vel, :composition]))
@@ -1022,12 +1055,11 @@ function unnest_agents(df_planets)
 end
 
 
-function unnest_planets(df_planets)
-    df = unnest_agents(df_planets)
+function unnest_planets(df_planets, ndims, compsize)
+    df = unnest_agents(df_planets, ndims, compsize)
 
     df = transform(df, :initialcomposition => AsTable)
-    dim = 5
-    new_names = Dict("x$i" => "init_comp_$(i-1)" for i in 1:dim+1)
+    new_names = Dict("x$i" => "init_comp_$(i)" for i in 1:compsize)
     rename!(df, new_names)
 
     select!(df, Not([:initialcomposition]))
