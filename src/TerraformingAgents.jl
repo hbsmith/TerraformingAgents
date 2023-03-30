@@ -198,6 +198,7 @@ mutable struct GalaxyParameters
     interaction_radius
     allowed_diff
     ool
+    nool
     compmix_func
     compmix_kwargs
     pos
@@ -217,6 +218,7 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
+        nool::Int = 1,
         compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         pos::Vector{<:NTuple{D,Real}},
@@ -254,7 +256,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -467,15 +469,19 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function galaxy_life_setup(model, params::GalaxyParameters)
 
-    planet = 
-        isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
-    
-    ## Only spawn life if there are compatible Planets
-    candidateplanets = compatibleplanets(planet, model)
-    if length(candidateplanets) == 0
-        println("Planet $(planet.id) has no compatible planets. Cannot spawn life here.")
-    else
-        spawnlife!(planet, candidateplanets, model)
+    for _ in 1:params.nool
+
+        planet = 
+            isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model.agents[params.ool]
+        
+        ## Only spawn life if there are compatible Planets
+        candidateplanets = compatibleplanets(planet, model)
+        if length(candidateplanets) == 0
+            println("Planet $(planet.id) has no compatible planets. Cannot spawn life here.")
+        else
+            spawnlife!(planet, candidateplanets, model)
+        end
+
     end
 
     model
