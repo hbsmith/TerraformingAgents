@@ -198,6 +198,7 @@ mutable struct GalaxyParameters
     interaction_radius
     allowed_diff
     ool
+    nool
     compmix_func
     compmix_kwargs
     pos
@@ -217,6 +218,7 @@ mutable struct GalaxyParameters
         interaction_radius::Real = dt*lifespeed,
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
+        nool::Int = 1,
         compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         pos::Vector{<:NTuple{D,Real}},
@@ -254,7 +256,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -467,15 +469,19 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function galaxy_life_setup(model, params::GalaxyParameters)
 
-    planet = 
-        isnothing(params.ool) ? random_agent(model, x -> x isa Planet) : model.agents[params.ool]
-    
-    ## Only spawn life if there are compatible Planets
-    candidateplanets = compatibleplanets(planet, model)
-    if length(candidateplanets) == 0
-        println("Planet $(planet.id) has no compatible planets. Cannot spawn life here.")
-    else
-        spawnlife!(planet, candidateplanets, model)
+    for _ in 1:params.nool
+
+        planet = 
+            isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model.agents[params.ool]
+        
+        ## Only spawn life if there are compatible Planets
+        candidateplanets = compatibleplanets(planet, model)
+        if length(candidateplanets) == 0
+            println("Planet $(planet.id) has no compatible planets. Cannot spawn life here.")
+        else
+            spawnlife!(planet, candidateplanets, model)
+        end
+
     end
 
     model
@@ -679,20 +685,20 @@ end
 # function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
 #     horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
 # end
-function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_planet=1)
-    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_planet)
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_destination=1)
+    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_destination)
 end
 
-function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_planet=1)
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_destination=1)
     # new_strand = Array{typeof(lifecomposition[1])}(undef, length(lifecomposition))
-    idxs_to_keep_from_planet = StatsBase.sample(rng, 1:length(planetcomposition), n_idxs_to_keep_from_planet, replace=false)
-    new_strand = horizontal_gene_transfer(lifecomposition, planetcomposition, idxs_to_keep_from_planet)
+    idxs_to_keep_from_destination = StatsBase.sample(rng, 1:length(planetcomposition), n_idxs_to_keep_from_destination, replace=false)
+    new_strand = horizontal_gene_transfer(lifecomposition, planetcomposition, idxs_to_keep_from_destination)
     return mutate_strand(new_strand, maxcomp, rng, mutation_rate)
 end
 
-function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, idxs_to_keep_from_planet::Vector{Int})
+function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, idxs_to_keep_from_destination::Vector{Int})
     new_strand = deepcopy(lifecomposition)
-    for i in idxs_to_keep_from_planet
+    for i in idxs_to_keep_from_destination
         new_strand[i] = copy(planetcomposition[i])
     end
     new_strand
@@ -741,9 +747,9 @@ function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
     if model.compmix_kwargs == nothing
-        planet.composition = model.compmix_func(planet.composition, life.composition, model)
+        planet.composition = model.compmix_func(life.composition, planet.composition, model)
     else
-        planet.composition = model.compmix_func(planet.composition, life.composition, model; model.compmix_kwargs...)
+        planet.composition = model.compmix_func(life.composition,planet.composition, model; model.compmix_kwargs...)
     end
     planet.alive = true
     push!(planet.parentlifes, life)
