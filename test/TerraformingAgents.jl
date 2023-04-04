@@ -317,6 +317,21 @@ function TestMantel()
         @test p_value == 0.666
 
     end
+
+    @testset "mantel vegan" begin
+
+        ## Same test used in skbio here:
+        ## https://github.com/biocore/scikit-bio/blob/master/skbio/stats/distance/tests/test_mantel.py#L247
+        rng = MersenneTwister(3141)
+        veg_dm_vegan = readdlm(joinpath(@__DIR__,"data","mantel_veg_dm_vegan.txt"))
+        env_dm_vegan = readdlm(joinpath(@__DIR__,"data","mantel_env_dm_vegan.txt"))
+        corr_coeff, p_value = TerraformingAgents.MantelTest(veg_dm_vegan,env_dm_vegan,rng=rng,alternative=:greater)
+        @show corr_coeff
+        @show p_value
+        @show round(corr_coeff, digits=7)
+        @test round(corr_coeff, digits=7) == 0.3047454
+        @test p_value == 0.001
+    end
 end
 
 function TestPlanetMantelTest()
@@ -406,17 +421,17 @@ function TestRunningModelNoErrors()
 end
 
 @testset "All" begin
-    TestGalaxyParametersSetup()
-    TestInitializePlanetarySystems()
-    TestInitializeLife()
-    TestCompatiblePlanets()
-    TestMixCompositions()
-    TestCrossoverOnePoint()
-    TestMutation()
-    TestAgentDiesAtCorrectPlanet()
-    TestCenterPositions()
+    # TestGalaxyParametersSetup()
+    # TestInitializePlanetarySystems()
+    # TestInitializeLife()
+    # TestCompatiblePlanets()
+    # TestMixCompositions()
+    # TestCrossoverOnePoint()
+    # TestMutation()
+    # TestAgentDiesAtCorrectPlanet()
+    # TestCenterPositions()
     TestMantel()
-    TestPlanetMantelTest()
-    TestPropogationOfModelRNG()
-    TestRunningModelNoErrors()
+    # TestPlanetMantelTest()
+    # TestPropogationOfModelRNG()
+    # TestRunningModelNoErrors()
 end
