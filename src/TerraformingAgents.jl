@@ -13,7 +13,7 @@ using Distances
 using DataFrames
 using StatsBase
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, unnest_agents, unnest_planets
+export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -1099,6 +1099,32 @@ function unnest_planets(df_planets, ndims, compsize)
     select!(df, Not([:initialcomposition]))
     return df
 end
+
+function split_df_agent(df_agent, model)
+    df_planets = df_agent[.! ismissing.(df_agent.alive),:]
+    select!(df_planets, Not([:destination_distance, :parentplanet, :parentplanet_ids,
+                            :destination_id, :ancestor_ids])) # also: parentlife_ids, parentcompositions
+    df_planets = unnest_planets(df_planets, length(model.space.dims), model.properties[:compsize])
+
+    # misspell for parsing reasons
+    df_lifes = df_agent[ismissing.(df_agent.alive),:]
+    select!(df_lifes, Not([:initialcomposition, :alive, :claimed, :parentcompositions])) #parentplanets ids??
+    df_lifes = unnest_agents(df_lifes, length(model.space.dims), model.properties[:compsize])
+
+    return df_planets, df_lifes
+end
+
+function clean_df(df)
+    ## Replace nothings with missings
+    mapcols!(col -> replace(col, nothing => missing), df)
+    ## Recast the column types (makes column go from e.g. Union{Bool,Missing} -> Bool)
+    df = identity.(df)
+    ## Replace true/false Bool columns with 0s and 1s
+    mapcols!(col -> eltype(col) == Bool ? Int8.(col) : col, df)
+
+    return df 
+end
+
 
 # rng = MersenneTwister(3141)
 # x = [[0,1,2],[1,0,3],[2,3,0]]
