@@ -412,6 +412,22 @@ function galaxy_model_setup(params::GalaxyParameters)
     model
 
 end
+"""
+    galaxy_model_setup(params::Dict)
+
+Initializes the GalaxyParameters struct from the provided dict.
+"""
+function galaxy_model_setup(params::Dict)
+
+    params = GalaxyParameters(
+        params[:rng],
+        params[:nplanets]; 
+        filter(x -> first(x) ∉ [:rng, :nplanets], params)...)
+    model = galaxy_planet_setup(params)
+    model = galaxy_life_setup(model, params::GalaxyParameters)
+    model
+
+end
 
 """
     galaxy_planet_setup(params::GalaxyParameters)
@@ -1101,15 +1117,20 @@ function unnest_planets(df_planets, ndims, compsize)
 end
 
 function split_df_agent(df_agent, model)
+    split_df_agent(agent, length(model.space.dims), model.properties[:compsize])
+    return df_planets, df_lifes
+end
+
+function split_df_agent(df_agent, dims, compsize)
     df_planets = df_agent[.! ismissing.(df_agent.alive),:]
     select!(df_planets, Not([:destination_distance, :parentplanet, :parentplanet_ids,
                             :destination_id, :ancestor_ids])) # also: parentlife_ids, parentcompositions
-    df_planets = unnest_planets(df_planets, length(model.space.dims), model.properties[:compsize])
+    df_planets = unnest_planets(df_planets, dims, compsize)
 
     # misspell for parsing reasons
     df_lifes = df_agent[ismissing.(df_agent.alive),:]
     select!(df_lifes, Not([:initialcomposition, :alive, :claimed, :parentcompositions])) #parentplanets ids??
-    df_lifes = unnest_agents(df_lifes, length(model.space.dims), model.properties[:compsize])
+    df_lifes = unnest_agents(df_lifes, dims, compsize)
 
     return df_planets, df_lifes
 end
