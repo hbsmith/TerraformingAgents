@@ -541,6 +541,7 @@ function compatibleplanets(planet::Planet, model::ABM)
     end
 
     candidateplanets = collect(values(filter(iscandidate, model.agents)))
+    length(candidateplanets)==0 && return Vector{Planet}[]
     compositions = hcat([a.composition for a in candidateplanets]...)
     compositiondiffs = abs.(compositions .- planet.composition)
     compatibleindxs =
