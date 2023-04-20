@@ -468,6 +468,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :s => 0, ## track the model step number,
                         :max_life_id => -1, ## id of the newest life
                         :terraformed_on_step => false,
+                        :n_terraformed_on_step => params.nool,
                         :GalaxyParameters => params,
                         :compmix_func => params.compmix_func,
                         :compmix_kwargs => params.compmix_kwargs);
@@ -910,10 +911,13 @@ function galaxy_model_step!(model)
     # update_nplanets!(model)
     if max_life_id(model) > model.max_life_id
         model.terraformed_on_step = true
+        model.n_terraformed_on_step = max_life_id(model) - model.max_life_id
         model.max_life_id = max_life_id(model)
     else 
+        model.n_terraformed_on_step = 0
         model.terraformed_on_step = false
     end
+    # model.n_terraformed_on_step = max_life_id(model) - model.max_life_id
     model.s += 1
 
 end
