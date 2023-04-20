@@ -1087,21 +1087,22 @@ function unnest_agents(df_planets, ndims, compsize)
     end
     rename!(df, new_names)
 
-    df = transform(df, :vel => AsTable)
-    if ndims == 1
-        new_names = Dict("x1" => "v_x")
-    elseif ndims == 2
-        new_names = Dict("x1" => "v_x", "x2" => "v_y")
-    elseif ndims == 3
-        new_names = Dict("x1" => "v_x", "x2" => "v_y", "x3" => "v_z")
-    end
-    rename!(df, new_names)
+    ## Don't even save velocity data anymore
+    # df = transform(df, :vel => AsTable)
+    # if ndims == 1
+    #     new_names = Dict("x1" => "v_x")
+    # elseif ndims == 2
+    #     new_names = Dict("x1" => "v_x", "x2" => "v_y")
+    # elseif ndims == 3
+    #     new_names = Dict("x1" => "v_x", "x2" => "v_y", "x3" => "v_z")
+    # end
+    # rename!(df, new_names)
 
     df = transform(df, :composition => AsTable)
     new_names = Dict("x$i" => "comp_$(i)" for i in 1:compsize)
     rename!(df, new_names)
 
-    select!(df, Not([:pos, :vel, :composition]))
+    select!(df, Not([:pos, :vel, :composition, :agent_type]))
     return df
 end
 
@@ -1109,11 +1110,12 @@ end
 function unnest_planets(df_planets, ndims, compsize)
     df = unnest_agents(df_planets, ndims, compsize)
 
-    df = transform(df, :initialcomposition => AsTable)
-    new_names = Dict("x$i" => "init_comp_$(i)" for i in 1:compsize)
-    rename!(df, new_names)
-
-    select!(df, Not([:initialcomposition]))
+    ## Don't write initial composition anymore
+    # df = transform(df, :initialcomposition => AsTable)
+    # new_names = Dict("x$i" => "init_comp_$(i)" for i in 1:compsize)
+    # rename!(df, new_names)
+    
+    # select!(df, Not([:initialcomposition]))
     return df
 end
 
@@ -1125,12 +1127,12 @@ end
 function split_df_agent(df_agent, dims, compsize)
     df_planets = df_agent[.! ismissing.(df_agent.alive),:]
     select!(df_planets, Not([:destination_distance, :parentplanet, :parentplanet_ids,
-                            :destination_id, :ancestor_ids])) # also: parentlife_ids, parentcompositions
+                            :destination_id, :ancestor_ids, :parentlife_ids, :parentcompositions])) # also: 
     df_planets = unnest_planets(df_planets, dims, compsize)
 
     # misspell for parsing reasons
     df_lifes = df_agent[ismissing.(df_agent.alive),:]
-    select!(df_lifes, Not([:initialcomposition, :alive, :claimed, :parentcompositions])) #parentplanets ids??
+    select!(df_lifes, Not([:initialcomposition, :alive, :claimed, :parentcompositions, :parentplanet_ids, :x, :y, :z])) #parentplanets ids??
     df_lifes = unnest_agents(df_lifes, dims, compsize)
 
     return df_planets, df_lifes
