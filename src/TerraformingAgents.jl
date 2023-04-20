@@ -389,6 +389,14 @@ Return the number of planets in `params`.
 """
 nplanets(params::GalaxyParameters) = length(params.pos)
 
+
+"""
+    max_life_id(model)
+
+Return the id of the newest Life
+"""
+max_life_id(model) = maximum(keys(filter!(x -> x.second isa Life, model.agents)))
+
 """
 
     center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D}
@@ -457,7 +465,9 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :nplanets => nplanets(params),
                         :maxcomp => params.maxcomp,
                         :compsize => params.compsize,
-                        :s => 0, ## track the model step number
+                        :s => 0, ## track the model step number,
+                        :max_life_id => -1, ## id of the newest life
+                        :terraformed_on_step => false,
                         :GalaxyParameters => params,
                         :compmix_func => params.compmix_func,
                         :compmix_kwargs => params.compmix_kwargs);
@@ -499,6 +509,8 @@ function galaxy_life_setup(model, params::GalaxyParameters)
         end
 
     end
+
+    model.max_life_id = max_life_id(model)
 
     model
 
@@ -896,6 +908,12 @@ Right now this only updates the number of planets in the simulation if the inter
 function galaxy_model_step!(model)
     
     update_nplanets!(model)
+    if max_life_id(model) > model.max_life_id
+        model.terraformed_on_step = true
+        model.max_life_id = max_life_id(model)
+    else 
+        model.terraformed_on_step = false
+    end
     model.s += 1
 
 end
