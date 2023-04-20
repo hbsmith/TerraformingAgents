@@ -395,7 +395,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 
 Return the id of the newest Life
 """
-max_life_id(model) = maximum(keys(filter!(x -> x.second isa Life, model.agents)))
+max_life_id(model) = maximum(keys(filter(x -> x.second isa Life, model.agents)))
 
 """
 
@@ -907,7 +907,7 @@ Right now this only updates the number of planets in the simulation if the inter
 """
 function galaxy_model_step!(model)
     
-    update_nplanets!(model)
+    # update_nplanets!(model)
     if max_life_id(model) > model.max_life_id
         model.terraformed_on_step = true
         model.max_life_id = max_life_id(model)
