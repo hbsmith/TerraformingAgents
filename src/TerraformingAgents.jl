@@ -467,7 +467,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :compsize => params.compsize,
                         :s => 0, ## track the model step number,
                         :max_life_id => -1, ## id of the newest life
-                        :terraformed_on_step => false,
+                        :terraformed_on_step => true,
                         :n_terraformed_on_step => params.nool,
                         :GalaxyParameters => params,
                         :compmix_func => params.compmix_func,
