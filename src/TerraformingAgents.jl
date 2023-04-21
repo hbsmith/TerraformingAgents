@@ -395,7 +395,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 
 Return the id of the newest Life
 """
-max_life_id(model) = maximum(keys(filter(x -> x.second isa Life, model.agents)))
+max_life_id(model) = maximum(keys(filter(x -> x.second isa Life, model.agents)), init=0)
 
 """
 
