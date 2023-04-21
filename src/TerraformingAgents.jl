@@ -51,6 +51,7 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
 
     alive::Bool = false
     claimed::Bool = false ## True if any Life has this planet as its destination
+    spawn_threshold = 0
 
     parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
     parentlifes::Vector{<:AbstractAgent} = AbstractAgent[] ## List of Life objects that are this planet's direct parent
@@ -172,6 +173,8 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
 - `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
+- `nool::Int = 1`: the number of planets that are initialized with life
+- `spawn_rate::Real = 0`: the frequency at which to send out life from every living planet (in units of dt)
 - `compmix_func::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compmix_func`.
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
@@ -199,6 +202,7 @@ mutable struct GalaxyParameters
     allowed_diff
     ool
     nool
+    spawn_rate
     compmix_func
     compmix_kwargs
     pos
@@ -219,6 +223,7 @@ mutable struct GalaxyParameters
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
         nool::Int = 1,
+        spawn_rate::Real = 0,
         compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         pos::Vector{<:NTuple{D,Real}},
@@ -256,7 +261,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, spawn_rate, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -956,6 +961,19 @@ function for `Life`.
 function galaxy_agent_step!(planet::Planet, model)
 
     move_agent!(planet, model, model.dt)
+    
+    planet.spawn_threshold += model.dt * model.spawn_rate
+
+    if model.spawn_threshold >= 1
+
+        ## I should make sure to save the candidate planets from the life that colonizes the planet, and then filter it
+        ##  to remove any planets which have been claimed in the meantime. Or maybe not since I don't store that in the first place even for life.
+        ## Actually in this scenario I should probably prevent life from immeadiately spawning on planets that get terraformed
+        spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
+
+        planet.spawn_threshold = 0
+
+    end
 
 end
 
