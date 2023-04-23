@@ -13,7 +13,7 @@ using Distances
 using DataFrames
 using StatsBase
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
+export Planet, Life, galaxy_model_setup, galaxy_agent_step_spawn_on_terraform!, galaxy_agent_step_spawn_at_rate!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -51,6 +51,8 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
 
     alive::Bool = false
     claimed::Bool = false ## True if any Life has this planet as its destination
+    spawn_threshold = 0
+    candidate_planets::Vector{Planet} = Planet[]
 
     parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
     parentlifes::Vector{<:AbstractAgent} = AbstractAgent[] ## List of Life objects that are this planet's direct parent
@@ -172,6 +174,8 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
 - `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
+- `nool::Int = 1`: the number of planets that are initialized with life
+- `spawn_rate::Real = 0.02`: the frequency at which to send out life from every living planet (in units of dt) (only used for `galaxy_agent_step_spawn_at_rate!`)
 - `compmix_func::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compmix_func`.
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
@@ -199,6 +203,7 @@ mutable struct GalaxyParameters
     allowed_diff
     ool
     nool
+    spawn_rate
     compmix_func
     compmix_kwargs
     pos
@@ -219,6 +224,7 @@ mutable struct GalaxyParameters
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
         nool::Int = 1,
+        spawn_rate::Real = 0.02,
         compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         pos::Vector{<:NTuple{D,Real}},
@@ -256,7 +262,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, spawn_rate, compmix_func, compmix_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -469,6 +475,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :max_life_id => -1, ## id of the newest life
                         :terraformed_on_step => true,
                         :n_terraformed_on_step => params.nool,
+                        :spawn_rate => params.spawn_rate,
                         :GalaxyParameters => params,
                         :compmix_func => params.compmix_func,
                         :compmix_kwargs => params.compmix_kwargs);
@@ -496,18 +503,22 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function galaxy_life_setup(model, params::GalaxyParameters)
 
+    ## Initialize living planets
     for _ in 1:params.nool
 
         planet = 
             isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model.agents[params.ool]
         
-        ## Only spawn life if there are compatible Planets
-        candidateplanets = compatibleplanets(planet, model)
-        if length(candidateplanets) == 0
-            println("Planet $(planet.id) has no compatible planets. Cannot spawn life here.")
-        else
-            spawnlife!(planet, candidateplanets, model)
-        end
+        planet.alive = true
+        planet.claimed = true
+
+    end
+
+    ## Spawn life (candidate planets have to be calculated after all alive planets are initialized)
+    for (_, planet) in filter(kv -> kv.second isa Planet && kv.second.alive, model.agents)
+
+        planet.candidate_planets = compatibleplanets(planet, model)
+        spawn_if_candidate_planets!(planet, model)
 
     end
 
@@ -590,6 +601,24 @@ function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet
 end
 
 """
+
+"""
+function spawn_if_candidate_planets!(
+    planet::Planet,
+    model::ABM,
+    life::Union{Life,Nothing} = nothing
+)
+    ## Only spawn life if there are compatible Planets
+    candidateplanets = planet.candidate_planets
+    if length(candidateplanets) == 0
+        println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
+    else
+        isnothing(life) ?  spawnlife!(planet, model) : spawnlife!(planet, model, ancestors = push!(life.ancestors, life))
+    end
+    model
+end
+
+"""
     spawnlife!(planet::Planet, model::ABM; ancestors::Vector{Life} = Life[])
 
 Spawns `Life` at `planet`.
@@ -598,14 +627,11 @@ Called by [`galaxy_model_setup`](@ref) and [`terraform!`](@ref).
 """
 function spawnlife!(
     planet::Planet,
-    candidateplanets::Vector{Planet},
     model::ABM;
     ancestors::Vector{Life} = Life[]
     )
 
-    planet.alive = true
-    planet.claimed = true ## This should already be true unless this is the first planet
-    destinationplanet = nearestcompatibleplanet(planet, candidateplanets)
+    destinationplanet = nearestcompatibleplanet(planet, planet.candidate_planets)
     destination_distance = distance(destinationplanet.pos, planet.pos)
     vel = direction(planet, destinationplanet) .* model.lifespeed
 
@@ -771,7 +797,7 @@ existing `life` and terraforms an exsiting non-alive `planet` (not user facing).
 - Update the `planet`'s `ancestors`, `parentplanet`, `parentlife`, and `parentcomposition`
 - Call `spawnlife!` to send out `Life` from `planet`.
 
-Called by [`galaxy_agent_step!`](@ref).
+Called by [`galaxy_agent_step_spawn_on_terraform!`](@ref).
 """
 function terraform!(life::Life, planet::Planet, model::ABM)
 
@@ -785,15 +811,9 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     push!(planet.parentlifes, life)
     push!(planet.parentplanets, life.parentplanet)
     push!(planet.parentcompositions, life.composition)
-    # planet.claimed = true ## Test to make sure this is already true beforehand
+    planet.candidate_planets = compatibleplanets(planet, model)
 
-    ## Only spawn life if there are compatible Planets
-    candidateplanets = compatibleplanets(planet, model)
-    if length(candidateplanets) == 0
-        println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
-    else
-        spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
-    end
+    # planet.claimed = true ## Test to make sure this is already true beforehand
 end
 
 """
@@ -923,7 +943,7 @@ function galaxy_model_step!(model)
 end
 
 """
-    galaxy_agent_step!(life::Life, model)
+    galaxy_agent_step_spawn_on_terraform!(life::Life, model)
 
 Custom `agent_step!` for Life. 
 
@@ -932,7 +952,48 @@ Custom `agent_step!` for Life.
 
 Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
 """
-function galaxy_agent_step!(life::Life, model)
+function galaxy_agent_step_spawn_on_terraform!(life::Life, model)
+
+    move_agent!(life, model, model.dt)
+
+    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
+    
+    if life.destination == nothing
+        kill_agent!(life, model)
+    elseif life.destination_distance < model.dt*hypot((life.vel)...)
+        terraform!(life, life.destination, model)
+
+        spawn_if_candidate_planets!(life.destination, model, life)
+
+        kill_agent!(life, model)
+    end
+
+end
+
+"""
+    galaxy_agent_step_spawn_on_terraform!(planet::Planet, model)
+
+Custom `agent_step!` for Planet. Doesn't do anything. Only needed because we have an `agent_step!`
+function for `Life`.
+"""
+function galaxy_agent_step_spawn_on_terraform!(planet::Planet, model)
+
+    ## Don't need to update candidate planets for planets which are already alive if the spawn is only on terraform
+    dummystep(planet, model)
+
+end
+
+"""
+    galaxy_agent_step_spawn_at_rate!(life::Life, model)
+
+Custom `agent_step!` for Life. 
+
+    - Moves `life`
+    - If `life` is within 1 step of destination planet, `terraform!`s life's destination, and kills `life`.
+
+Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
+"""
+function galaxy_agent_step_spawn_at_rate!(life::Life, model)
 
     move_agent!(life, model, model.dt)
 
@@ -948,16 +1009,29 @@ function galaxy_agent_step!(life::Life, model)
 end
 
 """
-    galaxy_agent_step!(planet::Planet, model)
+    galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
-Custom `agent_step!` for Planet. Doesn't do anything. Only needed because we have an `agent_step!`
-function for `Life`.
+Custom `agent_step!` for Planet. Spawns life at a fixed rate. 
 """
-function galaxy_agent_step!(planet::Planet, model)
+function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
     move_agent!(planet, model, model.dt)
+    
+    planet.alive && (planet.spawn_threshold += model.dt * model.spawn_rate)
+
+    if planet.spawn_threshold >= 1
+
+        ## update candidate planets 
+        filter!(p-> !p.alive && !p.claimed, planet.candidate_planets)
+        length(planet.parentlifes) > 0 ? life = planet.parentlifes[end] : life = nothing
+        spawn_if_candidate_planets!(planet, model, life)
+        planet.spawn_threshold = 0
+
+    end
 
 end
+
+
 
 function galaxy_agent_direct_step!(life::Life, model)
 
