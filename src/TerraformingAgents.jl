@@ -13,7 +13,7 @@ using Distances
 using DataFrames
 using StatsBase
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
+export Planet, Life, galaxy_model_setup, galaxy_agent_step_spawn_on_terraform!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -595,6 +595,24 @@ function nearestcompatibleplanet(planet::Planet, candidateplanets::Vector{Planet
 end
 
 """
+
+"""
+function spawn_if_candidate_planets!(
+    life::Life,
+    planet::Planet,
+    model::ABM
+)
+    ## Only spawn life if there are compatible Planets
+    candidateplanets = compatibleplanets(planet, model)
+    if length(candidateplanets) == 0
+        println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
+    else
+        spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
+    end
+    model
+end
+
+"""
     spawnlife!(planet::Planet, model::ABM; ancestors::Vector{Life} = Life[])
 
 Spawns `Life` at `planet`.
@@ -776,7 +794,7 @@ existing `life` and terraforms an exsiting non-alive `planet` (not user facing).
 - Update the `planet`'s `ancestors`, `parentplanet`, `parentlife`, and `parentcomposition`
 - Call `spawnlife!` to send out `Life` from `planet`.
 
-Called by [`galaxy_agent_step!`](@ref).
+Called by [`galaxy_agent_step_spawn_on_terraform!`](@ref).
 """
 function terraform!(life::Life, planet::Planet, model::ABM)
 
@@ -791,14 +809,6 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     push!(planet.parentplanets, life.parentplanet)
     push!(planet.parentcompositions, life.composition)
     # planet.claimed = true ## Test to make sure this is already true beforehand
-
-    ## Only spawn life if there are compatible Planets
-    candidateplanets = compatibleplanets(planet, model)
-    if length(candidateplanets) == 0
-        println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
-    else
-        spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
-    end
 end
 
 """
@@ -928,7 +938,7 @@ function galaxy_model_step!(model)
 end
 
 """
-    galaxy_agent_step!(life::Life, model)
+    galaxy_agent_step_spawn_on_terraform!(life::Life, model)
 
 Custom `agent_step!` for Life. 
 
@@ -937,7 +947,47 @@ Custom `agent_step!` for Life.
 
 Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
 """
-function galaxy_agent_step!(life::Life, model)
+function galaxy_agent_step_spawn_on_terraform!(life::Life, model)
+
+    move_agent!(life, model, model.dt)
+
+    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
+    
+    if life.destination == nothing
+        kill_agent!(life, model)
+    elseif life.destination_distance < model.dt*hypot((life.vel)...)
+        terraform!(life, life.destination, model)
+
+        spawn_if_candidate_planets!(life, life.destination, model)
+
+        kill_agent!(life, model)
+    end
+
+end
+
+"""
+    galaxy_agent_step_spawn_on_terraform!(planet::Planet, model)
+
+Custom `agent_step!` for Planet. Doesn't do anything. Only needed because we have an `agent_step!`
+function for `Life`.
+"""
+function galaxy_agent_step_spawn_on_terraform!(planet::Planet, model)
+
+    dummystep(planet, model)
+
+end
+
+"""
+    galaxy_agent_step_spawn_at_rate!(life::Life, model)
+
+Custom `agent_step!` for Life. 
+
+    - Moves `life`
+    - If `life` is within 1 step of destination planet, `terraform!`s life's destination, and kills `life`.
+
+Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDynamics/Agents.jl/issues/684).
+"""
+function galaxy_agent_step_spawn_at_rate!(life::Life, model)
 
     move_agent!(life, model, model.dt)
 
@@ -953,29 +1003,31 @@ function galaxy_agent_step!(life::Life, model)
 end
 
 """
-    galaxy_agent_step!(planet::Planet, model)
+    galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
-Custom `agent_step!` for Planet. Doesn't do anything. Only needed because we have an `agent_step!`
-function for `Life`.
+Custom `agent_step!` for Planet. Spawns life at a fixed rate. 
 """
-function galaxy_agent_step!(planet::Planet, model)
+function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
     move_agent!(planet, model, model.dt)
     
     planet.spawn_threshold += model.dt * model.spawn_rate
 
-    if model.spawn_threshold >= 1
+    if planet.spawn_threshold >= 1
 
         ## I should make sure to save the candidate planets from the life that colonizes the planet, and then filter it
         ##  to remove any planets which have been claimed in the meantime. Or maybe not since I don't store that in the first place even for life.
         ## Actually in this scenario I should probably prevent life from immeadiately spawning on planets that get terraformed
-        spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
+        spawn_if_candidate_planets!(life, life.destination, model)
+        # spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
 
         planet.spawn_threshold = 0
 
     end
 
 end
+
+
 
 function galaxy_agent_direct_step!(life::Life, model)
 
