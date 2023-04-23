@@ -52,6 +52,7 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     alive::Bool = false
     claimed::Bool = false ## True if any Life has this planet as its destination
     spawn_threshold = 0
+    candidate_planets::Vector{Planet} = Planet[]
 
     parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
     parentlifes::Vector{<:AbstractAgent} = AbstractAgent[] ## List of Life objects that are this planet's direct parent
@@ -506,13 +507,10 @@ function galaxy_life_setup(model, params::GalaxyParameters)
         planet = 
             isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model.agents[params.ool]
         
-        ## Only spawn life if there are compatible Planets
-        candidateplanets = compatibleplanets(planet, model)
-        if length(candidateplanets) == 0
-            println("Planet $(planet.id) has no compatible planets. Cannot spawn life here.")
-        else
-            spawnlife!(planet, candidateplanets, model)
-        end
+        planet.alive = true
+        planet.claimed = true
+        planet.candidate_planets = compatibleplanets(planet, model)
+        spawn_if_candidate_planets!(planet, model)
 
     end
 
@@ -598,16 +596,16 @@ end
 
 """
 function spawn_if_candidate_planets!(
-    life::Life,
     planet::Planet,
-    model::ABM
+    model::ABM,
+    life::Union{Life,Nothing} = nothing
 )
     ## Only spawn life if there are compatible Planets
-    candidateplanets = compatibleplanets(planet, model)
+    candidateplanets = planet.candidate_planets
     if length(candidateplanets) == 0
         println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
     else
-        spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
+        isnothing(life) ?  spawnlife!(planet, model) : spawnlife!(planet, model, ancestors = push!(life.ancestors, life))
     end
     model
 end
@@ -621,14 +619,13 @@ Called by [`galaxy_model_setup`](@ref) and [`terraform!`](@ref).
 """
 function spawnlife!(
     planet::Planet,
-    candidateplanets::Vector{Planet},
     model::ABM;
     ancestors::Vector{Life} = Life[]
     )
 
-    planet.alive = true
+    planet.alive = true ## This should already be true because terraforming
     planet.claimed = true ## This should already be true unless this is the first planet
-    destinationplanet = nearestcompatibleplanet(planet, candidateplanets)
+    destinationplanet = nearestcompatibleplanet(planet, planet.candidate_planets)
     destination_distance = distance(destinationplanet.pos, planet.pos)
     vel = direction(planet, destinationplanet) .* model.lifespeed
 
@@ -958,7 +955,7 @@ function galaxy_agent_step_spawn_on_terraform!(life::Life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
 
-        spawn_if_candidate_planets!(life, life.destination, model)
+        spawn_if_candidate_planets!(life.destination, model, life)
 
         kill_agent!(life, model)
     end
@@ -1018,7 +1015,7 @@ function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
         ## I should make sure to save the candidate planets from the life that colonizes the planet, and then filter it
         ##  to remove any planets which have been claimed in the meantime. Or maybe not since I don't store that in the first place even for life.
         ## Actually in this scenario I should probably prevent life from immeadiately spawning on planets that get terraformed
-        spawn_if_candidate_planets!(life, life.destination, model)
+        spawn_if_candidate_planets!(life.destination, model, life)
         # spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
 
         planet.spawn_threshold = 0
