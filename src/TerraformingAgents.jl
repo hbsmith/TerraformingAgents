@@ -623,8 +623,6 @@ function spawnlife!(
     ancestors::Vector{Life} = Life[]
     )
 
-    planet.alive = true ## This should already be true because terraforming
-    planet.claimed = true ## This should already be true unless this is the first planet
     destinationplanet = nearestcompatibleplanet(planet, planet.candidate_planets)
     destination_distance = distance(destinationplanet.pos, planet.pos)
     vel = direction(planet, destinationplanet) .* model.lifespeed
