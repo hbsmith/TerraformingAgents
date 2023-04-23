@@ -977,9 +977,8 @@ function for `Life`.
 """
 function galaxy_agent_step_spawn_on_terraform!(planet::Planet, model)
 
+    ## Don't need to update candidate planets for planets which are already alive if the spawn is only on terraform
     dummystep(planet, model)
-
-    filter!(p-> !p.alive && !p.claimed, planet.candidate_planets)
 
 end
 
@@ -1021,12 +1020,9 @@ function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
     if planet.spawn_threshold >= 1
 
-        ## I should make sure to save the candidate planets from the life that colonizes the planet, and then filter it
-        ##  to remove any planets which have been claimed in the meantime. Or maybe not since I don't store that in the first place even for life.
-        ## Actually in this scenario I should probably prevent life from immeadiately spawning on planets that get terraformed
+        ## update candidate planets 
+        filter!(p-> !p.alive && !p.claimed, planet.candidate_planets)
         spawn_if_candidate_planets!(life.destination, model, life)
-        # spawnlife!(planet, candidateplanets, model, ancestors = push!(life.ancestors, life))
-
         planet.spawn_threshold = 0
 
     end
