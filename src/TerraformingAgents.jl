@@ -502,6 +502,7 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function galaxy_life_setup(model, params::GalaxyParameters)
 
+    ## Initialize living planets
     for _ in 1:params.nool
 
         planet = 
@@ -509,6 +510,12 @@ function galaxy_life_setup(model, params::GalaxyParameters)
         
         planet.alive = true
         planet.claimed = true
+
+    end
+
+    ## Spawn life (candidate planets have to be calculated after all alive planets are initialized)
+    for planet in filter(kv -> kv.second isa Planet && kv.alive, model.agents)
+
         planet.candidate_planets = compatibleplanets(planet, model)
         spawn_if_candidate_planets!(planet, model)
 
@@ -803,6 +810,8 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     push!(planet.parentlifes, life)
     push!(planet.parentplanets, life.parentplanet)
     push!(planet.parentcompositions, life.composition)
+    planet.candidate_planets = compatibleplanets(planet, model)
+
     # planet.claimed = true ## Test to make sure this is already true beforehand
 end
 
@@ -969,6 +978,8 @@ function for `Life`.
 function galaxy_agent_step_spawn_on_terraform!(planet::Planet, model)
 
     dummystep(planet, model)
+
+    filter!(p-> !p.alive && !p.claimed, planet.candidate_planets)
 
 end
 
