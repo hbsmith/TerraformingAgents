@@ -13,7 +13,7 @@ using Distances
 using DataFrames
 using StatsBase
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step_spawn_on_terraform!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
+export Planet, Life, galaxy_model_setup, galaxy_agent_step_spawn_on_terraform!, galaxy_agent_step_spawn_at_rate!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -175,7 +175,7 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
 - `nool::Int = 1`: the number of planets that are initialized with life
-- `spawn_rate::Real = 0`: the frequency at which to send out life from every living planet (in units of dt)
+- `spawn_rate::Real = 0.02`: the frequency at which to send out life from every living planet (in units of dt) (only used for `galaxy_agent_step_spawn_at_rate!`)
 - `compmix_func::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compmix_func`.
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
@@ -224,7 +224,7 @@ mutable struct GalaxyParameters
         allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
         nool::Int = 1,
-        spawn_rate::Real = 0,
+        spawn_rate::Real = 0.02,
         compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         pos::Vector{<:NTuple{D,Real}},
@@ -475,6 +475,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :max_life_id => -1, ## id of the newest life
                         :terraformed_on_step => true,
                         :n_terraformed_on_step => params.nool,
+                        :spawn_rate => params.spawn_rate,
                         :GalaxyParameters => params,
                         :compmix_func => params.compmix_func,
                         :compmix_kwargs => params.compmix_kwargs);
@@ -514,7 +515,7 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     end
 
     ## Spawn life (candidate planets have to be calculated after all alive planets are initialized)
-    for planet in filter(kv -> kv.second isa Planet && kv.alive, model.agents)
+    for (_, planet) in filter(kv -> kv.second isa Planet && kv.second.alive, model.agents)
 
         planet.candidate_planets = compatibleplanets(planet, model)
         spawn_if_candidate_planets!(planet, model)
@@ -1016,13 +1017,14 @@ function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
     move_agent!(planet, model, model.dt)
     
-    planet.spawn_threshold += model.dt * model.spawn_rate
+    planet.alive && (planet.spawn_threshold += model.dt * model.spawn_rate)
 
     if planet.spawn_threshold >= 1
 
         ## update candidate planets 
         filter!(p-> !p.alive && !p.claimed, planet.candidate_planets)
-        spawn_if_candidate_planets!(life.destination, model, life)
+        length(planet.parentlifes) > 0 ? life = planet.parentlifes[end] : life = nothing
+        spawn_if_candidate_planets!(planet, model, life)
         planet.spawn_threshold = 0
 
     end
