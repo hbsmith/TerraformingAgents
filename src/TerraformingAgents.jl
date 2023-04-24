@@ -525,7 +525,8 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     ## Spawn life (candidate planets have to be calculated after all alive planets are initialized)
     for (_, planet) in filter(kv -> kv.second isa Planet && kv.second.alive, model.agents)
 
-        planet.candidate_planets = compatibleplanets(planet, model)
+        # planet.candidate_planets = compatibleplanets(planet, model)
+        planet.candidate_planets = compatible_planets(planet, model)
         spawn_if_candidate_planets!(planet, model)
 
     end
@@ -563,11 +564,11 @@ function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
 end
 
 """
-    compatibleplanets(planet::Planet, model::ABM)
+    composition_then_distance(planet::Planet, model::ABM)
 
-Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation.
+Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation, using composition similarity first, then distance  RIGHT NOW DIST IS SEPARATE FUNCTION
 """
-function compatibleplanets(planet::Planet, model::ABM)
+function composition_then_distance(planet::Planet, model::ABM)
     function iscandidate((_, p))
         isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
     end
@@ -795,6 +796,12 @@ Related: [`mutate_strand`](@ref).
 """
 positions_to_mutate(random_strand, mutation_rate=1/length(random_strand)) = random_strand .< (ones(length(random_strand)) .* mutation_rate)
 
+## Should I make the below funciton take as input (life.composition, planet.composition, model) instead of (life, planet, model)?
+mix_compositions(life::Life, planet::Planet, model::ABM) = isnothing(model.compmix_kwargs) ? model.compmix_func(life.composition, planet.composition, model) : model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
+
+## I think I can actually simplify the below since all compatible_planet functions are going to take the model as input, so I don't need to check for the precense of model.compatibility_kwargs first? maybe?
+compatible_planets(planet::Planet, model::ABM) = isnothing(model.compatibility_kwargs) ? planet.candidate_planets = model.compatibility_func(planet, model) : planet.candidate_planets = model.compatibility_func(planet, model; model.compatibility_kwargs...)
+
 """
     terraform!(life::Life, planet::Planet, model::ABM)
 
@@ -810,22 +817,24 @@ Called by [`galaxy_agent_step_spawn_on_terraform!`](@ref).
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
-    if model.compmix_kwargs == nothing
-        planet.composition = model.compmix_func(life.composition, planet.composition, model)
-    else
-        planet.composition = model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
-    end
+    planet.composition = mix_compositions(life, planet, model)
+    # if model.compmix_kwargs == nothing
+    #     planet.composition = model.compmix_func(life.composition, planet.composition, model)
+    # else
+    #     planet.composition = model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
+    # end
     planet.alive = true
     push!(planet.parentlifes, life)
     push!(planet.parentplanets, life.parentplanet)
     push!(planet.parentcompositions, life.composition)
     
     ## Calculate candidate planets
-    if model.compatibility_kwargs = nothing
-        planet.candidate_planets = model.compatibility_func(planet, model) #compatibleplanets(planet, model)
-    else 
-        planet.candidate_planets = model.compatibility_func(planet, model; model.compatibility_kwargs...)
-    end
+    planet.candidate_planets = compatible_planets(planet, model)
+    # if model.compatibility_kwargs = nothing
+    #     planet.candidate_planets = model.compatibility_func(planet, model) #compatibleplanets(planet, model)
+    # else 
+    #     planet.candidate_planets = model.compatibility_func(planet, model; model.compatibility_kwargs...)
+    # end
 
     # planet.claimed = true ## Test to make sure this is already true beforehand
 end
