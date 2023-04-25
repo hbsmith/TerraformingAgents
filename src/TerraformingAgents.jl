@@ -564,11 +564,11 @@ function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
 end
 
 """
-    composition_then_distance(planet::Planet, model::ABM)
+    compositionally_similar_planets(planet::Planet, model::ABM)
 
 Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation, using composition similarity first, then distance  RIGHT NOW DIST IS SEPARATE FUNCTION
 """
-function composition_then_distance(planet::Planet, model::ABM)
+function compositionally_similar_planets(planet::Planet, model::ABM)
     function iscandidate((_, p))
         isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
     end
@@ -609,6 +609,27 @@ function nearest_planet(planet::Planet, planets::Vector{Planet})
 
 end
 
+## These will be analogous to the above two functions
+function nearby_planets(planet::Planet, model::ABM)
+    ## something like
+end
+
+function most_similar_planet(planet::Planet, planets::Vector{Planet})
+
+end
+# within_similarity_theshold_then_nearest(planet, model) = nearest_planet(planet, planet.candidate_planets)
+# within_distance_threshold_then_most_similar(planet, model) = most_similar_planet(planet, planet.candidate_planets)
+## need to make 2 new functions for this--one to get all planets under a certain distance (or within n nearest stars), and the other to 
+##  get the most similar planet from a list of planets
+
+function get_destination_planet(planet, model)
+    if model.compatibility_func == compositionally_similar_planets
+        destination_planet = nearest_planet(planet, planet.candidate_planets)
+    elseif model.compatibility_func == nearby_planets
+        destination_planet = most_similar_planet(planet, planet.candidate_planets)
+    end
+end
+
 """
 
 """
@@ -640,7 +661,7 @@ function spawnlife!(
     ancestors::Vector{Life} = Life[]
     )
 
-    destinationplanet = nearest_planet(planet, planet.candidate_planets)
+    destinationplanet = get_destination_planet(planet, model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
     destination_distance = distance(destinationplanet.pos, planet.pos)
     vel = direction(planet, destinationplanet) .* model.lifespeed
 
