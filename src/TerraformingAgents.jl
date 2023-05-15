@@ -586,15 +586,14 @@ function compositionally_similar_planets(planet::Planet, model::ABM)
 end
 
 """
-    nearest_planet(planet::Planet, planets::Vector{PLanet})
+    get_positions(planets::Vector{Planet})
 
-Returns `Planet` within `planets` that is nearest to `planet `.
+Returns positions of planets.
 
-Used whenever new life is spawned.
-
-See [`spawnlife!`](@ref)
+See [`nearest_planet`, `nearest_k_planets`](@ref)
 """
-function nearest_planet(planet::Planet, planets::Vector{Planet})
+
+function get_positions(planets::Vector{Planet})
 
     length(planets) == 0 && throw(ArgumentError("planets is empty"))
     ndims = length(planets[1].pos)
@@ -604,14 +603,63 @@ function nearest_planet(planet::Planet, planets::Vector{Planet})
             planetpositions[d, i] = a.pos[d]
         end
     end
+    planetpositions
+
+end
+
+"""
+    nearest_planet(planet::Planet, planets::Vector{PLanet})
+
+Returns `Planet` within `planets` that is nearest to `planet `.
+"""
+function nearest_planet(planet::Planet, planets::Vector{Planet})
+
+    planetpositions = get_positions(planets)
     idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
     planets[idx] ## Returns nearest planet
 
 end
 
+"""
+    nearest_k_planets(planet::Planet, planets::Vector{PLanet}, k)
+
+Returns nearest `k` planets
+
+Note: Results are unsorted
+"""
+function nearest_k_planets(planet::Planet, planets::Vector{Planet}, k)
+    
+    planetpositions = get_positions(planets)
+    idxs, dists = knn(KDTree(planetpositions), collect(planet.pos), k)
+    planets[idxs]
+
+end
+
+"""
+    planets_in_range(planet::Planet, planets::Vector{PLanet}, r)
+
+Returns all planets within range `r`.
+
+Note: Results are unsorted
+"""
+function planets_in_range(planet::Planet, planets::Vector{Planet}, r)
+
+    planetpositions = get_positions(planets)
+    idxs = inrange(KDTree(planetpositions), collect(planet.pos), r)
+    planets[idxs]
+
+end
+
 ## These will be analogous to the above two functions
 function nearby_planets(planet::Planet, model::ABM)
-    ## something like
+    function iscandidate((_, p))
+        isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+    end
+
+    candidateplanets = collect(values(filter(iscandidate, model.agents)))
+    length(candidateplanets)==0 && return Vector{Planet}[]
+
+
 end
 
 function most_similar_planet(planet::Planet, planets::Vector{Planet})
