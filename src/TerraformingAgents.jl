@@ -603,59 +603,11 @@ function compositionally_similar_planets(planet::Planet, model::ABM; allowed_dif
 
 end
 
-function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
+function planet_attribute_as_matrix(planets, attr::Symbol)
 
     length(planets) == 0 && throw(ArgumentError("planets is empty"))
-    ndims = length(getproperty(planets[1], attr))
-    planet_attributes = Array{Float64}(undef, ndims, length(planets))
-    for (i, a) in enumerate(planets)
-        for d in 1:ndims
-            planet_attributes[d, i] = getproperty(a, attr)[d]
-        end
-    end
-    planet_attributes
-
-end
-
-"""
-    get_positions(planets::Vector{Planet})
-
-Returns positions of planets.
-
-See [`nearest_planet`, `nearest_k_planets`](@ref)
-"""
-function get_positions(planets::Vector{Planet})
-
-    # length(planets) == 0 && throw(ArgumentError("planets is empty"))
-    # ndims = length(planets[1].pos)
-    # planetpositions = Array{Float64}(undef, ndims, length(planets))
-    # for (i, a) in enumerate(planets)
-    #     for d in 1:ndims
-    #         planetpositions[d, i] = a.pos[d]
-    #     end
-    # end
-    # planetpositions
-    planet_attribute_as_matrix(planets, :pos)
-
-end
-
-"""
-    get_compositions(planets::Vector{Planet})
-
-Returns compositions of planets.
-"""
-function get_compositions(planets::Vector{Planet})
-
-    # length(planets) == 0 && throw(ArgumentError("planets is empty"))
-    # ndims = length(planets[1].composition)
-    # planetcompositions = Array{Float64}(undef, ndims, length(planets))
-    # for (i, a) in enumerate(planets)
-    #     for d in 1:ndims
-    #         planetcompositions[d, i] = a.composition[d]
-    #     end
-    # end
-    # planetcompositions
-    planet_attribute_as_matrix(planets, :composition)
+    planet_attributes = map(x -> getproperty(x, attr), planets)
+    hcat(collect.(planet_attributes)...) ## need to collect because when attr = :pos, the result is a Vector of Tuples
 
 end
 
@@ -666,7 +618,7 @@ Returns `Planet` within `planets` that is nearest to `planet `.
 """
 function nearest_planet(planet::Planet, planets::Vector{Planet})
 
-    planetpositions = get_positions(planets)
+    planetpositions = planet_attribute_as_matrix(planets, :pos) #get_positions(planets)
     idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
     planets[idx] ## Returns nearest planet
 
@@ -679,7 +631,7 @@ Returns `Planet` within `planets` that is most similar compositionally.
 """
 function most_similar_planet(planet::Planet, planets::Vector{Planet})
     
-    planetcompositions = get_compositions(planets)
+    planetcompositions = planet_attribute_as_matrix(planets, :composition)
     idx, dist = nn(KDTree(planetcompositions), collect(planet.pos))
     planets[idx] ## Returns nearest planet
 
