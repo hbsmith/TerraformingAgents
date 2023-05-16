@@ -649,8 +649,10 @@ function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
 
     length(planets) == 0 && throw(ArgumentError("planets is empty"))
     planet_attributes = map(x -> getproperty(x, attr), planets)
-    hcat(collect.(planet_attributes)...) ## need to collect because when attr = :pos, the result is a Vector of Tuples
+    ## need to collect because when attr = :pos, the result is a Vector of Tuples
+    convert(Matrix{Float64}, hcat(collect.(planet_attributes)...))
     # NOTE: I hope it doesn't cause problems that the returned matrix has element type of whatever the attribute is
+    # lol it already is. converting to float matrix.
 
 end
 
@@ -679,7 +681,7 @@ A valid `destination_func`.
 function most_similar_planet(planet::Planet, planets::Vector{Planet})
     
     planetcompositions = planet_attribute_as_matrix(planets, :composition)
-    idx, dist = nn(KDTree(planetcompositions), collect(planet.pos))
+    idx, dist = nn(KDTree(planetcompositions), collect(planet.composition))
     planets[idx] ## Returns nearest planet
 
 end

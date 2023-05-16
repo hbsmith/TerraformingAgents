@@ -481,6 +481,20 @@ function TestCandidatePlanetFuncs()
 
         nearest_planets = TerraformingAgents.nearest_k_planets(planet, model, 3)
         @test Set(map(p -> p.id, values(nearest_planets))) == Set([2,3,4])
+
+        range_planets = TerraformingAgents.planets_in_range(planet, model, 0.21)
+        @test Set(map(p -> p.id, values(nearest_planets))) == Set([2])
+
+        range_planets = TerraformingAgents.planets_in_range(planet, model, 0.71) 
+        @test Set(map(p -> p.id, values(nearest_planets))) == Set([2,3,4])
+
+        candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
+        @test TerraformingAgents.most_similar_planet(planet, candidateplanets).id == 2
+
+        candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
+        @test TerraformingAgents.nearest_planet(planet, candidateplanets).id == 2
+
+        
     end
 end
 
