@@ -172,7 +172,6 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `dt::Real = 10`: `Planet`s move dt*vel every step; `Life` moves dt*lifespeed every step. 
 - `lifespeed::Real = 0.2`: velocity of `Life`.
 - `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
-- `allowed_diff::Real = 2.0`: !!TODO: COME BACK TO THIS!!
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
 - `nool::Int = 1`: the number of planets that are initialized with life
 - `spawn_rate::Real = 0.02`: the frequency at which to send out life from every living planet (in units of dt) (only used for `galaxy_agent_step_spawn_at_rate!`)
@@ -203,7 +202,6 @@ mutable struct GalaxyParameters
     dt
     lifespeed
     interaction_radius
-    allowed_diff
     ool
     nool
     spawn_rate
@@ -227,7 +225,6 @@ mutable struct GalaxyParameters
         dt::Real = 10,
         lifespeed::Real = 0.2,
         interaction_radius::Real = dt*lifespeed,
-        allowed_diff::Real = 2.0,
         ool::Union{Vector{Int}, Int, Nothing} = nothing,
         nool::Int = 1,
         spawn_rate::Real = 0.02,
@@ -271,7 +268,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -476,7 +473,6 @@ function galaxy_planet_setup(params::GalaxyParameters)
         properties = Dict(:dt => params.dt,
                         :lifespeed => params.lifespeed,
                         :interaction_radius => params.interaction_radius,
-                        :allowed_diff => params.allowed_diff,
                         :nplanets => nplanets(params),
                         :maxcomp => params.maxcomp,
                         :compsize => params.compsize,
