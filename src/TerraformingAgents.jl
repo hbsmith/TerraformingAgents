@@ -178,8 +178,9 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `spawn_rate::Real = 0.02`: the frequency at which to send out life from every living planet (in units of dt) (only used for `galaxy_agent_step_spawn_at_rate!`)
 - `compmix_func::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compmix_func`.
-- `compatibility_func::Function = composition_then_distance`: Function to use for deciding what `Planet` compatability and `Life` destination. 
+- `compatibility_func::Function = compositionally_similar_planets`: Function to use for deciding what `Planet`s are compatible for future terraformation. 
 - `compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compatibility_func`.
+- `destination_func::Function = nearest_planet`:  Function to use for deciding which compatible `Planet` (which of the `planet.candidate_planet`s) should be the next destination. 
 - `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
 - `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Float64`: the max value of any element within the composition vectors.
@@ -210,6 +211,7 @@ mutable struct GalaxyParameters
     compmix_kwargs
     compatibility_func
     compatibility_kwargs
+    destination_func
     pos
     vel
     maxcomp
@@ -231,8 +233,9 @@ mutable struct GalaxyParameters
         spawn_rate::Real = 0.02,
         compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
-        compatibility_func::Function = composition_then_distance,
+        compatibility_func::Function = compositionally_similar_planets,
         compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing,
+        destination_func::Function = nearest_planet,
         pos::Vector{<:NTuple{D,Real}},
         vel::Vector{<:NTuple{D,Real}},
         maxcomp::Real,
@@ -268,7 +271,7 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, allowed_diff, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions)
 
     end
     
@@ -486,7 +489,8 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :compmix_func => params.compmix_func,
                         :compmix_kwargs => params.compmix_kwargs,
                         :compatibility_func => params.compatibility_func,
-                        :compatibility_kwargs => params.compatibility_kwargs);
+                        :compatibility_kwargs => params.compatibility_kwargs,
+                        :destination_func => params.destination_func);
                         # :nlife => length(params.ool)
                         # :ool => params.ool,
                         # :pos => params.pos,
