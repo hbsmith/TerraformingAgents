@@ -446,17 +446,21 @@ function TestCandidatePlanetFuncs()
             ool=ool)
 
         model = TerraformingAgents.galaxy_planet_setup(galaxyparams)
+        planet = model.agents[1]
 
-        @test keys(basic_candidate_planets(model.agents[1], model)) == Set([2,3,4])
+        candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
+        @test Set(map(p -> p.id, values(candidateplanets))) == Set([2,3,4])
 
         model.agents[2].claimed = true
-        @test keys(basic_candidate_planets(model.agents[1], model)) == Set([3,4])
+        candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
+        @test Set(map(p -> p.id, values(candidateplanets))) == Set([3,4])
 
         model.agents[3].alive = true
-        @test keys(basic_candidate_planets(model.agents[1], model)) == Set([4])
+        candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
+        @test Set(map(p -> p.id, values(candidateplanets))) == Set([4])
 
         model = TerraformingAgents.galaxy_planet_setup(galaxyparams)
-        candidateplanets = TerraformingAgents.basic_candidate_planets(model.agents[1], model)
+        candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
         @test TerraformingAgents.planet_attribute_as_matrix(candidateplanets, :pos) == 
         [1.5  1.2  1.2
          1.5  1.0  1.2]
@@ -465,6 +469,18 @@ function TestCandidatePlanetFuncs()
         [7  1  3
          7  0  3
          7  2  3]
+
+        comp_sim_planets = TerraformingAgents.compositionally_similar_planets(planet, model; allowed_diff = 4.0)
+        @test Set(map(p -> p.id, values(comp_sim_planets))) == Set([2,3])
+
+        nearest_planets = TerraformingAgents.nearest_k_planets(planet, model, 1)
+        @test Set(map(p -> p.id, values(nearest_planets))) == Set([2])
+
+        nearest_planets = TerraformingAgents.nearest_k_planets(planet, model, 2)
+        @test Set(map(p -> p.id, values(nearest_planets))) == Set([2,3])
+
+        nearest_planets = TerraformingAgents.nearest_k_planets(planet, model, 3)
+        @test Set(map(p -> p.id, values(nearest_planets))) == Set([2,3,4])
     end
 end
 

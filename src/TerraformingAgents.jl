@@ -610,7 +610,7 @@ Note: Results are unsorted
 """
 function nearest_k_planets(planet::Planet, planets::Vector{Planet}, k)
     
-    planetpositions = get_positions(planets)
+    planetpositions = planet_attribute_as_matrix(planets, :pos)
     idxs, dists = knn(KDTree(planetpositions), collect(planet.pos), k)
     planets[idxs]
 
@@ -633,7 +633,7 @@ Note: Results are unsorted
 """
 function planets_in_range(planet::Planet, planets::Vector{Planet}, r)
 
-    planetpositions = get_positions(planets)
+    planetpositions = planet_attribute_as_matrix(planets, :pos)
     idxs = inrange(KDTree(planetpositions), collect(planet.pos), r)
     planets[idxs]
 
