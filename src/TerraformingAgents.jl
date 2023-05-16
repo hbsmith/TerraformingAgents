@@ -736,21 +736,21 @@ end
 ## need to make 2 new functions for this--one to get all planets under a certain distance (or within n nearest stars), and the other to 
 ##  get the most similar planet from a list of planets
 
-function get_destination_planet(planet, model)
+# function get_destination_planet(planet, model)
 
-    if model.compatibility_func == composition_then_distance
+#     if model.compatibility_func == composition_then_distance
 
-        planets = compositionally_similar_planets(planet, model)
-        destination_planet = nearest_planet(planet, planet.candidate_planets)
+#         planets = compositionally_similar_planets(planet, model)
+#         destination_planet = nearest_planet(planet, planet.candidate_planets)
 
-    end
+#     end
 
-    # if model.compatibility_func == compositionally_similar_planets
-    #     destination_planet = nearest_planet(planet, planet.candidate_planets)
-    # elseif model.compatibility_func == nearby_planets
-    #     destination_planet = most_similar_planet(planet, planet.candidate_planets)
-    # end
-end
+#     # if model.compatibility_func == compositionally_similar_planets
+#     #     destination_planet = nearest_planet(planet, planet.candidate_planets)
+#     # elseif model.compatibility_func == nearby_planets
+#     #     destination_planet = most_similar_planet(planet, planet.candidate_planets)
+#     # end
+# end
 
 """
 
@@ -783,7 +783,7 @@ function spawnlife!(
     ancestors::Vector{Life} = Life[]
     )
 
-    destinationplanet = get_destination_planet(planet, model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
+    destinationplanet = model.destination_func(planet, model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
     destination_distance = distance(destinationplanet.pos, planet.pos)
     vel = direction(planet, destinationplanet) .* model.lifespeed
 
