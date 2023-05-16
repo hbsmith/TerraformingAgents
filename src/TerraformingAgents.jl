@@ -563,34 +563,29 @@ function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     model
 end
 
-# function iscandidate((_, p))
-#     isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
-# end
-# iscandidate((_, p)::Tuple) = isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
-# iscandidate(p) = isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+"""
+    basic_candidate_planets(planet::Planet, model::ABM)
 
+Returns possible candidate planets filtered by the most basic requirements.
+
+e.g. Destination Planet not alive, claimed, or the same Planet as the parent.
+"""
 function basic_candidate_planets(planet::Planet, model::ABM)
     function iscandidate((_, p))
         isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
     end
     
-    collect(values(filter(iscandidate, model.agents)))   
+    convert(Vector{Planet}, collect(values(filter(iscandidate, model.agents))))
 end
 
-# function basic_candidate_planets(planet::Planet, planets::Vector{Planet})
-#     function iscandidate(p)
-#         isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
-#     end
-    
-#     collect(values(filter(iscandidate, planets)))   
-# end
-
 """
-    compositionally_similar_planets(planet::Planet, model::ABM)
+    compositionally_similar_planets(planet::Planet, model::ABM, allowed_diff::Real = 1.0)
 
-Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation, using composition similarity first, then distance  RIGHT NOW DIST IS SEPARATE FUNCTION
+Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation, based on compositional similarity.
+
+A valid `compatibility_func`.
 """
-function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff::Real = 2.0)
+function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff::Real = 1.0)
     candidateplanets = basic_candidate_planets(planet, model)
     length(candidateplanets)==0 && return Vector{Planet}[]
     compositions = hcat([a.composition for a in candidateplanets]...)
@@ -603,44 +598,13 @@ function compositionally_similar_planets(planet::Planet, model::ABM; allowed_dif
 
 end
 
-function planet_attribute_as_matrix(planets, attr::Symbol)
-
-    length(planets) == 0 && throw(ArgumentError("planets is empty"))
-    planet_attributes = map(x -> getproperty(x, attr), planets)
-    hcat(collect.(planet_attributes)...) ## need to collect because when attr = :pos, the result is a Vector of Tuples
-
-end
-
-"""
-    nearest_planet(planet::Planet, planets::Vector{PLanet})
-
-Returns `Planet` within `planets` that is nearest to `planet `.
-"""
-function nearest_planet(planet::Planet, planets::Vector{Planet})
-
-    planetpositions = planet_attribute_as_matrix(planets, :pos) #get_positions(planets)
-    idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
-    planets[idx] ## Returns nearest planet
-
-end
-
-"""
-    most_similar_planet(planet::Planet, planets::Vector{Planet})
-
-Returns `Planet` within `planets` that is most similar compositionally.
-"""
-function most_similar_planet(planet::Planet, planets::Vector{Planet})
-    
-    planetcompositions = planet_attribute_as_matrix(planets, :composition)
-    idx, dist = nn(KDTree(planetcompositions), collect(planet.pos))
-    planets[idx] ## Returns nearest planet
-
-end
 
 """
     nearest_k_planets(planet::Planet, planets::Vector{PLanet}, k)
 
 Returns nearest `k` planets
+
+A valid `compatibility_func`.
 
 Note: Results are unsorted
 """
@@ -663,6 +627,8 @@ end
 
 Returns all planets within range `r`.
 
+A valid `compatibility_func`.
+
 Note: Results are unsorted
 """
 function planets_in_range(planet::Planet, planets::Vector{Planet}, r)
@@ -679,30 +645,45 @@ function planets_in_range(planet::Planet, model::ABM, r)
 
 end
 
-# within_similarity_theshold_then_nearest(planet, model) = nearest_planet(planet, planet.candidate_planets)
-# within_distance_threshold_then_most_similar(planet, model) = most_similar_planet(planet, planet.candidate_planets)
-## need to make 2 new functions for this--one to get all planets under a certain distance (or within n nearest stars), and the other to 
-##  get the most similar planet from a list of planets
+function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
 
-# function get_destination_planet(planet, model)
+    length(planets) == 0 && throw(ArgumentError("planets is empty"))
+    planet_attributes = map(x -> getproperty(x, attr), planets)
+    hcat(collect.(planet_attributes)...) ## need to collect because when attr = :pos, the result is a Vector of Tuples
+    # NOTE: I hope it doesn't cause problems that the returned matrix has element type of whatever the attribute is
 
-#     if model.compatibility_func == composition_then_distance
-
-#         planets = compositionally_similar_planets(planet, model)
-#         destination_planet = nearest_planet(planet, planet.candidate_planets)
-
-#     end
-
-#     # if model.compatibility_func == compositionally_similar_planets
-#     #     destination_planet = nearest_planet(planet, planet.candidate_planets)
-#     # elseif model.compatibility_func == nearby_planets
-#     #     destination_planet = most_similar_planet(planet, planet.candidate_planets)
-#     # end
-# end
+end
 
 """
+    nearest_planet(planet::Planet, planets::Vector{PLanet})
+
+Returns `Planet` within `planets` that is nearest to `planet `.
+
+A valid `destination_func`.
+"""
+function nearest_planet(planet::Planet, planets::Vector{Planet})
+
+    planetpositions = planet_attribute_as_matrix(planets, :pos) #get_positions(planets)
+    idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
+    planets[idx] ## Returns nearest planet
+
+end
 
 """
+    most_similar_planet(planet::Planet, planets::Vector{Planet})
+
+Returns `Planet` within `planets` that is most similar compositionally.
+
+A valid `destination_func`.
+"""
+function most_similar_planet(planet::Planet, planets::Vector{Planet})
+    
+    planetcompositions = planet_attribute_as_matrix(planets, :composition)
+    idx, dist = nn(KDTree(planetcompositions), collect(planet.pos))
+    planets[idx] ## Returns nearest planet
+
+end
+
 function spawn_if_candidate_planets!(
     planet::Planet,
     model::ABM,

@@ -420,6 +420,56 @@ function TestRunningModelNoErrors()
     end
 end
 
+function TestCandidatePlanetFuncs()
+    @testset "compatible planets" begin 
+
+        dt = 1.0
+        extent = (1,1) ## Size of space
+        interaction_radius = 0.02 
+        lifespeed = 0.3
+        pos = [(0.0, 0.0),(0.2, 0.0),(0.2, 0.2),(0.5, 0.5)]
+        planetcompositions = hcat([[0,0,0],[1,0,2],[3,3,3],[7,7,7]]...)
+        compsize = length(planetcompositions[:,1])
+        ool = Int[] ## Length=0 vector to make sure that life doesn't get initialized. A little hacky but this is for testing.
+
+        #################
+
+        galaxyparams = TerraformingAgents.GalaxyParameters(
+            MersenneTwister(3141),
+            dt=dt,
+            extent=extent,
+            interaction_radius=interaction_radius,
+            lifespeed=lifespeed,
+            pos=pos,
+            compsize=compsize,
+            planetcompositions=planetcompositions,
+            ool=ool)
+
+        model = TerraformingAgents.galaxy_planet_setup(galaxyparams)
+
+        @test keys(basic_candidate_planets(model.agents[1], model)) == Set([2,3,4])
+
+        model.agents[2].claimed = true
+        @test keys(basic_candidate_planets(model.agents[1], model)) == Set([3,4])
+
+        model.agents[3].alive = true
+        @test keys(basic_candidate_planets(model.agents[1], model)) == Set([4])
+
+        model = TerraformingAgents.galaxy_planet_setup(galaxyparams)
+        candidateplanets = TerraformingAgents.basic_candidate_planets(model.agents[1], model)
+        @test TerraformingAgents.planet_attribute_as_matrix(candidateplanets, :pos) == 
+        [1.5  1.2  1.2
+         1.5  1.0  1.2]
+
+        @test TerraformingAgents.planet_attribute_as_matrix(candidateplanets, :composition) == 
+        [7  1  3
+         7  0  3
+         7  2  3]
+    end
+end
+
+
+
 @testset "All" begin
     # TestGalaxyParametersSetup()
     # TestInitializePlanetarySystems()
