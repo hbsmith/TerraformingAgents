@@ -567,25 +567,57 @@ function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     model
 end
 
+# function iscandidate((_, p))
+#     isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+# end
+# iscandidate((_, p)::Tuple) = isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+# iscandidate(p) = isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+
+function basic_candidate_planets(planet::Planet, model::ABM)
+    function iscandidate((_, p))
+        isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+    end
+    
+    collect(values(filter(iscandidate, model.agents)))   
+end
+
+# function basic_candidate_planets(planet::Planet, planets::Vector{Planet})
+#     function iscandidate(p)
+#         isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
+#     end
+    
+#     collect(values(filter(iscandidate, planets)))   
+# end
+
 """
     compositionally_similar_planets(planet::Planet, model::ABM)
 
 Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation, using composition similarity first, then distance  RIGHT NOW DIST IS SEPARATE FUNCTION
 """
-function compositionally_similar_planets(planet::Planet, model::ABM)
-    function iscandidate((_, p))
-        isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
-    end
-
-    candidateplanets = collect(values(filter(iscandidate, model.agents)))
+function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff::Real = 2.0)
+    candidateplanets = basic_candidate_planets(planet, model)
     length(candidateplanets)==0 && return Vector{Planet}[]
     compositions = hcat([a.composition for a in candidateplanets]...)
     compositiondiffs = abs.(compositions .- planet.composition)
     compatibleindxs =
-        findall(<=(model.allowed_diff), vec(maximum(compositiondiffs, dims = 1)))
+        findall(<=(allowed_diff), vec(maximum(compositiondiffs, dims = 1)))
 
     ## Necessary in cased the result is empty
     convert(Vector{Planet}, candidateplanets[compatibleindxs]) ## Returns Planets
+
+end
+
+function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
+
+    length(planets) == 0 && throw(ArgumentError("planets is empty"))
+    ndims = length(getproperty(planets[1], attr))
+    planet_attributes = Array{Float64}(undef, ndims, length(planets))
+    for (i, a) in enumerate(planets)
+        for d in 1:ndims
+            planet_attributes[d, i] = getproperty(a, attr)[d]
+        end
+    end
+    planet_attributes
 
 end
 
@@ -596,18 +628,38 @@ Returns positions of planets.
 
 See [`nearest_planet`, `nearest_k_planets`](@ref)
 """
-
 function get_positions(planets::Vector{Planet})
 
-    length(planets) == 0 && throw(ArgumentError("planets is empty"))
-    ndims = length(planets[1].pos)
-    planetpositions = Array{Float64}(undef, ndims, length(planets))
-    for (i, a) in enumerate(planets)
-        for d in 1:ndims
-            planetpositions[d, i] = a.pos[d]
-        end
-    end
-    planetpositions
+    # length(planets) == 0 && throw(ArgumentError("planets is empty"))
+    # ndims = length(planets[1].pos)
+    # planetpositions = Array{Float64}(undef, ndims, length(planets))
+    # for (i, a) in enumerate(planets)
+    #     for d in 1:ndims
+    #         planetpositions[d, i] = a.pos[d]
+    #     end
+    # end
+    # planetpositions
+    planet_attribute_as_matrix(planets, :pos)
+
+end
+
+"""
+    get_compositions(planets::Vector{Planet})
+
+Returns compositions of planets.
+"""
+function get_compositions(planets::Vector{Planet})
+
+    # length(planets) == 0 && throw(ArgumentError("planets is empty"))
+    # ndims = length(planets[1].composition)
+    # planetcompositions = Array{Float64}(undef, ndims, length(planets))
+    # for (i, a) in enumerate(planets)
+    #     for d in 1:ndims
+    #         planetcompositions[d, i] = a.composition[d]
+    #     end
+    # end
+    # planetcompositions
+    planet_attribute_as_matrix(planets, :composition)
 
 end
 
@@ -620,6 +672,19 @@ function nearest_planet(planet::Planet, planets::Vector{Planet})
 
     planetpositions = get_positions(planets)
     idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
+    planets[idx] ## Returns nearest planet
+
+end
+
+"""
+    most_similar_planet(planet::Planet, planets::Vector{Planet})
+
+Returns `Planet` within `planets` that is most similar compositionally.
+"""
+function most_similar_planet(planet::Planet, planets::Vector{Planet})
+    
+    planetcompositions = get_compositions(planets)
+    idx, dist = nn(KDTree(planetcompositions), collect(planet.pos))
     planets[idx] ## Returns nearest planet
 
 end
@@ -638,6 +703,12 @@ function nearest_k_planets(planet::Planet, planets::Vector{Planet}, k)
     planets[idxs]
 
 end
+function nearest_k_planets(planet::Planet, model::ABM, k)
+    
+    candidateplanets = basic_candidate_planets(planet, model)
+    nearest_k_planets(planet, candidateplanets, k)
+
+end
 
 """
     planets_in_range(planet::Planet, planets::Vector{PLanet}, r)
@@ -653,22 +724,13 @@ function planets_in_range(planet::Planet, planets::Vector{Planet}, r)
     planets[idxs]
 
 end
+function planets_in_range(planet::Planet, model::ABM, r)
 
-## These will be analogous to the above two functions
-function nearby_planets(planet::Planet, model::ABM)
-    function iscandidate((_, p))
-        isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
-    end
-
-    candidateplanets = collect(values(filter(iscandidate, model.agents)))
-    length(candidateplanets)==0 && return Vector{Planet}[]
-
+    candidateplanets = basic_candidate_planets(planet, model)
+    planets_in_range(planet, candidateplanets, r)
 
 end
 
-function most_similar_planet(planet::Planet, planets::Vector{Planet})
-
-end
 # within_similarity_theshold_then_nearest(planet, model) = nearest_planet(planet, planet.candidate_planets)
 # within_distance_threshold_then_most_similar(planet, model) = most_similar_planet(planet, planet.candidate_planets)
 ## need to make 2 new functions for this--one to get all planets under a certain distance (or within n nearest stars), and the other to 
@@ -681,6 +743,7 @@ function get_destination_planet(planet, model)
         planets = compositionally_similar_planets(planet, model)
         destination_planet = nearest_planet(planet, planet.candidate_planets)
 
+    end
 
     # if model.compatibility_func == compositionally_similar_planets
     #     destination_planet = nearest_planet(planet, planet.candidate_planets)
