@@ -635,6 +635,14 @@ end
 function nearest_k_planets(planet::Planet, model::ABM; k)
     
     candidateplanets = basic_candidate_planets(planet, model)
+
+    n_candidateplanets = length(candidateplanets)
+    if n_candidateplanets==0
+        return Vector{Planet}[]
+    elseif k > n_candidateplanets
+        k = n_candidateplanets
+    end
+
     nearest_k_planets(planet, candidateplanets, k)
 
 end
@@ -908,15 +916,7 @@ Called by [`galaxy_agent_step_spawn_on_terraform!`](@ref).
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
-    @show planet.composition
     mix_compositions!(life, planet, model)
-    @show planet.composition
-    println("~~~~~~~~~~~~~~~~~~~~~~~~~~")
-    # if model.compmix_kwargs == nothing
-    #     planet.composition = model.compmix_func(life.composition, planet.composition, model)
-    # else
-    #     planet.composition = model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
-    # end
     planet.alive = true
     push!(planet.parentlifes, life)
     push!(planet.parentplanets, life.parentplanet)
@@ -924,11 +924,6 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     
     ## Calculate candidate planets
     find_compatible_planets!(planet, model)
-    # if model.compatibility_kwargs = nothing
-    #     planet.candidate_planets = model.compatibility_func(planet, model) #compatibleplanets(planet, model)
-    # else 
-    #     planet.candidate_planets = model.compatibility_func(planet, model; model.compatibility_kwargs...)
-    # end
 
     # planet.claimed = true ## Test to make sure this is already true beforehand
 end
