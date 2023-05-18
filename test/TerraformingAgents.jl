@@ -460,10 +460,12 @@ function TestCandidatePlanetFuncs()
         @test Set(map(p -> p.id, values(candidateplanets))) == Set([4])
 
         model = TerraformingAgents.galaxy_planet_setup(galaxyparams)
+        planet = model.agents[1]
         candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
         @test TerraformingAgents.planet_attribute_as_matrix(candidateplanets, :pos) == 
-        [1.5  1.2  1.2
-         1.5  1.0  1.2]
+        2 .+ [1.5  1.2  1.2
+              1.5  1.0  1.2]
+        ## the 2 is for "centering" the positions based on my stupid extent multiplier
 
         @test TerraformingAgents.planet_attribute_as_matrix(candidateplanets, :composition) == 
         [7  1  3
@@ -483,10 +485,10 @@ function TestCandidatePlanetFuncs()
         @test Set(map(p -> p.id, values(nearest_planets))) == Set([2,3,4])
 
         range_planets = TerraformingAgents.planets_in_range(planet, model, 0.21)
-        @test Set(map(p -> p.id, values(nearest_planets))) == Set([2])
+        @test Set(map(p -> p.id, values(range_planets))) == Set([2])
 
         range_planets = TerraformingAgents.planets_in_range(planet, model, 0.71) 
-        @test Set(map(p -> p.id, values(nearest_planets))) == Set([2,3,4])
+        @test Set(map(p -> p.id, values(range_planets))) == Set([2,3,4])
 
         candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
         @test TerraformingAgents.most_similar_planet(planet, candidateplanets).id == 2
@@ -494,7 +496,7 @@ function TestCandidatePlanetFuncs()
         candidateplanets = TerraformingAgents.basic_candidate_planets(planet, model)
         @test TerraformingAgents.nearest_planet(planet, candidateplanets).id == 2
 
-        
+
     end
 end
 
@@ -510,8 +512,9 @@ end
     # TestMutation()
     # TestAgentDiesAtCorrectPlanet()
     # TestCenterPositions()
-    TestMantel()
+    # TestMantel()
     # TestPlanetMantelTest()
     # TestPropogationOfModelRNG()
     # TestRunningModelNoErrors()
+    TestCandidatePlanetFuncs()
 end
