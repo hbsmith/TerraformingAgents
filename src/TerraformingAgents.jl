@@ -666,6 +666,9 @@ end
 function planets_in_range(planet::Planet, model::ABM; r)
 
     candidateplanets = basic_candidate_planets(planet, model)
+
+    length(candidateplanets)==0 && return Vector{Planet}[]
+
     planets_in_range(planet, candidateplanets, r)
 
 end
