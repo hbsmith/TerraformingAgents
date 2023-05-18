@@ -13,7 +13,24 @@ using Distances
 using DataFrames
 using StatsBase
 
-export Planet, Life, galaxy_model_setup, galaxy_agent_step_spawn_on_terraform!, galaxy_agent_step_spawn_at_rate!, galaxy_agent_direct_step!, galaxy_model_step!, GalaxyParameters, filter_agents, crossover_one_point, horizontal_gene_transfer, split_df_agent, clean_df
+export Planet, 
+       Life, 
+       galaxy_model_setup, 
+       galaxy_agent_step_spawn_on_terraform!, 
+       galaxy_agent_step_spawn_at_rate!, 
+       galaxy_agent_direct_step!, 
+       galaxy_model_step!, 
+       GalaxyParameters, 
+       compositionally_similar_planets,
+       nearest_k_planets,
+       planets_in_range,
+       nearest_planet,
+       most_similar_planet,
+       filter_agents, 
+       crossover_one_point, 
+       horizontal_gene_transfer, 
+       split_df_agent, 
+       clean_df
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -585,7 +602,7 @@ Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation
 
 A valid `compatibility_func`.
 """
-function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff::Real = 1.0)
+function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff)
     candidateplanets = basic_candidate_planets(planet, model)
     length(candidateplanets)==0 && return Vector{Planet}[]
     compositions = hcat([a.composition for a in candidateplanets]...)
@@ -615,7 +632,7 @@ function nearest_k_planets(planet::Planet, planets::Vector{Planet}, k)
     planets[idxs]
 
 end
-function nearest_k_planets(planet::Planet, model::ABM, k)
+function nearest_k_planets(planet::Planet, model::ABM; k)
     
     candidateplanets = basic_candidate_planets(planet, model)
     nearest_k_planets(planet, candidateplanets, k)
@@ -638,7 +655,7 @@ function planets_in_range(planet::Planet, planets::Vector{Planet}, r)
     planets[idxs]
 
 end
-function planets_in_range(planet::Planet, model::ABM, r)
+function planets_in_range(planet::Planet, model::ABM; r)
 
     candidateplanets = basic_candidate_planets(planet, model)
     planets_in_range(planet, candidateplanets, r)
@@ -714,7 +731,7 @@ function spawnlife!(
     ancestors::Vector{Life} = Life[]
     )
 
-    destinationplanet = model.destination_func(planet, model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
+    destinationplanet = model.destination_func(planet, planet.candidate_planets) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
     destination_distance = distance(destinationplanet.pos, planet.pos)
     vel = direction(planet, destinationplanet) .* model.lifespeed
 
@@ -871,7 +888,7 @@ Related: [`mutate_strand`](@ref).
 positions_to_mutate(random_strand, mutation_rate=1/length(random_strand)) = random_strand .< (ones(length(random_strand)) .* mutation_rate)
 
 ## Should I make the below funciton take as input (life.composition, planet.composition, model) instead of (life, planet, model)?
-mix_compositions!(life::Life, planet::Planet, model::ABM) = isnothing(model.compmix_kwargs) ? model.compmix_func(life.composition, planet.composition, model) : model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
+mix_compositions!(life::Life, planet::Planet, model::ABM) = isnothing(model.compmix_kwargs) ? planet.composition = model.compmix_func(life.composition, planet.composition, model) : planet.composition = model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
 
 ## I think I can actually simplify the below since all compatible_planet functions are going to take the model as input, so I don't need to check for the precense of model.compatibility_kwargs first? maybe?
 find_compatible_planets!(planet::Planet, model::ABM) = isnothing(model.compatibility_kwargs) ? planet.candidate_planets = model.compatibility_func(planet, model) : planet.candidate_planets = model.compatibility_func(planet, model; model.compatibility_kwargs...)
@@ -891,7 +908,10 @@ Called by [`galaxy_agent_step_spawn_on_terraform!`](@ref).
 function terraform!(life::Life, planet::Planet, model::ABM)
 
     ## Modify destination planet properties
+    @show planet.composition
     mix_compositions!(life, planet, model)
+    @show planet.composition
+    println("~~~~~~~~~~~~~~~~~~~~~~~~~~")
     # if model.compmix_kwargs == nothing
     #     planet.composition = model.compmix_func(life.composition, planet.composition, model)
     # else
