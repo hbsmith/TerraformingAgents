@@ -419,12 +419,19 @@ Return the number of planets in `params`.
 nplanets(params::GalaxyParameters) = length(params.pos)
 
 
-"""
-    max_life_id(model)
+# """
+#     max_life_id(model)
 
-Return the id of the newest Life
+# Return the id of the newest Life
+# """
+# max_life_id(model) = maximum(keys(filter(x -> x.second isa Life, model.agents)), init=0)
+
 """
-max_life_id(model) = maximum(keys(filter(x -> x.second isa Life, model.agents)), init=0)
+    count_living_planets(model)
+
+Returns the number of alive planets.
+"""
+count_living_planets(model) = length(filter(kv -> kv.second isa Planet && kv.second.alive, model.agents))
 
 """
 
@@ -494,7 +501,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         :maxcomp => params.maxcomp,
                         :compsize => params.compsize,
                         :s => 0, ## track the model step number,
-                        :max_life_id => -1, ## id of the newest life
+                        :n_living_planets => params.nool,
                         :terraformed_on_step => true,
                         :n_terraformed_on_step => params.nool,
                         :spawn_rate => params.spawn_rate,
@@ -547,8 +554,6 @@ function galaxy_life_setup(model, params::GalaxyParameters)
         spawn_if_candidate_planets!(planet, model)
 
     end
-
-    model.max_life_id = max_life_id(model)
 
     model
 
@@ -1044,14 +1049,25 @@ Right now this only updates the number of planets in the simulation if the inter
 function galaxy_model_step!(model)
     
     # update_nplanets!(model)
-    if max_life_id(model) > model.max_life_id
+    # if max_life_id(model) > model.max_life_id
+    #     model.terraformed_on_step = true
+    #     model.n_terraformed_on_step = max_life_id(model) - model.max_life_id
+    #     model.max_life_id = max_life_id(model)
+    # else 
+    #     model.n_terraformed_on_step = 0
+    #     model.terraformed_on_step = false
+    # end
+    current_n_living_planets = count_living_planets(model)
+
+    if current_n_living_planets > model.n_living_planets
         model.terraformed_on_step = true
-        model.n_terraformed_on_step = max_life_id(model) - model.max_life_id
-        model.max_life_id = max_life_id(model)
+        model.n_terraformed_on_step = current_n_living_planets - model.n_living_planets
+        model.n_living_planets = current_n_living_planets
     else 
         model.n_terraformed_on_step = 0
         model.terraformed_on_step = false
     end
+
     # model.n_terraformed_on_step = max_life_id(model) - model.max_life_id
     model.s += 1
 
