@@ -418,14 +418,6 @@ Return the number of planets in `params`.
 """
 nplanets(params::GalaxyParameters) = length(params.pos)
 
-
-# """
-#     max_life_id(model)
-
-# Return the id of the newest Life
-# """
-# max_life_id(model) = maximum(keys(filter(x -> x.second isa Life, model.agents)), init=0)
-
 """
     count_living_planets(model)
 
@@ -1048,15 +1040,6 @@ Right now this only updates the number of planets in the simulation if the inter
 """
 function galaxy_model_step!(model)
     
-    # update_nplanets!(model)
-    # if max_life_id(model) > model.max_life_id
-    #     model.terraformed_on_step = true
-    #     model.n_terraformed_on_step = max_life_id(model) - model.max_life_id
-    #     model.max_life_id = max_life_id(model)
-    # else 
-    #     model.n_terraformed_on_step = 0
-    #     model.terraformed_on_step = false
-    # end
     current_n_living_planets = count_living_planets(model)
 
     if current_n_living_planets > model.n_living_planets
