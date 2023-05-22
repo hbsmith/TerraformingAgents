@@ -718,9 +718,9 @@ function spawn_if_candidate_planets!(
 )
     ## Only spawn life if there are compatible Planets
     candidateplanets = planet.candidate_planets
-    if length(candidateplanets) == 0
-        println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
-    else
+    # if length(candidateplanets) == 0
+    #     println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
+    if length(candidateplanets) != 0
         isnothing(life) ?  spawnlife!(planet, model) : spawnlife!(planet, model, ancestors = push!(life.ancestors, life))
     end
     model
