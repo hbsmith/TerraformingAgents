@@ -474,7 +474,7 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function galaxy_planet_setup(params::GalaxyParameters)
 
-    extent_multiplier = 3
+    extent_multiplier = 1
     params.extent = extent_multiplier.*params.extent
 
     if :spacing in keys(params.SpaceArgs)
@@ -948,89 +948,6 @@ function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
 end
 
 """
-    add_planet!(model::ABM, min_dist, max_dist, max_attempts)
-
-Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
-and outside the interaction radius of all living planets. Max attempts sets the limit of
-iterations in the while loop to find a valid planet position (default = 10*nplanets).
-
-Right now this is only called when using the interactive application, via changing the slider and resetting the simulation.
-
-TODO: TEST IN 1 DIMENSION
-"""
-function add_planet!(model::ABM, 
-    min_dist=model.interaction_radius/10, 
-    max_dist=model.interaction_radius, 
-    max_attempts=10*length(filter(kv -> kv.second isa Planet, model.agents))
-)
-
-    id = nextid(model)
-    ndims = length(model.space.dims)
-    ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions"))
-
-    ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
-    n_attempts = 0
-    valid_pos = false
-    while valid_pos == false && n_attempts < max_attempts
-
-        ## Pick a random radius offset in the allowed interaction radius slice differently based on the dimension of the model
-        ##   There's surely a cleaner way to write this....
-        if ndims == 1
-            r = random_radius(model.rng, min_dist, max_dist)^2
-            r = r*Random.shuffle(model.rng, [-1,1])[1]
-        elseif ndims == 2
-            r = random_radius(model.rng, min_dist, max_dist)
-            theta = rand(model.rng)*2*π
-        elseif ndims == 3
-            x,y,z = random_shell_position(model.rng, min_dist, max_dist)
-        end
-
-        for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
-            
-            ## Apply the random radius offset to a specific planet's position differently based on the dimension of the model
-            if ndims == 1
-                pos = (planet.pos[1] + r,)
-            elseif ndims == 2
-                pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
-            elseif ndims == 3
-                pos = (planet.pos[1] + x, planet.pos[2] + y, planet.pos[3] + z)
-            end
-            
-            ## Only add a planet to the galaxy if within the interaction radius of a non-living planet
-            if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
-                valid_pos = true
-                vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
-                composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
-                newplanet = Planet(; id, pos, vel, composition)
-                add_agent_pos!(newplanet, model)
-                println("Planet added at $pos")
-                return model
-            end
-
-            n_attempts += 1
-
-        end
-
-    end
-
-    println("Planet unable to be added in valid position within `max_attempts`")
-
-    model
-
-end
-
-"""
-    update_nplanets!(model::ABM)
-
-Adds planets to the `model` at random positions if the interactive slider is changed.
-"""
-function update_nplanets!(model)
-    while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
-        add_planet!(model::ABM)
-    end
-end
-
-"""
     galaxy_model_step!(model)
 
 Custom `model_step` to be called by `Agents.step!`. 
@@ -1450,5 +1367,92 @@ function agent2string(agent::Life)
     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
     
 end
+
+##############################################################################################################################
+## OBSOLETE/REMOVED
+##############################################################################################################################
+# """
+#     update_nplanets!(model::ABM)
+
+# Adds planets to the `model` at random positions if the interactive slider is changed.
+# """
+# function update_nplanets!(model)
+#     while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
+#         add_planet!(model::ABM)
+#     end
+# end
+
+# """
+#     add_planet!(model::ABM, min_dist, max_dist, max_attempts)
+
+# Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
+# and outside the interaction radius of all living planets. Max attempts sets the limit of
+# iterations in the while loop to find a valid planet position (default = 10*nplanets).
+
+# Right now this is only called when using the interactive application, via changing the slider and resetting the simulation.
+
+# TODO: TEST IN 1 DIMENSION
+# """
+# function add_planet!(model::ABM, 
+#     min_dist=model.interaction_radius/10, 
+#     max_dist=model.interaction_radius, 
+#     max_attempts=10*length(filter(kv -> kv.second isa Planet, model.agents))
+# )
+
+#     id = nextid(model)
+#     ndims = length(model.space.dims)
+#     ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions"))
+
+#     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
+#     n_attempts = 0
+#     valid_pos = false
+#     while valid_pos == false && n_attempts < max_attempts
+
+#         ## Pick a random radius offset in the allowed interaction radius slice differently based on the dimension of the model
+#         ##   There's surely a cleaner way to write this....
+#         if ndims == 1
+#             r = random_radius(model.rng, min_dist, max_dist)^2
+#             r = r*Random.shuffle(model.rng, [-1,1])[1]
+#         elseif ndims == 2
+#             r = random_radius(model.rng, min_dist, max_dist)
+#             theta = rand(model.rng)*2*π
+#         elseif ndims == 3
+#             x,y,z = random_shell_position(model.rng, min_dist, max_dist)
+#         end
+
+#         for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
+            
+#             ## Apply the random radius offset to a specific planet's position differently based on the dimension of the model
+#             if ndims == 1
+#                 pos = (planet.pos[1] + r,)
+#             elseif ndims == 2
+#                 pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
+#             elseif ndims == 3
+#                 pos = (planet.pos[1] + x, planet.pos[2] + y, planet.pos[3] + z)
+#             end
+            
+#             ## Only add a planet to the galaxy if within the interaction radius of a non-living planet
+#             if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
+#                 valid_pos = true
+#                 vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
+#                 composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
+#                 newplanet = Planet(; id, pos, vel, composition)
+#                 add_agent_pos!(newplanet, model)
+#                 println("Planet added at $pos")
+#                 return model
+#             end
+
+#             n_attempts += 1
+
+#         end
+
+#     end
+
+#     println("Planet unable to be added in valid position within `max_attempts`")
+
+#     model
+
+# end
+
 
 end # module
