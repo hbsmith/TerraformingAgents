@@ -2,7 +2,7 @@ module TerraformingAgents;
 
 # include("utilities.jl")
 
-using Agents, Random
+using Agents, Random, Printf
 using Statistics: cor
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
@@ -1380,72 +1380,75 @@ end
 # mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
 
 ##############################################################################################################################
-## Interactive Plot utilities REMOVED DUE TO ISSUE WITH REQUIRES, SEE: https://github.com/JuliaPackaging/Requires.jl/issues/111
+## Interactive Plot utilities 
+##     REMOVED DUE TO ISSUE WITH REQUIRES, SEE: https://github.com/JuliaPackaging/Requires.jl/issues/111
+##     UPDATE 2023-05-29: I made a work around; Now in the script you just have to add e.g. InteractiveDynamics.agent2string(agent::Life) = TerraformingAgents.agent2string(agent::Life)
 ##############################################################################################################################
+"""
+Overload InteractiveDynamics.jl's agent2string function in order to force interactive plot hover text to display only 
+information for the ids under the cursor (instead of including nearby ids)
 
-# """
-# Overload InteractiveDynamics.jl's agent2string function in order to force interactive plot hover text to display only 
-# information for the ids under the cursor (instead of including nearby ids)
+For more information see: 
+https://github.com/JuliaDynamics/InteractiveDynamics.jl/blob/4a701abdb40abefc9e3bc6161bb223d22cd2ef2d/src/agents/inspection.jl#L99
+"""
+function agent2string(model::Agents.ABM{<:ContinuousSpace}, agent_pos)
+    ids = Agents.nearby_ids_exact(agent_pos, model, 0.0)
 
-# For more information see: 
-# https://github.com/JuliaDynamics/InteractiveDynamics.jl/blob/4a701abdb40abefc9e3bc6161bb223d22cd2ef2d/src/agents/inspection.jl#L99
-# """
-# function InteractiveDynamics.agent2string(model::Agents.ABM{<:ContinuousSpace}, agent_pos)
-#     println("Hover inspection using nearby_ids_exact")
+    s = ""
 
-#     ids = Agents.nearby_ids_exact(agent_pos, model, 0.0)
+    for id in ids
+        s *= agent2string(model[id]) * "\n"
+    end
 
-#     s = ""
+    return s
+end
 
-#     for id in ids
-#         s *= InteractiveDynamics.agent2string(model[id]) * "\n"
-#     end
+"""
+Overload InteractiveDynamics.jl's agent2string function with custom fields for Planets
 
-#     return s
-# end
-
-# """
-# Overload InteractiveDynamics.jl's agent2string function with custom fields for Planets
-
-# For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
-# """
-# function InteractiveDynamics.agent2string(agent::Planet)
-#     """
-#     ✨ Planet ✨
-#     id = $(agent.id)
-#     pos = $(agent.pos)
-#     vel = $(agent.vel)
-#     composition = $(agent.composition)
-#     initialcomposition = $(agent.initialcomposition)
-#     alive = $(agent.alive)
-#     claimed = $(agent.claimed)
-#     parentplanet_id = $(agent.parentplanet == nothing ? "No parentplanet" : agent.parentplanet.id)
-#     parentlife_id = $(agent.parentlife == nothing ? "No parentlife" : agent.parentlife.id)
-#     parentcomposition = $(agent.parentcomposition == nothing ? "No parentcomposition" : agent.parentcomposition)
-#     """
-#     ## Have to exclude this because it's taking up making the rest of the screen invisible
-#     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
+For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
+https://stackoverflow.com/questions/37031133/how-do-you-format-a-string-when-interpolated-in-julia
+"""
+function agent2string(agent::Planet)
+    """
+    ✨ Planet ✨
+    id = $(agent.id)
+    pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
+    vel = $(agent.vel)
+    composition = [$(join([@sprintf("%.2f", i) for i in agent.composition],", "))]
+    initialcomposition = [$(join([@sprintf("%.2f", i) for i in agent.initialcomposition],", "))]
+    alive = $(agent.alive)
+    claimed = $(agent.claimed)
+    parentplanets (†‡): $(length(agent.parentplanets) == 0 ? "No parentplanet" : agent.parentplanets[end].id)
+    parentlifes (†‡): $(length(agent.parentlifes) == 0 ? "No parentlife" : agent.parentlifes[end].id)
+    parentcompositions (‡): $(length(agent.parentcompositions) == 0 ? "No parentcomposition" : "[$(join([@sprintf("%.2f", i) for i in agent.parentcompositions[end]],", "))]")
+    """
+    ## Have to exclude this because it's taking up making the rest of the screen invisible
+    # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
     
-# end
+end
 
-# """
-# Overload InteractiveDynamics.jl's agent2string function with custom fields for Life
+"""
+Overload InteractiveDynamics.jl's agent2string function with custom fields for Life
 
-# For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
-# """
-# function InteractiveDynamics.agent2string(agent::Life)
-#     """
-#     ✨ Life ✨
-#     id = $(agent.id)
-#     pos = $(agent.pos)
-#     vel = $(agent.vel)
-#     parentplanet_id = $(agent.parentplanet.id)
-#     composition = $(agent.composition)
-#     destination_id = $(agent.destination == nothing ? "No destination" : agent.destination.id)
-#     """
-#     ## Have to exclude this because it's taking up making the rest of the screen invisible
-#     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
+For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
+https://stackoverflow.com/questions/37031133/how-do-you-format-a-string-when-interpolated-in-julia
+"""
+function agent2string(agent::Life)
+    """
+    ✨ Life ✨
+    id = $(agent.id)
+    pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
+    vel = ($(join([@sprintf("%.2f", i) for i in agent.vel],", ")))
+    parentplanet (†): $(agent.parentplanet.id)
+    composition = [$(join([@sprintf("%.2f", i) for i in agent.composition],", "))]
+    destination (†): $(agent.destination.id)
+    destination_distance: $(agent.destination_distance)
+    ancestors (†): $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
+    """
+    ## Have to exclude this because it's taking up making the rest of the screen invisible
+    # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
     
-# end
+end
 
 end # module
