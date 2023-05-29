@@ -2,7 +2,7 @@ module TerraformingAgents;
 
 # include("utilities.jl")
 
-using Agents, Random
+using Agents, Random, Printf
 using Statistics: cor
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
@@ -474,7 +474,7 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function galaxy_planet_setup(params::GalaxyParameters)
 
-    extent_multiplier = 3
+    extent_multiplier = 1
     params.extent = extent_multiplier.*params.extent
 
     if :spacing in keys(params.SpaceArgs)
@@ -948,89 +948,6 @@ function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
 end
 
 """
-    add_planet!(model::ABM, min_dist, max_dist, max_attempts)
-
-Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
-and outside the interaction radius of all living planets. Max attempts sets the limit of
-iterations in the while loop to find a valid planet position (default = 10*nplanets).
-
-Right now this is only called when using the interactive application, via changing the slider and resetting the simulation.
-
-TODO: TEST IN 1 DIMENSION
-"""
-function add_planet!(model::ABM, 
-    min_dist=model.interaction_radius/10, 
-    max_dist=model.interaction_radius, 
-    max_attempts=10*length(filter(kv -> kv.second isa Planet, model.agents))
-)
-
-    id = nextid(model)
-    ndims = length(model.space.dims)
-    ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions"))
-
-    ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
-    n_attempts = 0
-    valid_pos = false
-    while valid_pos == false && n_attempts < max_attempts
-
-        ## Pick a random radius offset in the allowed interaction radius slice differently based on the dimension of the model
-        ##   There's surely a cleaner way to write this....
-        if ndims == 1
-            r = random_radius(model.rng, min_dist, max_dist)^2
-            r = r*Random.shuffle(model.rng, [-1,1])[1]
-        elseif ndims == 2
-            r = random_radius(model.rng, min_dist, max_dist)
-            theta = rand(model.rng)*2*π
-        elseif ndims == 3
-            x,y,z = random_shell_position(model.rng, min_dist, max_dist)
-        end
-
-        for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
-            
-            ## Apply the random radius offset to a specific planet's position differently based on the dimension of the model
-            if ndims == 1
-                pos = (planet.pos[1] + r,)
-            elseif ndims == 2
-                pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
-            elseif ndims == 3
-                pos = (planet.pos[1] + x, planet.pos[2] + y, planet.pos[3] + z)
-            end
-            
-            ## Only add a planet to the galaxy if within the interaction radius of a non-living planet
-            if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
-                valid_pos = true
-                vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
-                composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
-                newplanet = Planet(; id, pos, vel, composition)
-                add_agent_pos!(newplanet, model)
-                println("Planet added at $pos")
-                return model
-            end
-
-            n_attempts += 1
-
-        end
-
-    end
-
-    println("Planet unable to be added in valid position within `max_attempts`")
-
-    model
-
-end
-
-"""
-    update_nplanets!(model::ABM)
-
-Adds planets to the `model` at random positions if the interactive slider is changed.
-"""
-function update_nplanets!(model)
-    while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
-        add_planet!(model::ABM)
-    end
-end
-
-"""
     galaxy_model_step!(model)
 
 Custom `model_step` to be called by `Agents.step!`. 
@@ -1380,72 +1297,162 @@ end
 # mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
 
 ##############################################################################################################################
-## Interactive Plot utilities REMOVED DUE TO ISSUE WITH REQUIRES, SEE: https://github.com/JuliaPackaging/Requires.jl/issues/111
+## Interactive Plot utilities 
+##     REMOVED DUE TO ISSUE WITH REQUIRES, SEE: https://github.com/JuliaPackaging/Requires.jl/issues/111
+##     UPDATE 2023-05-29: I made a work around; Now in the script you just have to add e.g. InteractiveDynamics.agent2string(agent::Life) = TerraformingAgents.agent2string(agent::Life)
 ##############################################################################################################################
+"""
+Overload InteractiveDynamics.jl's agent2string function in order to force interactive plot hover text to display only 
+information for the ids under the cursor (instead of including nearby ids)
+
+For more information see: 
+https://github.com/JuliaDynamics/InteractiveDynamics.jl/blob/4a701abdb40abefc9e3bc6161bb223d22cd2ef2d/src/agents/inspection.jl#L99
+"""
+function agent2string(model::Agents.ABM{<:ContinuousSpace}, agent_pos)
+    ids = Agents.nearby_ids_exact(agent_pos, model, 0.0)
+
+    s = ""
+
+    for id in ids
+        s *= agent2string(model[id]) * "\n"
+    end
+
+    return s
+end
+
+"""
+Overload InteractiveDynamics.jl's agent2string function with custom fields for Planets
+
+For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
+https://stackoverflow.com/questions/37031133/how-do-you-format-a-string-when-interpolated-in-julia
+"""
+function agent2string(agent::Planet)
+    """
+    ✨ Planet ✨
+    id = $(agent.id)
+    pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
+    vel = $(agent.vel)
+    composition = [$(join([@sprintf("%.2f", i) for i in agent.composition],", "))]
+    initialcomposition = [$(join([@sprintf("%.2f", i) for i in agent.initialcomposition],", "))]
+    alive = $(agent.alive)
+    claimed = $(agent.claimed)
+    parentplanets (†‡): $(length(agent.parentplanets) == 0 ? "No parentplanet" : agent.parentplanets[end].id)
+    parentlifes (†‡): $(length(agent.parentlifes) == 0 ? "No parentlife" : agent.parentlifes[end].id)
+    parentcompositions (‡): $(length(agent.parentcompositions) == 0 ? "No parentcomposition" : "[$(join([@sprintf("%.2f", i) for i in agent.parentcompositions[end]],", "))]")
+    """
+    ## Have to exclude this because it's taking up making the rest of the screen invisible
+    # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
+    
+end
+
+"""
+Overload InteractiveDynamics.jl's agent2string function with custom fields for Life
+
+For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
+https://stackoverflow.com/questions/37031133/how-do-you-format-a-string-when-interpolated-in-julia
+"""
+function agent2string(agent::Life)
+    """
+    ✨ Life ✨
+    id = $(agent.id)
+    pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
+    vel = ($(join([@sprintf("%.2f", i) for i in agent.vel],", ")))
+    parentplanet (†): $(agent.parentplanet.id)
+    composition = [$(join([@sprintf("%.2f", i) for i in agent.composition],", "))]
+    destination (†): $(agent.destination.id)
+    destination_distance: $(agent.destination_distance)
+    ancestors (†): $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
+    """
+    ## Have to exclude this because it's taking up making the rest of the screen invisible
+    # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
+    
+end
+
+##############################################################################################################################
+## OBSOLETE/REMOVED
+##############################################################################################################################
+# """
+#     update_nplanets!(model::ABM)
+
+# Adds planets to the `model` at random positions if the interactive slider is changed.
+# """
+# function update_nplanets!(model)
+#     while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
+#         add_planet!(model::ABM)
+#     end
+# end
 
 # """
-# Overload InteractiveDynamics.jl's agent2string function in order to force interactive plot hover text to display only 
-# information for the ids under the cursor (instead of including nearby ids)
+#     add_planet!(model::ABM, min_dist, max_dist, max_attempts)
 
-# For more information see: 
-# https://github.com/JuliaDynamics/InteractiveDynamics.jl/blob/4a701abdb40abefc9e3bc6161bb223d22cd2ef2d/src/agents/inspection.jl#L99
+# Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
+# and outside the interaction radius of all living planets. Max attempts sets the limit of
+# iterations in the while loop to find a valid planet position (default = 10*nplanets).
+
+# Right now this is only called when using the interactive application, via changing the slider and resetting the simulation.
+
+# TODO: TEST IN 1 DIMENSION
 # """
-# function InteractiveDynamics.agent2string(model::Agents.ABM{<:ContinuousSpace}, agent_pos)
-#     println("Hover inspection using nearby_ids_exact")
+# function add_planet!(model::ABM, 
+#     min_dist=model.interaction_radius/10, 
+#     max_dist=model.interaction_radius, 
+#     max_attempts=10*length(filter(kv -> kv.second isa Planet, model.agents))
+# )
 
-#     ids = Agents.nearby_ids_exact(agent_pos, model, 0.0)
+#     id = nextid(model)
+#     ndims = length(model.space.dims)
+#     ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions"))
 
-#     s = ""
+#     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
+#     n_attempts = 0
+#     valid_pos = false
+#     while valid_pos == false && n_attempts < max_attempts
 
-#     for id in ids
-#         s *= InteractiveDynamics.agent2string(model[id]) * "\n"
+#         ## Pick a random radius offset in the allowed interaction radius slice differently based on the dimension of the model
+#         ##   There's surely a cleaner way to write this....
+#         if ndims == 1
+#             r = random_radius(model.rng, min_dist, max_dist)^2
+#             r = r*Random.shuffle(model.rng, [-1,1])[1]
+#         elseif ndims == 2
+#             r = random_radius(model.rng, min_dist, max_dist)
+#             theta = rand(model.rng)*2*π
+#         elseif ndims == 3
+#             x,y,z = random_shell_position(model.rng, min_dist, max_dist)
+#         end
+
+#         for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
+            
+#             ## Apply the random radius offset to a specific planet's position differently based on the dimension of the model
+#             if ndims == 1
+#                 pos = (planet.pos[1] + r,)
+#             elseif ndims == 2
+#                 pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
+#             elseif ndims == 3
+#                 pos = (planet.pos[1] + x, planet.pos[2] + y, planet.pos[3] + z)
+#             end
+            
+#             ## Only add a planet to the galaxy if within the interaction radius of a non-living planet
+#             if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
+#                 valid_pos = true
+#                 vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
+#                 composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
+#                 newplanet = Planet(; id, pos, vel, composition)
+#                 add_agent_pos!(newplanet, model)
+#                 println("Planet added at $pos")
+#                 return model
+#             end
+
+#             n_attempts += 1
+
+#         end
+
 #     end
 
-#     return s
+#     println("Planet unable to be added in valid position within `max_attempts`")
+
+#     model
+
 # end
 
-# """
-# Overload InteractiveDynamics.jl's agent2string function with custom fields for Planets
-
-# For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
-# """
-# function InteractiveDynamics.agent2string(agent::Planet)
-#     """
-#     ✨ Planet ✨
-#     id = $(agent.id)
-#     pos = $(agent.pos)
-#     vel = $(agent.vel)
-#     composition = $(agent.composition)
-#     initialcomposition = $(agent.initialcomposition)
-#     alive = $(agent.alive)
-#     claimed = $(agent.claimed)
-#     parentplanet_id = $(agent.parentplanet == nothing ? "No parentplanet" : agent.parentplanet.id)
-#     parentlife_id = $(agent.parentlife == nothing ? "No parentlife" : agent.parentlife.id)
-#     parentcomposition = $(agent.parentcomposition == nothing ? "No parentcomposition" : agent.parentcomposition)
-#     """
-#     ## Have to exclude this because it's taking up making the rest of the screen invisible
-#     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
-    
-# end
-
-# """
-# Overload InteractiveDynamics.jl's agent2string function with custom fields for Life
-
-# For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
-# """
-# function InteractiveDynamics.agent2string(agent::Life)
-#     """
-#     ✨ Life ✨
-#     id = $(agent.id)
-#     pos = $(agent.pos)
-#     vel = $(agent.vel)
-#     parentplanet_id = $(agent.parentplanet.id)
-#     composition = $(agent.composition)
-#     destination_id = $(agent.destination == nothing ? "No destination" : agent.destination.id)
-#     """
-#     ## Have to exclude this because it's taking up making the rest of the screen invisible
-#     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
-    
-# end
 
 end # module
