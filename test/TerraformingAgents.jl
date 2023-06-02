@@ -500,6 +500,39 @@ function TestCandidatePlanetFuncs()
     end
 end
 
+function TestActivateOnStepAfterSpawn()
+    @testset "agents don't activate on spawn step" begin 
+
+        galaxyparams = GalaxyParameters(
+            MersenneTwister(3141),
+            pos = [(1,1,1),(2,1,1),(3,1,1),(4,1,1),(5,1,1)],
+            ool = 1,
+            nool = 1,
+            extent = (10,10,10),
+            dt = 10,
+            maxcomp = 1,
+            compsize = 10,
+            spawn_rate = 0.01,
+            compmix_func=horizontal_gene_transfer,
+            compmix_kwargs=Dict(:mutation_rate=>0,
+                                :n_idxs_to_keep_from_destination=>1),
+            compatibility_func=nearest_k_planets,
+            compatibility_kwargs=Dict(:k=>10),
+            destination_func=most_similar_planet)
+        model = galaxy_model_setup(galaxyparams)
+
+        @test Set(keys(model.agents)) == Set([5, 4, 6, 2, 3, 1])
+        for i in 1:4
+            step!(model, galaxy_agent_step_spawn_on_terraform!, galaxy_model_step!)
+
+            i == 1 && @test Set(keys(model.agents)) == Set([5, 4, 7, 2, 3, 1])
+            i == 2 && @test Set(keys(model.agents)) == Set([5, 4, 2, 8, 3, 1])
+            i == 3 && @test Set(keys(model.agents)) == Set([5, 4, 2, 9, 3, 1])
+
+        end
+    end
+end
+
 
 
 @testset "All" begin
@@ -516,5 +549,6 @@ end
     # TestPlanetMantelTest()
     # TestPropogationOfModelRNG()
     # TestRunningModelNoErrors()
-    TestCandidatePlanetFuncs()
+    # TestCandidatePlanetFuncs()
+    TestActivateOnStepAfterSpawn()
 end
