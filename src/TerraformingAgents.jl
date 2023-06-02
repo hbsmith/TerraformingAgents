@@ -618,24 +618,12 @@ Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation
 
 A valid `compatibility_func`.
 """
-# function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff)
-#     candidateplanets = basic_candidate_planets(planet, model)
-#     length(candidateplanets)==0 && return Vector{Planet}[]
-#     compositions = hcat([a.composition for a in candidateplanets]...)
-#     compositiondiffs = abs.(compositions .- planet.composition)
-#     compatibleindxs =
-#         findall(<=(allowed_diff), vec(maximum(compositiondiffs, dims = 1)))
-
-#     ## Necessary in cased the result is empty
-#     convert(Vector{Planet}, candidateplanets[compatibleindxs]) ## Returns Planets
-
-# end
 function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff)
-# function planets_in_composition_range(planet::Planet, model::ABM; allowed_diff)
+## Alternative name: planets_in_composition_range(planet::Planet, model::ABM; allowed_diff)
     candidateplanets = basic_candidate_planets(planet, model)
     length(candidateplanets)==0 && return Vector{Planet}[]
     planets_in_attribute_range(planet, candidateplanets, :composition, allowed_diff)
-
+    # convert(Vector{Planet}, candidateplanets[compatibleindxs]) ## Returns Planets. Needed in case the result is empty? But it should still return an empty Vector{Planet} I think
 end
 
 
@@ -1126,17 +1114,6 @@ function concatenate_planet_fields(field, model, planet_condition=nothing)
 
 end
 
-# function planet_distance_matrix(field, model, dist_metric=Euclidean(), planet_condition=nothing)
-    
-#     pairwise(dist_metric, hcat(field_values...), dims=2)
-
-# end
-
-# function position_distance_matrix(dist_metric, model, planet_condition)
-
-#     positions = [collect(kv.second.pos) for kv in filter_agents(model,Planet)]
-#     pairwise(dist_metric, hcat(positions...), dims=2)
-# end
 """
 
     PlanetMantelTest(model, xfield=:composition, yfield=:pos, dist_metric=Euclidean();  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
