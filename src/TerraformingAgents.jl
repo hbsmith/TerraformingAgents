@@ -466,6 +466,13 @@ function galaxy_model_setup(params::Dict)
 end
 
 """
+    Custom scheduler the ensures newly added agents don't get activated on the step they're added.
+    
+    The default scheduler is `keys(model.agents)` which gets modified in-place and causes problems.
+"""
+allocated_fastest(model::ABM) = collect(keys(model.agents))
+
+"""
     galaxy_planet_setup(params::GalaxyParameters)
 
 Set up the galaxy's `Planet`s according to `params`.
@@ -486,6 +493,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
     model = @suppress_err AgentBasedModel(
         Union{Planet,Life},
         space,
+        scheduler = allocated_fastest,
         properties = Dict(:dt => params.dt,
                         :lifespeed => params.lifespeed,
                         :interaction_radius => params.interaction_radius,
