@@ -618,16 +618,23 @@ Return `Vector{Planet}` of `Planet`s compatible with `planet` for terraformation
 
 A valid `compatibility_func`.
 """
+# function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff)
+#     candidateplanets = basic_candidate_planets(planet, model)
+#     length(candidateplanets)==0 && return Vector{Planet}[]
+#     compositions = hcat([a.composition for a in candidateplanets]...)
+#     compositiondiffs = abs.(compositions .- planet.composition)
+#     compatibleindxs =
+#         findall(<=(allowed_diff), vec(maximum(compositiondiffs, dims = 1)))
+
+#     ## Necessary in cased the result is empty
+#     convert(Vector{Planet}, candidateplanets[compatibleindxs]) ## Returns Planets
+
+# end
 function compositionally_similar_planets(planet::Planet, model::ABM; allowed_diff)
+# function planets_in_composition_range(planet::Planet, model::ABM; allowed_diff)
     candidateplanets = basic_candidate_planets(planet, model)
     length(candidateplanets)==0 && return Vector{Planet}[]
-    compositions = hcat([a.composition for a in candidateplanets]...)
-    compositiondiffs = abs.(compositions .- planet.composition)
-    compatibleindxs =
-        findall(<=(allowed_diff), vec(maximum(compositiondiffs, dims = 1)))
-
-    ## Necessary in cased the result is empty
-    convert(Vector{Planet}, candidateplanets[compatibleindxs]) ## Returns Planets
+    planets_in_attribute_range(planet, candidateplanets, :composition, allowed_diff)
 
 end
 
@@ -675,8 +682,8 @@ Called by [`planets_in_range`](@ref).
 function planets_in_attribute_range(planet::Planet, planets::Vector{Planet}, attr::Symbol, r)
 
     planetattributes = planet_attribute_as_matrix(planets, attr)
-    idx, dist = inrange(KDTree(planetattributes), collect(getproperty(planet, attr)), r)
-    planets[idx]
+    idxs = inrange(KDTree(planetattributes), collect(getproperty(planet, attr)), r)
+    planets[idxs]
 
 end
 
