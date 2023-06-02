@@ -600,6 +600,17 @@ function basic_candidate_planets(planet::Planet, model::ABM)
     convert(Vector{Planet}, collect(values(filter(iscandidate, model.agents))))
 end
 
+function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
+
+    length(planets) == 0 && throw(ArgumentError("planets is empty"))
+    planet_attributes = map(x -> getproperty(x, attr), planets)
+    ## need to collect because when attr = :pos, the result is a Vector of Tuples
+    convert(Matrix{Float64}, hcat(collect.(planet_attributes)...))
+    # NOTE: I hope it doesn't cause problems that the returned matrix has element type of whatever the attribute is
+    # lol it already is. converting to float matrix.
+
+end
+
 """
     compositionally_similar_planets(planet::Planet, model::ABM, allowed_diff::Real = 1.0)
 
@@ -653,71 +664,51 @@ function nearest_k_planets(planet::Planet, model::ABM; k)
 end
 
 """
-    planets_in_range(planet::Planet, planets::Vector{PLanet}, r)
+    planets_in_attribute_range(planet::Planet, planets::Vector{Planet}, attr::Symbol, r)
 
-Returns all planets within range `r`.
+Returns all planets within range `r` of the `attr` space (unsorted).
 
-A valid `compatibility_func`.
+Used for `compatibility_func`s.
 
-Note: Results are unsorted
+Called by [`planets_in_range`](@ref).
 """
-function planets_in_range(planet::Planet, planets::Vector{Planet}, r)
+function planets_in_attribute_range(planet::Planet, planets::Vector{Planet}, attr::Symbol, r)
 
-    planetpositions = planet_attribute_as_matrix(planets, :pos)
-    idxs = inrange(KDTree(planetpositions), collect(planet.pos), r)
-    planets[idxs]
+    planetattributes = planet_attribute_as_matrix(planets, attr)
+    idx, dist = inrange(KDTree(planetattributes), collect(getproperty(planet, attr)), r)
+    planets[idx]
 
 end
+
+planets_in_range(planet::Planet, planets::Vector{Planet}, r) = planets_in_attribute_range(planet, planets, :pos, r)
 function planets_in_range(planet::Planet, model::ABM; r)
 
     candidateplanets = basic_candidate_planets(planet, model)
-
     length(candidateplanets)==0 && return Vector{Planet}[]
-
     planets_in_range(planet, candidateplanets, r)
 
 end
 
-function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
 
-    length(planets) == 0 && throw(ArgumentError("planets is empty"))
-    planet_attributes = map(x -> getproperty(x, attr), planets)
-    ## need to collect because when attr = :pos, the result is a Vector of Tuples
-    convert(Matrix{Float64}, hcat(collect.(planet_attributes)...))
-    # NOTE: I hope it doesn't cause problems that the returned matrix has element type of whatever the attribute is
-    # lol it already is. converting to float matrix.
+"""
+    closest_planet_by_attribute(planet::Planet, planets::Vector{Planet}, attr::Symbol)
+
+Returns `Planet` within `planets` that is most similar in `attr` space.
+
+Used for `destination_func`s.
+
+Called by [`nearest_planet`](@ref), [`most_similar_planet`](@ref).
+"""
+function closest_planet_by_attribute(planet::Planet, planets::Vector{Planet}, attr::Symbol)
+
+    planetattributes = planet_attribute_as_matrix(planets, attr)
+    idx, dist = nn(KDTree(planetattributes), collect(getproperty(planet, attr)))
+    planets[idx]
 
 end
 
-"""
-    nearest_planet(planet::Planet, planets::Vector{PLanet})
-
-Returns `Planet` within `planets` that is nearest to `planet `.
-
-A valid `destination_func`.
-"""
-function nearest_planet(planet::Planet, planets::Vector{Planet})
-
-    planetpositions = planet_attribute_as_matrix(planets, :pos) #get_positions(planets)
-    idx, dist = nn(KDTree(planetpositions), collect(planet.pos))
-    planets[idx] ## Returns nearest planet
-
-end
-
-"""
-    most_similar_planet(planet::Planet, planets::Vector{Planet})
-
-Returns `Planet` within `planets` that is most similar compositionally.
-
-A valid `destination_func`.
-"""
-function most_similar_planet(planet::Planet, planets::Vector{Planet})
-    
-    planetcompositions = planet_attribute_as_matrix(planets, :composition)
-    idx, dist = nn(KDTree(planetcompositions), collect(planet.composition))
-    planets[idx] ## Returns nearest planet
-
-end
+nearest_planet(planet::Planet, planets::Vector{Planet}) = closest_planet_by_attribute(planet, planets, :pos)
+most_similar_planet(planet::Planet, planets::Vector{Planet}) = closest_planet_by_attribute(planet, planets, :composition)
 
 function spawn_if_candidate_planets!(
     planet::Planet,
