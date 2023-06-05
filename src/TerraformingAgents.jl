@@ -979,18 +979,16 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 """
 function galaxy_agent_step_spawn_on_terraform!(life::Life, model)
 
-    move_agent!(life, model, model.dt)
-
-    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
-    
     if life.destination == nothing
         kill_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
-
         spawn_if_candidate_planets!(life.destination, model, life)
-
         kill_agent!(life, model)
+    else
+        move_agent!(life, model, model.dt)
+        life.destination_distance = distance(life.pos, life.destination.pos)
+    
     end
 
 end
@@ -1020,15 +1018,14 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 """
 function galaxy_agent_step_spawn_at_rate!(life::Life, model)
 
-    move_agent!(life, model, model.dt)
-
-    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
-    
     if life.destination == nothing
         kill_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
         kill_agent!(life, model)
+    else
+        move_agent!(life, model, model.dt)
+        life.destination_distance = distance(life.pos, life.destination.pos)
     end
 
 end
@@ -1040,8 +1037,6 @@ Custom `agent_step!` for Planet. Spawns life at a fixed rate.
 """
 function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
-    move_agent!(planet, model, model.dt)
-    
     planet.alive && (planet.spawn_threshold += model.dt * model.spawn_rate)
 
     if planet.spawn_threshold >= 1
@@ -1059,18 +1054,15 @@ end
 
 
 function galaxy_agent_direct_step!(life::Life, model)
-
-    move_agent!(life, life.destination.pos, model)
-    println(model.s)
-    println(life.destination.pos)
-
-    life.destination != nothing && (life.destination_distance = distance(life.pos, life.destination.pos))
     
     if life.destination == nothing
         kill_agent!(life, model)
     elseif isapprox(life.destination_distance, 0, atol=0.5)
         terraform!(life, life.destination, model)
         kill_agent!(life, model)
+    else
+        move_agent!(life, life.destination.pos, model)
+        life.destination_distance = distance(life.pos, life.destination.pos)
     end
 
 end
