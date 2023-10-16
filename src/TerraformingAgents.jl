@@ -1106,6 +1106,13 @@ function concatenate_planet_fields(field, model, planet_condition=nothing)
 
 end
 
+function PermuteDistanceMatrix(D; rng::AbstractRNG = Random.default_rng())
+    order = shuffle(rng, collect(1:size(D)[1]))
+    return D[order,:][:,order]
+end
+
+triangleFlatten(D) = D[tril!(trues(size(D)), -1)]
+
 """
 
     PlanetMantelTest(model, xfield=:composition, yfield=:pos, dist_metric=Euclidean();  method=:pearson, permutations=999, alternative=:twosided, planet_condition=nothing)
@@ -1143,8 +1150,8 @@ function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=
     ~issymmetric(x) | ~issymmetric(y) && throw(ArgumentError("Distance matrices must be symmetric. I think."))
 
     ## This part just needs to get a flattened version of the diagonal of a hollow, square, symmetric matrix
-    x_flat = x[tril!(trues(size(x)), -1)]
-    y_flat = y[tril!(trues(size(y)), -1)]
+    x_flat = triangleFlatten(x)
+    y_flat = triangleFlatten(y)
 
     orig_stat = corr_func(x_flat, y_flat)
 
@@ -1152,7 +1159,7 @@ function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=
     if (permutations == 0) | isnan(orig_stat)
         p_value = NaN
     else
-        perm_gen = (corr_func(Random.shuffle(rng, x_flat), y_flat) for _ in 1:permutations)
+        perm_gen = (cor(triangleFlatten(PermuteDistanceMatrix(x,rng=rng)), y_flat) for _ in 1:permutations)
         permuted_stats = collect(Iterators.flatten(perm_gen))
 
         if alternative == :twosided
