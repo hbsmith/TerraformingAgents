@@ -93,7 +93,7 @@ julia scripts/TA_data-interactive.jl
 
 - To reset, double click the rest button (single click is insufficient)
 
-- Hit run once to start running. Hit run again to stop running.
+- Hit run once to start running. Hit run again to stop running
 
 - Press enter to exit
 
