@@ -1147,6 +1147,16 @@ function MantelTest(x, y;  rng::AbstractRNG = Random.default_rng(), dist_metric=
     size(x) != size(y) && throw(ArgumentError("Distance matrices must have the same shape."))
     size(x)[1] < 3 && throw(ArgumentError("Distance matrices must be at least 3x3 in size."))
     sum(abs.(diag(x))) + sum(abs.(diag(y))) != 0 && throw(ArgumentError("Distance matrices must be hollow. I think."))
+    if ~issymmetric(x)
+        show(stdout, "text/plain", x)
+        @show x
+        any(isnan, x) && @show findall(isnan, x)
+    end
+    if ~issymmetric(y)
+        show(stdout, "text/plain", y)
+        @show y 
+        any(isnan, y) && @show findall(isnan, y)
+    end
     ~issymmetric(x) | ~issymmetric(y) && throw(ArgumentError("Distance matrices must be symmetric. I think."))
 
     ## This part just needs to get a flattened version of the diagonal of a hollow, square, symmetric matrix
