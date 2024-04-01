@@ -58,16 +58,6 @@ Package used to simulate life spreading throughout the galaxy. Built on Agents.j
     ```julia
     (scripts) pkg> instantiate
     ```
-- Now, you should be ready to run the script `TA_data-interactive.jl`! From bash:
-
-    ```bash
-    julia scripts/TA_data-interactive.jl
-    ```
-
-- Or from the Julia REPL, after exiting the pkg mode (eg press delete on mac):
-    ```julia
-    include("scripts/TA_data-interactive.jl")
-    ```
 
 ### Setup tl;dr
 
