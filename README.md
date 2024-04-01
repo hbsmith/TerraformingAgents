@@ -82,23 +82,3 @@ julia> ]activate .
 
 (scripts) pkg> instantiate
 ```
-
-```bash
-julia scripts/TA_data-interactive.jl
-```
-
-## Using the interactive Makie simulation
-
-- If you adjust the nplanets slider, you must hit the update button, and then the step or run button for the number of planets in the simuation to reflect the update.
-
-- To reset, double click the rest button (single click is insufficient)
-
-- Hit run once to start running. Hit run again to stop running
-
-- Press enter to exit
-
-- The green dots show Planet agents which have been visited by Life. The moving green dot shows the Life agent that's currently traveling to terraform a Planet. The red dot shows the Life agent's destination Planet agent.
-
-- One plot shows the Mandel coefficient, which can be thought of at the correlation between distance and relatedness of planets. The other plot shows the p-value of this coefficient. 
-
-> *Note*: Due to a few factors (slow calculation of the Mandel coefficient; overhead of the Makie interactive program), the interactive window may take a few minutes to appear. You can close the window, but to exit the process it is often necessary to hit `ENTER` in the running terminal.
