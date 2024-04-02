@@ -2,26 +2,23 @@
 
 Package used to simulate life spreading throughout the galaxy. Built on Agents.jl.
 
+Used for the simulations underlying the analyses in https://github.com/hbsmith/SmithSinapayen2024/ and Smith & Sinapayen, 2024 (https://arxiv.org/abs/2403.14195).
+
 ## Setup
 
-- Install Julia.
-
-    > *Note*: It's helpful to add an alias to your `~/.zprofile` (or `.bashrc` if you're using bash) to access Julia from anywhere by typing `julia`. Add the following to that file: `alias julia="/Applications/Julia-1.6.app/Contents/Resources/julia/bin/julia" `
+- Install Julia (https://julialang.org/downloads/)
 
 - Clone this repo (TerraformingAgents), or a forked repo to your machine
 
 - Naviagate to your local copy of the repo. The rest of these instructions assume your pwd is `/Users/yourname/.../TerraformingAgents`
-- Start the Julia REPL from your terminal (`julia`)
+- Start the Julia REPL from your terminal (`julia`) 
 
-
-    ```julia
-    julia> 
-    ```
 - Access Julia's package mode by hitting the `]` key. 
 
     ```julia
     julia> ]
     ```
+    
 - You will notice your promt change from `julia>` to `(@v1.6) pkg> `, or whatever your version of Julia is.
 
     ```julia
@@ -31,44 +28,18 @@ Package used to simulate life spreading throughout the galaxy. Built on Agents.j
     
     > *Note*: You can also access `shell` from within Julia by hitting `;` instead of `]`.
 
-- Next we will activate our environment. This is kind of like a virtual environment within python--this allows for us to install packages at specific versions for this particular project without affecting other projects.
+- `add` the `TerraformingAgents` package via it's GitHub URL and verson number. 
 
     ```julia
-    (@v1.6) pkg> activate .
-    ```
-- You'll notice your prompt switch to the directory/repo name, to let you know you're in this environment. Then we `instantiate`. This means that Julia looks at the packages required by the project (inside the `Project.toml` file), and installs all of them.
-
-    ```julia
-    (TerraformingAgents) pkg> instantiate
-    ```
-- Next we will `activate` a subdirectory (specifically, `/scripts`). The reason we're separately activating this subdirectory is that it allows us to keep all the packages we require to run scripts separate from the requirements of using the package's source code.
-
-    ```julia
-    (TerraformingAgents) pkg> activate scripts/
-    ```
-- Just like when we activated the main directory, you'll notice the prompt changes to `(scripts)`. Next we have to install the `TerraformingAgents` package, since it's called by our script. But we can't do that in the usual way, since this is a local package and not in the global Julia registry. 
-    
-    > *Note*: You can install using `]add /Users/yourname/.../TerraformingAgents`. But instead of doing that, I would actually recommend installing using `]dev /Users/yourname/.../TerraformingAgents` instead. The difference is that changes to the TerraformingAgents source code from packages added using `dev` will be reflected whenever `TerraformingAgents` is imported. Otherwise, if we just use `add`, changes made to source code are only reflected when calling `update` on a package.
-
-    ```julia
-    (scripts) pkg> dev .
-    ```
-- Lastly, we have to `instantiate` to install those additional packages required to run our scripts.
-    
-    ```julia
-    (scripts) pkg> instantiate
+    (@v1.6) pkg> add https://github.com/hbsmith/TerraformingAgents#0.1.0
     ```
 
 ### Setup tl;dr
 
-```julia
+```
+% julia
+
 julia> ]activate .
 
-(TerraformingAgents) pkg> instantiate
-
-(TerraformingAgents) pkg> activate scripts/
-
-(scripts) pkg> dev .
-
-(scripts) pkg> instantiate
+(@v1.6) pkg> add https://github.com/hbsmith/TerraformingAgents#0.1.0
 ```
