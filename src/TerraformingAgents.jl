@@ -799,7 +799,7 @@ A valid `compmix_func`. Performs one-point crossover between the `lifecompositio
 
 The crossover point is after the `crossover_after_idx`, which is limited between 1 and length(`lifecomposition`)-1).
 
-The returned strand and crossover point are randomly chosen based on `model.rng``.
+The returned strand and crossover point are randomly chosen based on `abmrng(model)``.
 
 If mutated, substitute elements are chosen from random distribution of `Uniform(0, model.maxcomp)`.
 
@@ -808,7 +808,7 @@ See: https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)
 Related: [`average_compositions`](@ref), [`mutate_strand`](@ref), [`positions_to_mutate`](@ref).
 """
 function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
-    crossover_one_point(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
+    crossover_one_point(lifecomposition, planetcomposition, abmrng(model); mutation_rate, model.maxcomp)
 end
 """
     crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
@@ -846,10 +846,10 @@ function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition:
 end
 
 # function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
-#     horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
+#     horizontal_gene_transfer(lifecomposition, planetcomposition, abmrng(model); mutation_rate, model.maxcomp)
 # end
 function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_destination=1)
-    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_destination)
+    horizontal_gene_transfer(lifecomposition, planetcomposition, abmrng(model); mutation_rate, model.maxcomp, n_idxs_to_keep_from_destination)
 end
 
 function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_destination=1)
@@ -1132,7 +1132,7 @@ function PlanetMantelTest(model, xfield=:composition, yfield=:pos; dist_metric=E
     x = pairwise(dist_metric, concatenate_planet_fields(xfield, model, planet_condition), dims=2)
     y = pairwise(dist_metric, concatenate_planet_fields(yfield, model, planet_condition), dims=2)
 
-    MantelTest(x, y;  rng=model.rng, dist_metric=dist_metric, method=method, permutations=permutations, alternative=alternative)
+    MantelTest(x, y;  rng=abmrng(model), dist_metric=dist_metric, method=method, permutations=permutations, alternative=alternative)
 
 end
 
