@@ -985,11 +985,11 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 function galaxy_agent_step_spawn_on_terraform!(life::Life, model)
 
     if life.destination == nothing
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
         spawn_if_candidate_planets!(life.destination, model, life)
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     else
         move_agent!(life, model, model.dt)
         life.destination_distance = distance(life.pos, life.destination.pos)
@@ -1024,10 +1024,10 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 function galaxy_agent_step_spawn_at_rate!(life::Life, model)
 
     if life.destination == nothing
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     else
         move_agent!(life, model, model.dt)
         life.destination_distance = distance(life.pos, life.destination.pos)
@@ -1061,10 +1061,10 @@ end
 function galaxy_agent_direct_step!(life::Life, model)
     
     if life.destination == nothing
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     elseif isapprox(life.destination_distance, 0, atol=0.5)
         terraform!(life, life.destination, model)
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     else
         move_agent!(life, life.destination.pos, model)
         life.destination_distance = distance(life.pos, life.destination.pos)
