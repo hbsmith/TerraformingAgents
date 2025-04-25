@@ -424,7 +424,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 
 Returns the number of alive planets.
 """
-count_living_planets(model) = length(Iterators.filter(a -> a isa Planet && a.alive, allagents(model)))
+count_living_planets(model) = count(a -> a isa Planet && a.alive, allagents(model))
 
 """
 
@@ -471,7 +471,7 @@ end
     
     The default scheduler is `keys(allagents(model))` which gets modified in-place and causes problems.
 """
-allocated_fastest(model::ABM) = collect(keys(allagents(model)))
+allocated_fastest(model::ABM) = collect(allids(model))
 
 """
     galaxy_planet_setup(params::GalaxyParameters)
@@ -938,7 +938,7 @@ function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
     
     neighbor_ids = collect(neighbor_func(pos,model,model.interaction_radius))
 
-    if length(Iterators.filter(a -> a.id in neighbor_ids && a isa Planet && a.alive, allagents(model))) > 0
+    if count(a -> a.id in neighbor_ids && a isa Planet && a.alive, allagents(model)) > 0
         return true
     else
         return false
