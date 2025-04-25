@@ -12,6 +12,7 @@ using NearestNeighbors
 using Distances
 using DataFrames
 using StatsBase
+using StaticArrays
 
 export Planet, 
        Life, 
@@ -60,8 +61,8 @@ See also [`Life`](@ref)
 ## So that's super annoying. See: https://github.com/JuliaLang/julia/issues/35053
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
-    pos::NTuple{D,<:AbstractFloat} 
-    vel::NTuple{D,<:AbstractFloat} 
+    pos::SVector{D, Float64}
+    vel::SVector{D, Float64}
 
     composition::Vector{<:Real} ## Represents the planet's genotype
     initialcomposition::Vector{<:Real} = copy(composition) ## Same as composition until it's terraformed
@@ -101,8 +102,8 @@ See also [`Planet`](@ref)
 """
 Base.@kwdef mutable struct Life{D} <:AbstractAgent
     id::Int
-    pos::NTuple{D,<:AbstractFloat}  #where {D,X<:AbstractFloat}
-    vel::NTuple{D,<:AbstractFloat} #where {D,X<:AbstractFloat}
+    pos::SVector{D, Float64}
+    vel::SVector{D, Float64}
     parentplanet::Planet
     composition::Vector{<:Real} ## Taken from parentplanet
     destination::Planet
@@ -573,14 +574,14 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
-        id = nextid(model)
+        id = Agents.nextid(model)
         pos = center_position(params.pos[i], params.extent, extent_multiplier)
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
 
-        planet = Planet(; id, pos, vel, composition)
+        planet = Planet(; id=id, pos=SA[pos...], vel=SA[vel...], composition=composition)
 
-        add_agent_pos!(planet, model)
+        add_agent_own_pos!(planet, model)
     end
     model
 end
@@ -738,9 +739,9 @@ function spawnlife!(
     vel = direction(planet, destinationplanet) .* model.lifespeed
 
     life = Life(;
-        id = nextid(model),
+        id = Agents.nextid(model),
         pos = planet.pos,
-        vel = vel,
+        vel = SA[vel...],
         parentplanet = planet,
         composition = planet.composition,
         destination = destinationplanet,
@@ -748,7 +749,7 @@ function spawnlife!(
         ancestors
     ) ## Only "first" life won't have ancestors
 
-    life = add_agent_pos!(life, model)
+    life = add_agent_own_pos!(life, model)
 
     destinationplanet.claimed = true 
     ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
