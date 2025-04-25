@@ -159,7 +159,7 @@ random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
 Return only agents of type `agenttype` from `model`.
 """
-filter_agents(model,agenttype) = filter(kv->kv.second isa agenttype, model.agents)
+filter_agents(model,agenttype) = Iterators.filter(a isa agenttype, allagents(model))
 
 """
     random_shell_position(rng, rmin, rmax)
@@ -424,7 +424,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 
 Returns the number of alive planets.
 """
-count_living_planets(model) = length(filter(kv -> kv.second isa Planet && kv.second.alive, model.agents))
+count_living_planets(model) = length(Iterators.filter(a -> a isa Planet && a.alive, allagents(model)))
 
 """
 
@@ -469,9 +469,9 @@ end
 """
     Custom scheduler the ensures newly added agents don't get activated on the step they're added.
     
-    The default scheduler is `keys(model.agents)` which gets modified in-place and causes problems.
+    The default scheduler is `keys(allagents(model))` which gets modified in-place and causes problems.
 """
-allocated_fastest(model::ABM) = collect(keys(model.agents))
+allocated_fastest(model::ABM) = collect(keys(allagents(model)))
 
 """
     galaxy_planet_setup(params::GalaxyParameters)
@@ -540,7 +540,7 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     for _ in 1:params.nool
 
         planet = 
-            isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model.agents[params.ool]
+            isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model[params.ool]
         
         planet.alive = true
         planet.claimed = true
@@ -548,7 +548,7 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     end
 
     ## Spawn life (candidate planets have to be calculated after all alive planets are initialized)
-    for (_, planet) in filter(kv -> kv.second isa Planet && kv.second.alive, model.agents)
+    for planet in Iterators.filter(a -> a isa Planet && a.alive, allagents(model))
 
         # planet.candidate_planets = compatibleplanets(planet, model)
         find_compatible_planets!(planet, model)
@@ -594,11 +594,15 @@ Returns possible candidate planets filtered by the most basic requirements.
 e.g. Destination Planet not alive, claimed, or the same Planet as the parent.
 """
 function basic_candidate_planets(planet::Planet, model::ABM)
-    function iscandidate((_, p))
-        isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
-    end
+    candidates = Iterators.filter(p -> 
+        p isa Planet && 
+        !p.alive && 
+        !p.claimed && 
+        p.id != planet.id, 
+        allagents(model)
+    )
     
-    convert(Vector{Planet}, collect(values(filter(iscandidate, model.agents))))
+    return collect(candidates)
 end
 
 function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
@@ -934,7 +938,7 @@ function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
     
     neighbor_ids = collect(neighbor_func(pos,model,model.interaction_radius))
 
-    if length(filter(kv -> kv.first in neighbor_ids && kv.second isa Planet && kv.second.alive, model.agents)) > 0
+    if length(Iterators.filter(a -> a.id in neighbor_ids && a isa Planet && a.alive, allagents(model))) > 0
         return true
     else
         return false
