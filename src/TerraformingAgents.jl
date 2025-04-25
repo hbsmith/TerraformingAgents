@@ -602,7 +602,7 @@ function basic_candidate_planets(planet::Planet, model::ABM)
         allagents(model)
     )
     
-    return collect(candidates)
+    return convert(Vector{Planet}, collect(candidates))
 end
 
 function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
