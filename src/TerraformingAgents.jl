@@ -130,7 +130,16 @@ end
 Generate `n` random positions of dimension `D` within a tuple of maximum dimensions of the space given by `maxdim`.
 """
 function random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
-    collect(zip([rand(rng, Uniform(0, imax), n) for imax in maxdims]...)) :: Vector{NTuple{length(maxdims), Float64}}
+    # Generate random values for each dimension
+    random_vals = [rand(rng, Uniform(0, imax), n) for imax in maxdims]
+    
+    # Create SVectors from the random values
+    result = Vector{SVector{D, Float64}}(undef, n)
+    for i in 1:n
+        result[i] = SVector{D, Float64}(getindex.(random_vals, i))
+    end
+    
+    result
 end
 
 """
@@ -138,7 +147,10 @@ end
 
 Generate a vector of length `n` of `D` tuples, filled with 0s.
 """
-default_velocities(D,n) = fill(Tuple([0.0 for i in 1:D]), n) :: Vector{NTuple{D, Float64}}
+function default_velocities(D, n)
+    # Create a vector of SVectors filled with zeros
+    return [SVector{D, Float64}(zeros(D)) for _ in 1:n]
+end
 
 """
     random_compositions(rng, maxcomp, compsize, n)
