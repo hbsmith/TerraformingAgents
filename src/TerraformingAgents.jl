@@ -210,8 +210,8 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `compatibility_func::Function = compositionally_similar_planets`: Function to use for deciding what `Planet`s are compatible for future terraformation. 
 - `compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compatibility_func`.
 - `destination_func::Function = nearest_planet`:  Function to use for deciding which compatible `Planet` (which of the `planet.candidate_planet`s) should be the next destination. 
-- `pos::Vector{<:AbstractVector{<:Real}}`: the initial positions of all `Planet`s.
-- `vel::Vector{<:AbstractVector{<:Real}}`: the initial velocities of all `Planet`s.
+- `pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}}`: the initial positions of all `Planet`s.
+- `vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Float64`: the max value of any element within the composition vectors.
 - `compsize::Int`: the length of the compositon vectors.
 - `planetcompositions::Array{Float64, 2}`: an array of default compositon vectors.
@@ -263,11 +263,25 @@ mutable struct GalaxyParameters
         compatibility_func::Function = compositionally_similar_planets,
         compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         destination_func::Function = nearest_planet,
-        pos::Vector{<:AbstractVector{<:Real}},
-        vel::Vector{<:AbstractVector{<:Real}},
+        pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}},
+        vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}},
         maxcomp::Real,
         compsize::Int,
         planetcompositions::Array{<:Real, 2}) where {D}
+
+        pos_dims = length(first(pos))
+        if !all(p -> length(p) == pos_dims, pos)
+            throw(ArgumentError("All positions must have the same dimensionality"))
+        end
+
+        vel_dims = length(first(vel))
+        if !all(v -> length(v) == vel_dims, vel)
+            throw(ArgumentError("All velocities must have the same dimensionality"))
+        end
+
+        if pos_dims != vel_dims
+            throw(ArgumentError("pos and vel must have the same dims"))
+        end
 
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
@@ -298,16 +312,14 @@ mutable struct GalaxyParameters
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
 
-        # Needed for converting pos and vel to SVectors
-        dims = length(extent)
         # Convert positions to SVectors if they're not already
         if !(first(pos) isa SVector)
-            pos = [SVector{dims, Float64}(p) for p in pos]
+            pos = [SVector{pos_dims, Float64}(p) for p in pos]
         end
         
         # Convert velocities to SVectors if they're not already
         if !(first(vel) isa SVector)
-            vel = [SVector{dims, Float64}(v) for v in vel]
+            vel = [SVector{vel_dims, Float64}(v) for v in vel]
         end
 
         
@@ -320,8 +332,8 @@ end
 
 """
     GalaxyParameters(rng::AbstractRNG;
-        pos::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
-        vel::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+        pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+        vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
         planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
         kwargs...) where {D}
 
@@ -331,8 +343,8 @@ Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, p
 Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
 """
 function GalaxyParameters(rng::AbstractRNG;
-    pos::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
-    vel::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+    pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+    vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
     planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
     kwargs...) where {D}
 
@@ -458,7 +470,13 @@ count_living_planets(model) = count(a -> a isa Planet && a.alive, allagents(mode
 Assuming that the provided position is for the original `extent` size (of extent./m = original_extent), 
 return the equivilent position at the center of current `extent` (original_extent.*m).
 """
-center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) 
+function center_position(
+    pos::Union{<:NTuple{D,Real}, <:AbstractVector{<:Real}}, 
+    extent::Union{<:NTuple{D,Real}, <:AbstractVector{<:Real}}, 
+    m::Real) where {D} 
+    
+    pos.+((extent.-(extent./m))./2) 
+end
 
 """
     galaxy_model_setup(params::GalaxyParameters)
