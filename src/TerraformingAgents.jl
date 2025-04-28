@@ -656,7 +656,7 @@ Note: Results are unsorted
 function nearest_k_planets(planet::Planet, planets::Vector{Planet}, k)
     
     planetpositions = planet_attribute_as_matrix(planets, :pos)
-    idxs, dists = knn(KDTree(planetpositions), collect(planet.pos), k)
+    idxs, dists = knn(KDTree(planetpositions), Vector(planet.pos), k)
     planets[idxs]
 
 end
@@ -687,7 +687,7 @@ Called by [`planets_in_range`](@ref).
 function planets_in_attribute_range(planet::Planet, planets::Vector{Planet}, attr::Symbol, r)
 
     planetattributes = planet_attribute_as_matrix(planets, attr)
-    idxs = inrange(KDTree(planetattributes), getproperty(planet, attr), r)
+    idxs = inrange(KDTree(planetattributes), Vector(getproperty(planet, attr)), r)
     planets[idxs]
 
 end
@@ -714,7 +714,7 @@ Called by [`nearest_planet`](@ref), [`most_similar_planet`](@ref).
 function closest_planet_by_attribute(planet::Planet, planets::Vector{Planet}, attr::Symbol)
 
     planetattributes = planet_attribute_as_matrix(planets, attr)
-    idx, dist = nn(KDTree(planetattributes), collect(getproperty(planet, attr)))
+    idx, dist = nn(KDTree(planetattributes), Vector(getproperty(planet, attr)))
     planets[idx]
 
 end
