@@ -687,7 +687,7 @@ Called by [`planets_in_range`](@ref).
 function planets_in_attribute_range(planet::Planet, planets::Vector{Planet}, attr::Symbol, r)
 
     planetattributes = planet_attribute_as_matrix(planets, attr)
-    idxs = inrange(KDTree(planetattributes), collect(getproperty(planet, attr)), r)
+    idxs = inrange(KDTree(planetattributes), getproperty(planet, attr), r)
     planets[idxs]
 
 end
