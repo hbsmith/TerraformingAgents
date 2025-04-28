@@ -1211,33 +1211,27 @@ end
 ## Some functions to nest and unnest data for csv saving
 function unnest_agents(df_planets, ndims, compsize)
     # inspired from https://bkamins.github.io/julialang/2022/03/11/unnesting.html
-    # TODO streamline naming
-    df = transform(df_planets, :pos => AsTable)
+    # Create a new dataframe with extracted position components
+    pos_columns = DataFrame()
     
-    if ndims == 1
-        new_names = Dict("x1" => "x")
-    elseif ndims == 2
-        new_names = Dict("x1" => "x", "x2" => "y")
-    elseif ndims == 3
-        new_names = Dict("x1" => "x", "x2" => "y", "x3" => "z")
+    # Define dimension names programmatically
+    dim_names = ["x", "y", "z"][1:ndims]
+    
+    # Extract each dimension from the SVector with proper naming
+    for (i, name) in enumerate(dim_names)
+        pos_columns[!, Symbol(name)] = [p[i] for p in df_planets.pos]
+        vel_columns[!, Symbol("v_"*name)] = [p[i] for p in df_planets.vel]
     end
-    rename!(df, new_names)
-
-    ## Don't even save velocity data anymore
-    # df = transform(df, :vel => AsTable)
-    # if ndims == 1
-    #     new_names = Dict("x1" => "v_x")
-    # elseif ndims == 2
-    #     new_names = Dict("x1" => "v_x", "x2" => "v_y")
-    # elseif ndims == 3
-    #     new_names = Dict("x1" => "v_x", "x2" => "v_y", "x3" => "v_z")
-    # end
-    # rename!(df, new_names)
-
+    
+    # Join the position columns to the original dataframe
+    df = hcat(df_planets, pos_columns)
+    
+    # Do the same for composition (no change needed as it's already a Vector)
     df = transform(df, :composition => AsTable)
     new_names = Dict("x$i" => "comp_$(i)" for i in 1:compsize)
     rename!(df, new_names)
-
+    
+    # Remove original vector columns
     select!(df, Not([:pos, :composition, :agent_type]))
     return df
 end
