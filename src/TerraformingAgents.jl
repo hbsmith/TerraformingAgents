@@ -210,8 +210,8 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `compatibility_func::Function = compositionally_similar_planets`: Function to use for deciding what `Planet`s are compatible for future terraformation. 
 - `compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compatibility_func`.
 - `destination_func::Function = nearest_planet`:  Function to use for deciding which compatible `Planet` (which of the `planet.candidate_planet`s) should be the next destination. 
-- `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
-- `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
+- `pos::Vector{<:AbstractVector{<:Real}}`: the initial positions of all `Planet`s.
+- `vel::Vector{<:AbstractVector{<:Real}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Float64`: the max value of any element within the composition vectors.
 - `compsize::Int`: the length of the compositon vectors.
 - `planetcompositions::Array{Float64, 2}`: an array of default compositon vectors.
@@ -263,8 +263,8 @@ mutable struct GalaxyParameters
         compatibility_func::Function = compositionally_similar_planets,
         compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         destination_func::Function = nearest_planet,
-        pos::Vector{<:NTuple{D,Real}},
-        vel::Vector{<:NTuple{D,Real}},
+        pos::Vector{<:AbstractVector{<:Real}},
+        vel::Vector{<:AbstractVector{<:Real}},
         maxcomp::Real,
         compsize::Int,
         planetcompositions::Array{<:Real, 2}) where {D}
@@ -297,6 +297,19 @@ mutable struct GalaxyParameters
 
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
+
+        # Needed for converting pos and vel to SVectors
+        dims = length(extent)
+        # Convert positions to SVectors if they're not already
+        if !(first(pos) isa SVector)
+            pos = [SVector{dims, Float64}(p) for p in pos]
+        end
+        
+        # Convert velocities to SVectors if they're not already
+        if !(first(vel) isa SVector)
+            vel = [SVector{dims, Float64}(v) for v in vel]
+        end
+
         
         new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions)
 
@@ -307,8 +320,8 @@ end
 
 """
     GalaxyParameters(rng::AbstractRNG;
-        pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-        vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+        pos::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+        vel::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
         planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
         kwargs...) where {D}
 
@@ -318,8 +331,8 @@ Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, p
 Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
 """
 function GalaxyParameters(rng::AbstractRNG;
-    pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-    vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+    pos::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+    vel::Union{Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
     planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
     kwargs...) where {D}
 
