@@ -485,9 +485,9 @@ Set up the galaxy model (planets and life) according to `params`.
 
 Calls [`galaxy_planet_setup`](@ref) and [`galaxy_life_setup`](@ref).
 """
-function galaxy_model_setup(params::GalaxyParameters)
+function galaxy_model_setup(params::GalaxyParameters, agent_step!, model_step!)
 
-    model = galaxy_planet_setup(params)
+    model = galaxy_planet_setup(params, agent_step!, model_step!)
     model = galaxy_life_setup(model, params::GalaxyParameters)
     model
 
@@ -497,13 +497,13 @@ end
 
 Initializes the GalaxyParameters struct from the provided dict.
 """
-function galaxy_model_setup(params::Dict)
+function galaxy_model_setup(params::Dict, agent_step!, model_step!)
 
     params = GalaxyParameters(
         params[:rng],
         params[:nplanets]; 
         filter(x -> first(x) ∉ [:rng, :nplanets], params)...)
-    model = galaxy_planet_setup(params)
+    model = galaxy_planet_setup(params), agent_step!, model_step!)
     model = galaxy_life_setup(model, params::GalaxyParameters)
     model
 
@@ -523,7 +523,7 @@ Set up the galaxy's `Planet`s according to `params`.
 
 Called by [`galaxy_model_setup`](@ref).
 """
-function galaxy_planet_setup(params::GalaxyParameters)
+function galaxy_planet_setup(params::GalaxyParameters, agent_step!, model_step!)
 
     extent_multiplier = 1
     params.extent = extent_multiplier.*params.extent
@@ -534,7 +534,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
         space = ContinuousSpace(params.extent; params.SpaceKwargs...)
     end
 
-    model = @suppress_err AgentBasedModel(
+    model = @suppress_err StandardABM(
         Union{Planet,Life},
         space,
         scheduler = allocated_fastest,
@@ -562,7 +562,10 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         # :planetcompositions => params.planetcompositions); ## Why does having a semicolon here fix it???
         # rng=params.ABMkwargs[:rng],
         # warn=params.ABMkwargs[:warn]
-        params.ABMkwargs... ## Why does this not work??
+        ## This is where the rng lives
+        agent_step! = agent_step!,
+        model_step! = model_step!,
+        params.ABMkwargs... ## Why does this not work?? 
     )
 
     initialize_planets!(model, params, extent_multiplier)
