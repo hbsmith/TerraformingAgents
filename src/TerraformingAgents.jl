@@ -1405,40 +1405,4 @@ function Agents.agent2string(agent::Life)
     
 end
 
-# Override ids_to_inspect only for 3D ContinuousSpace models
-function Agents.ids_to_inspect(model::ABM{<:ContinuousSpace{3}}, pos)
-    @info "Using CUSTOM `ids_to_inspect` for 3D CONTINUOUS SPACE"
-    
-    # Get the space extent
-    space = abmspace(model)
-    extent = space.extent
-    
-    # Makie normalizes coordinates to [-1, 1] range
-    # We need to transform back to the original space coordinates
-    # pos is in [-1, 1], we need to map it to [0, extent]
-    transformed_pos = (
-        (pos[1] + 1) * extent[1] / 2,  # Maps from [-1, 1] to [0, extent[1]]
-        (pos[2] + 1) * extent[2] / 2,  # Maps from [-1, 1] to [0, extent[2]]
-        (pos[3] + 1) * extent[3] / 2   # Maps from [-1, 1] to [0, extent[3]]
-    )
-    
-    @info "Makie pos: $pos, Transformed to agent space: $transformed_pos"
-    
-    # Now search for agents at the transformed position
-    ids = nearby_ids_exact(transformed_pos, model, 0.1)
-    
-    # Debug output
-    ids_array = collect(ids)
-    if isempty(ids_array)
-        @info "No agents found at transformed position $transformed_pos"
-        # Show first few agent positions for debugging
-        all_positions = [(agent.id, agent.pos) for agent in allagents(model)]
-        @info "First 5 agent positions: $(all_positions[1:min(5, length(all_positions))])"
-    else
-        @info "Found agents: $ids_array"
-    end
-    
-    return ids
-end
-
 end # module
