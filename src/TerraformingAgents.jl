@@ -1335,27 +1335,7 @@ end
 
 ##############################################################################################################################
 ## Interactive Plot utilities 
-##     REMOVED DUE TO ISSUE WITH REQUIRES, SEE: https://github.com/JuliaPackaging/Requires.jl/issues/111
-##     UPDATE 2023-05-29: I made a work around; Now in the script you just have to add e.g. InteractiveDynamics.agent2string(agent::Life) = TerraformingAgents.agent2string(agent::Life)
 ##############################################################################################################################
-# """
-# Overload InteractiveDynamics.jl's agent2string function in order to force interactive plot hover text to display only 
-# information for the ids under the cursor (instead of including nearby ids)
-
-# For more information see: 
-# https://github.com/JuliaDynamics/InteractiveDynamics.jl/blob/4a701abdb40abefc9e3bc6161bb223d22cd2ef2d/src/agents/inspection.jl#L99
-# """
-# function Agents.agent2string(model::Agents.ABM{<:ContinuousSpace}, agent_pos)
-#     ids = Agents.nearby_ids_exact(agent_pos, model, 0.0)
-
-#     s = ""
-
-#     for id in ids
-#         s *= agent2string(model[id]) * "\n"
-#     end
-
-#     return s
-# end
 
 """
 Overload Agents.jl's agent2string function with custom fields for Planets
