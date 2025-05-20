@@ -171,7 +171,7 @@ random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
 Return only agents of type `agenttype` from `model`.
 """
-filter_agents(model,agenttype) = Iterators.filter(a isa agenttype, allagents(model))
+filter_agents(model,agenttype) = Iterators.filter(a->a isa agenttype, allagents(model))
 
 """
     random_shell_position(rng, rmin, rmax)
@@ -1143,7 +1143,7 @@ e.g. Concatonate the :composition of every planet into a single matrix.
 function concatenate_planet_fields(field, model, planet_condition=nothing)
 
     field_values = []
-    for (id,planet) in filter_agents(model,Planet)
+    for planet in filter_agents(model,Planet)
 
         if planet_condition != nothing             
             planet_condition(planet) && push!(field_values, collect(getfield(planet, field)))
