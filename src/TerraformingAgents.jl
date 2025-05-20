@@ -7,7 +7,7 @@ using Statistics: cor
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
 using LinearAlgebra: dot, diag, issymmetric, tril!
-using Distributions: Uniform
+using Distributions: Uniform, Normal
 using NearestNeighbors
 using Distances
 using DataFrames
@@ -1100,6 +1100,8 @@ function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
     end
 
+    move_agent!(planet, model, model.dt)
+
 end
 
 
@@ -1332,6 +1334,63 @@ end
 # col_to_hex(col) = "#"*hex(col)
 # hex_to_col(hex) = convert(RGB{Float64}, parse(Colorant, hex))
 # mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
+
+function random_stellar_velocities(rng::AbstractRNG=Random.GLOBAL_RNG, 
+                                  n::Int=1;
+                                  σ_U::Float64=35.0, 
+                                  σ_V::Float64=25.0, 
+                                  σ_W::Float64=20.0, 
+                                  V_lag::Float64=15.0,
+                                  scale::Float64=1.0)::Vector{SVector{3, Float64}}
+    """
+    Generate random stellar velocities following realistic velocity dispersion.
+    
+    Parameters:
+    -----------
+    rng : AbstractRNG
+        Random number generator to use
+    n : Int
+        Number of velocity vectors to generate
+    σ_U : Float64
+        Velocity dispersion in U direction (radial, toward/away from galactic center) in km/s
+    σ_V : Float64
+        Velocity dispersion in V direction (azimuthal, along galactic rotation) in km/s
+    σ_W : Float64
+        Velocity dispersion in W direction (vertical, perpendicular to galactic plane) in km/s
+    V_lag : Float64
+        Asymmetric drift - typical lag behind circular velocity in km/s
+    scale : Float64
+        Scale factor to multiply all velocity components (useful for unit conversion
+        or simulating different stellar populations)
+        
+    Returns:
+    --------
+    Vector{SVector{3, Float64}} containing n velocity vectors
+    """
+    
+    # Apply scale factor to dispersions and drift
+    σ_U_scaled = σ_U * scale
+    σ_V_scaled = σ_V * scale
+    σ_W_scaled = σ_W * scale
+    V_lag_scaled = V_lag * scale
+    
+    # Create distributions for each component
+    dist_U = Normal(0.0, σ_U_scaled)
+    dist_V = Normal(-V_lag_scaled, σ_V_scaled)  # Note negative mean for asymmetric drift
+    dist_W = Normal(0.0, σ_W_scaled)
+    
+    # Generate random velocities and package as StaticVectors
+    velocities = Vector{SVector{3, Float64}}(undef, n)
+    
+    for i in 1:n
+        U = rand(rng, dist_U)
+        V = rand(rng, dist_V)
+        W = rand(rng, dist_W)
+        velocities[i] = SVector{3, Float64}(U, V, W)
+    end
+    
+    return velocities
+end
 
 ##############################################################################################################################
 ## Interactive Plot utilities 
