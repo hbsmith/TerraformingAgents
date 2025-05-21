@@ -1363,6 +1363,10 @@ end
 # hex_to_col(hex) = convert(RGB{Float64}, parse(Colorant, hex))
 # mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
 
+##############################################################################################################################
+## Moving planet specific functions
+##############################################################################################################################
+
 function random_stellar_velocities(rng::AbstractRNG=Random.GLOBAL_RNG, 
                                   n::Int=1;
                                   σ_U::Float64=35.0, 
@@ -1508,6 +1512,234 @@ function calculate_interception(r0, v_agent_speed, r1, v1)
     end
     
     return v_agent, t
+end
+
+using LinearAlgebra
+
+
+function calculate_interceptions_optimized(life::Life, model)
+    calculate_interceptions_optimized(life.pos, model.lifespeed, filter_agents(model, Planet))
+end
+"""
+    calculate_interceptions_optimized(r0, v_agent_speed, planet_agents) -> (vs_agent, ts, planet_ids)
+
+Calculate interception velocities and times for an agent to intercept multiple planets
+using fully vectorized operations for maximum computational efficiency.
+
+# Arguments
+- `r0::AbstractVector`: Interceptor's initial position vector
+- `v_agent_speed::Real`: Interceptor's constant speed (scalar, must be positive)
+- `planet_agents`: Iterator of Agents.jl agent objects, each with `pos` and `vel` attributes
+
+# Returns
+- `vs_agent::Dict{Int,Vector{Float64}}`: Dictionary mapping planet IDs to required velocity vectors,
+  only containing entries for planets where interception is possible
+- `ts::Dict{Int,Float64}`: Dictionary mapping planet IDs to interception times,
+  only containing entries for planets where interception is possible
+- `planet_ids::Vector{Int}`: IDs of all planets where interception is possible
+
+# Details
+Fully vectorized implementation that maximizes performance by processing all agents in batch
+operations. The computation uses efficient array broadcasting and matrix operations throughout
+the entire calculation process.
+
+# Notes
+- Requires the LinearAlgebra module
+- Optimized for large numbers of agents through complete vectorization
+- Avoids unnecessary memory allocations and function calls
+"""
+function calculate_interceptions_optimized(r0, v_agent_speed, planet_agents)
+    # Extract positions and velocities into matrices
+    positions, velocities, ids = extract_agent_data(planet_agents, length(r0))
+    
+    # Calculate relative positions
+    drs = positions .- r0
+    
+    # --- EARLY FILTERING SECTION STARTS HERE ---
+    
+    # Normalize relative position vectors
+    dr_norms = sqrt.(sum(drs.^2, dims=1))
+    dr_normalized = drs ./ dr_norms
+    
+    # Calculate dot product between normalized relative position and velocity
+    # This gives us the component of velocity in the direction toward/away from our agent
+    directional_components = vec(sum(dr_normalized .* velocities, dims=1))
+    
+    # Calculate speed of each planet
+    planet_speeds = sqrt.(vec(sum(velocities.^2, dims=1)))
+    
+    # Create a mask for planets we can potentially intercept:
+    # 1. If moving away (directional_component > 0), our agent must be faster
+    # 2. If moving toward us (directional_component < 0), no speed constraint
+    # 3. If moving perpendicular (directional_component ≈ 0), our agent can intercept
+    moving_away = directional_components .> 0
+    too_fast = planet_speeds .> v_agent_speed
+    
+    # A planet is impossible to intercept if it's moving away AND it's faster than our agent
+    impossible_mask = moving_away .& too_fast
+    possible_mask = .!impossible_mask
+    
+    # Only process planets that pass this initial filter
+    valid_indices = findall(possible_mask)
+    
+    # If no planets can be intercepted, return empty results
+    if isempty(valid_indices)
+        return Dict{Int, Vector{Float64}}(), Dict{Int, Float64}(), Int[]
+    end
+    
+    # Filter our matrices to only include potentially interceptable planets
+    positions = positions[:, valid_indices]
+    velocities = velocities[:, valid_indices]
+    ids = ids[valid_indices]
+    
+    # Recalculate relative positions for filtered planets
+    drs = positions .- r0
+    
+    # --- EARLY FILTERING SECTION ENDS HERE ---
+    
+    # Vectorized dot products for all columns
+    v_dots = vec(sum(velocities .* velocities, dims=1))
+    dr_v_dots = vec(sum(drs .* velocities, dims=1))
+    dr_dots = vec(sum(drs .* drs, dims=1))
+    
+    # Quadratic equation parameters
+    a_vals = v_dots .- v_agent_speed^2
+    b_vals = 2 .* dr_v_dots
+    c_vals = dr_dots
+    
+    # Discriminants
+    discriminants = b_vals.^2 .- 4 .* a_vals .* c_vals
+    
+    # Find valid interceptions
+    valid_mask = discriminants .>= 0
+    
+    # Early return if no valid interceptions
+    if !any(valid_mask)
+        return Dict{Int, Vector{Float64}}(), Dict{Int, Float64}(), Int[]
+    end
+    
+    # Process valid interceptions
+    return process_valid_interceptions(positions, velocities, ids, 
+                                      r0, a_vals, b_vals, discriminants, valid_mask)
+end
+
+# Helper function to extract data from agents
+"""
+    extract_agent_data(planet_agents, dim) -> (positions, velocities, ids)
+
+Extract position and velocity data from a collection of agents into matrices for vectorized processing.
+
+# Arguments
+- `planet_agents`: Iterator of Agents.jl agent objects, each with `pos` and `vel` attributes
+- `dim::Int`: Dimension of the position and velocity vectors
+
+# Returns
+- `positions::Matrix{Float64}`: Matrix where each column is an agent's position vector
+- `velocities::Matrix{Float64}`: Matrix where each column is an agent's velocity vector
+- `ids::Vector{Int}`: Vector of agent IDs in the same order as the matrix columns
+
+# Details
+Helper function that efficiently extracts data from agent objects into matrix form,
+facilitating vectorized operations on the entire collection.
+"""
+function extract_agent_data(planet_agents, dim)
+    # Count agents for pre-allocation
+    n_agents = length(planet_agents)
+    
+    # Pre-allocate arrays
+    positions = Matrix{Float64}(undef, dim, n_agents)
+    velocities = Matrix{Float64}(undef, dim, n_agents)
+    ids = Vector{Int}(undef, n_agents)
+    
+    # Fill arrays with agent data
+    for (i, agent) in enumerate(planet_agents)
+        positions[:, i] .= agent.pos
+        velocities[:, i] .= agent.vel
+        ids[i] = agent.id
+    end
+    
+    return positions, velocities, ids
+end
+
+# Helper function to process valid interceptions
+"""
+    process_valid_interceptions(positions, velocities, ids, r0, a_vals, b_vals, discriminants, valid_mask) -> (vs_agent, ts, planet_ids)
+
+Process all potentially valid interceptions to determine which ones are actually possible and calculate interception parameters.
+
+# Arguments
+- `positions::Matrix{Float64}`: Matrix where each column is an agent's position vector
+- `velocities::Matrix{Float64}`: Matrix where each column is an agent's velocity vector
+- `ids::Vector{Int}`: Vector of agent IDs in the same order as the matrix columns
+- `r0::AbstractVector`: Interceptor's initial position vector
+- `a_vals::Vector{Float64}`: 'a' coefficients of the quadratic equations
+- `b_vals::Vector{Float64}`: 'b' coefficients of the quadratic equations
+- `discriminants::Vector{Float64}`: Discriminants of the quadratic equations
+- `valid_mask::BitVector`: Boolean mask indicating which agents have non-negative discriminants
+
+# Returns
+- `vs_agent::Dict{Int,Vector{Float64}}`: Dictionary mapping planet IDs to required velocity vectors
+- `ts::Dict{Int,Float64}`: Dictionary mapping planet IDs to interception times
+- `planet_ids::Vector{Int}`: IDs of all planets where interception is possible
+
+# Details
+Helper function that analyzes all potentially valid interceptions (those with non-negative discriminants),
+determines which ones have positive interception times, and calculates the required velocity vectors.
+"""
+function process_valid_interceptions(positions, velocities, ids, r0, 
+                                    a_vals, b_vals, discriminants, valid_mask)
+    # Only process planets with valid discriminants
+    valid_indices = findall(valid_mask)
+    valid_ids = ids[valid_indices]
+    valid_a = a_vals[valid_indices]
+    valid_b = b_vals[valid_indices]
+    valid_discriminants = discriminants[valid_indices]
+    
+    # Calculate all possible t values
+    sqrt_discriminants = sqrt.(valid_discriminants)
+    t1_vals = (-valid_b .+ sqrt_discriminants) ./ (2 .* valid_a)
+    t2_vals = (-valid_b .- sqrt_discriminants) ./ (2 .* valid_a)
+    
+    # Logic for selecting correct t values
+    t_vals = Vector{Float64}()
+    final_indices = Vector{Int}()
+    
+    # Select the appropriate t value for each planet
+    for (i, idx) in enumerate(valid_indices)
+        t1 = t1_vals[i]
+        t2 = t2_vals[i]
+        
+        t = if t1 > 0 && (t2 <= 0 || t1 < t2)
+            t1
+        elseif t2 > 0
+            t2
+        else
+            continue
+        end
+        
+        push!(t_vals, t)
+        push!(final_indices, idx)
+    end
+    
+    # Prepare result containers
+    vs_agent = Dict{Int, Vector{Float64}}()
+    ts = Dict{Int, Float64}()
+    planet_ids = ids[final_indices]
+    
+    # Calculate interception vectors
+    for (idx, t) in zip(final_indices, t_vals)
+        planet_id = ids[idx]
+        
+        # Calculate interception point and velocity
+        interception_point = positions[:, idx] .+ velocities[:, idx] .* t
+        v_agent = (interception_point .- r0) ./ t
+        
+        # Store results
+        vs_agent[planet_id] = v_agent
+        ts[planet_id] = t
+    end
+    
+    return vs_agent, ts, planet_ids
 end
 
 ##############################################################################################################################
