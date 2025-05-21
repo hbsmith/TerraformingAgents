@@ -35,8 +35,10 @@ version = "0.1.42"
 
 [[deps.Agents]]
 deps = ["CSV", "CommonSolve", "DataFrames", "DataStructures", "Distributed", "Distributions", "Downloads", "Graphs", "JLD2", "LazyArtifacts", "LightOSM", "LightSumTypes", "LinearAlgebra", "MacroTools", "PrecompileTools", "ProgressMeter", "Random", "Rotations", "Scratch", "StaticArrays", "StatsBase", "StreamSampling"]
-path = "/Users/harrison/ELSI/Agents/Agents.jl"
+git-tree-sha1 = "89025fcbb9cfca8e0fa1a237b148345ef92d9223"
 pinned = true
+repo-rev = "hdev"
+repo-url = "https://github.com/hbsmith/Agents.jl"
 uuid = "46ada45e-f475-11e8-01d0-f70cc89e6671"
 version = "6.2.10"
 
