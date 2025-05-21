@@ -6,8 +6,8 @@ using Agents, Random, Printf
 using Statistics: cor
 using DrWatson: @dict, @unpack
 using Suppressor: @suppress_err
-using LinearAlgebra: dot, diag, issymmetric, tril!
-using Distributions: Uniform
+using LinearAlgebra: dot, diag, issymmetric, norm, tril!
+using Distributions: Uniform, Normal
 using NearestNeighbors
 using Distances
 using DataFrames
@@ -478,6 +478,25 @@ function center_position(
     pos.+((extent.-(extent./m))./2) 
 end
 
+
+"""
+
+    center_and_scale(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D}
+
+Assuming that the provided position is for the original `extent` size, 
+return the equivilent position in a volume the size of extent/m centered in the extent.
+
+The purpose for this is to allow room for the stars to move.
+"""
+function center_and_scale(
+    pos::Union{<:NTuple{D,Real}, <:AbstractVector{<:Real}}, 
+    extent::Union{<:NTuple{D,Real}, <:AbstractVector{<:Real}}, 
+    m::Real) where {D} 
+
+    (pos./m) .+ (extent./2) .- (m/2)
+
+end
+
 """
     galaxy_model_setup(params::GalaxyParameters)
 
@@ -784,9 +803,19 @@ function spawnlife!(
     ancestors::Vector{Life} = Life[]
     )
 
-    destinationplanet = model.destination_func(planet, planet.candidate_planets) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
-    destination_distance = distance(destinationplanet.pos, planet.pos)
-    vel = direction(planet, destinationplanet) .* model.lifespeed
+    destination_planet = model.destination_func(planet, planet.candidate_planets) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
+    destination_distance = distance(destination_planet.pos, planet.pos)
+    
+    # TODO: find destinations not by current distance, but by which planet would be fastest to reach? Seems computationally taxing though
+    # If planets are moving, calculate intercept velocity
+    destination_planet_relative_vel = destination_planet.vel .- planet.vel
+    if destination_planet_relative_vel == 0
+        vel = direction(planet, destination_planet) .* model.lifespeed
+    else
+        (vel, time_to_intercept) = calculate_interception(planet, destination_planet, model)
+        # If not possible to intercept, don't move TODO: Make sure each subsequence step this life is looking for a destination planet
+        vel==nothing &&  return model #(vel=0.0.*spacesize(model))
+    end
 
     life = Life(;
         id = Agents.nextid(model),
@@ -794,14 +823,14 @@ function spawnlife!(
         vel = SA[vel...],
         parentplanet = planet,
         composition = planet.composition,
-        destination = destinationplanet,
+        destination = destination_planet,
         destination_distance = destination_distance,
         ancestors
     ) ## Only "first" life won't have ancestors
 
     life = add_agent_own_pos!(life, model)
 
-    destinationplanet.claimed = true 
+    destination_planet.claimed = true 
     ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
     model
 
@@ -1052,8 +1081,8 @@ function for `Life`.
 """
 function galaxy_agent_step_spawn_on_terraform!(planet::Planet, model)
 
-    ## Don't need to update candidate planets for planets which are already alive if the spawn is only on terraform
-    dummystep(planet, model)
+    ## allow planets to move
+    move_agent!(planet, model, model.dt)
 
 end
 
@@ -1100,6 +1129,8 @@ function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
 
     end
 
+    move_agent!(planet, model, model.dt)
+
 end
 
 
@@ -1120,8 +1151,7 @@ end
 
 function galaxy_agent_direct_step!(planet::Planet, model)
 
-    # move_agent!(planet, model, model.dt)
-    dummystep(planet, model)
+    move_agent!(planet, model, model.dt)
 
 end
 
@@ -1333,6 +1363,153 @@ end
 # hex_to_col(hex) = convert(RGB{Float64}, parse(Colorant, hex))
 # mix_cols(c1, c2) = RGB{Float64}((c1.r+c2.r)/2, (c1.g+c2.g)/2, (c1.b+c2.b)/2)
 
+function random_stellar_velocities(rng::AbstractRNG=Random.GLOBAL_RNG, 
+                                  n::Int=1;
+                                  σ_U::Float64=35.0, 
+                                  σ_V::Float64=25.0, 
+                                  σ_W::Float64=20.0, 
+                                  V_lag::Float64=15.0,
+                                  scale::Float64=1.0)::Vector{SVector{3, Float64}}
+    """
+    Generate random stellar velocities following realistic velocity dispersion.
+    
+    Parameters:
+    -----------
+    rng : AbstractRNG
+        Random number generator to use
+    n : Int
+        Number of velocity vectors to generate
+    σ_U : Float64
+        Velocity dispersion in U direction (radial, toward/away from galactic center) in km/s
+    σ_V : Float64
+        Velocity dispersion in V direction (azimuthal, along galactic rotation) in km/s
+    σ_W : Float64
+        Velocity dispersion in W direction (vertical, perpendicular to galactic plane) in km/s
+    V_lag : Float64
+        Asymmetric drift - typical lag behind circular velocity in km/s
+    scale : Float64
+        Scale factor to multiply all velocity components (useful for unit conversion
+        or simulating different stellar populations)
+        
+    Returns:
+    --------
+    Vector{SVector{3, Float64}} containing n velocity vectors
+    """
+    
+    # Apply scale factor to dispersions and drift
+    σ_U_scaled = σ_U * scale
+    σ_V_scaled = σ_V * scale
+    σ_W_scaled = σ_W * scale
+    V_lag_scaled = V_lag * scale
+    
+    # Create distributions for each component
+    dist_U = Normal(0.0, σ_U_scaled)
+    dist_V = Normal(-V_lag_scaled, σ_V_scaled)  # Note negative mean for asymmetric drift
+    dist_W = Normal(0.0, σ_W_scaled)
+    
+    # Generate random velocities and package as StaticVectors
+    velocities = Vector{SVector{3, Float64}}(undef, n)
+    
+    for i in 1:n
+        U = rand(rng, dist_U)
+        V = rand(rng, dist_V)
+        W = rand(rng, dist_W)
+        velocities[i] = SVector{3, Float64}(U, V, W)
+    end
+    
+    return velocities
+end
+
+function calculate_interception(life::Life, model)
+    calculate_interception(life.pos, model.lifespeed, life.destination.pos, life.destination.vel)
+end
+
+function calculate_interception(starting_planet::Planet, destination_planet::Planet, model)
+    calculate_interception(starting_planet.pos, model.lifespeed, destination_planet.pos, destination_planet.vel)
+end
+
+"""
+    calculate_interception(r0, v_agent_speed, r1, v1) -> (v_agent, t)
+
+Calculate the velocity vector and time needed for an agent traveling at constant speed 
+to intercept a moving target.
+
+# Arguments
+- `r0::AbstractVector`: Agent's initial position vector (works in any dimension)
+- `v_agent_speed::Real`: Agent's constant speed (scalar, must be positive)
+- `r1::AbstractVector`: Target's initial position vector (same dimension as `r0`)
+- `v1::AbstractVector`: Target's velocity vector (same dimension as `r0`)
+
+# Returns
+- `v_agent::Union{AbstractVector, Nothing}`: Velocity vector the agent should travel at to intercept the target, 
+  or `nothing` if interception is impossible
+- `t::Union{Real, Nothing}`: Time until interception, or `nothing` if interception is impossible
+
+# Details
+Solves the interception problem by finding the time when the agent and target will be at the 
+same position, given that the agent travels at a constant speed. The solution involves solving 
+a quadratic equation derived from the constraint that the agent's velocity magnitude is fixed.
+
+For interception to be possible, the discriminant of the quadratic equation must be non-negative.
+If multiple intercept times exist, the earliest positive time is chosen.
+
+# Notes
+- A warning is issued if the computed velocity magnitude differs from the specified agent speed 
+  beyond numerical precision (> 1e-10)
+- The function works with vectors of any dimension (2D, 3D, etc.)
+- Requires the LinearAlgebra module for dot product and norm calculations
+"""
+function calculate_interception(r0, v_agent_speed, r1, v1)
+    # r0: Agent's initial position (vector)
+    # v_agent_speed: Agent's constant speed (scalar)
+    # r1: Planet's initial position (vector)
+    # v1: Planet's velocity (vector)
+    
+    # Calculate relative initial position
+    dr = r1 - r0
+    
+    # Set up quadratic equation coefficients: at² + bt + c = 0
+    a = dot(v1, v1) - v_agent_speed^2
+    b = 2 * dot(dr, v1)
+    c = dot(dr, dr)
+    
+    # Calculate discriminant
+    discriminant = b^2 - 4 * a * c
+    
+    if discriminant < 0
+        # No real solution exists - interception is impossible
+        return nothing, nothing
+    end
+    
+    # Calculate possible interception times
+    t1 = (-b + sqrt(discriminant)) / (2 * a)
+    t2 = (-b - sqrt(discriminant)) / (2 * a)
+    
+    # Choose the smallest positive time
+    if t1 > 0 && (t2 <= 0 || t1 < t2)
+        t = t1
+    elseif t2 > 0
+        t = t2
+    else
+        # No positive time solution - interception is impossible
+        return nothing, nothing
+    end
+    
+    # Calculate interception point
+    interception_point = r1 + v1 * t
+    
+    # Calculate required velocity vector for agent
+    v_agent = (interception_point - r0) / t
+    
+    # Verify the speed is correct (within numerical precision)
+    speed_error = abs(norm(v_agent) - v_agent_speed)
+    if speed_error > 1e-10
+        @warn "Speed error: $(speed_error). Solution may be inaccurate."
+    end
+    
+    return v_agent, t
+end
+
 ##############################################################################################################################
 ## Interactive Plot utilities 
 ##############################################################################################################################
@@ -1348,7 +1525,7 @@ function Agents.agent2string(agent::Planet)
     Planet
     id = $(agent.id)
     pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
-    vel = $(agent.vel)
+    vel = ($(join([@sprintf("%.2f", i) for i in agent.vel],", ")))
     composition = [$(join([@sprintf("%.2f", i) for i in agent.composition],", "))]
     initialcomposition = [$(join([@sprintf("%.2f", i) for i in agent.initialcomposition],", "))]
     alive = $(agent.alive)

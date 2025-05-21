@@ -2,7 +2,7 @@
 
 julia_version = "1.11.5"
 manifest_format = "2.0"
-project_hash = "9aa96b3aeb76f31a2ea677f845e39d6f5eaea62b"
+project_hash = "219c3a89e3da43c477c87db8a4a01ffe5420778a"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "2d9c9a55f9c93e8887ad391fbae72f8ef55e1177"
@@ -35,7 +35,10 @@ version = "0.1.42"
 
 [[deps.Agents]]
 deps = ["CSV", "CommonSolve", "DataFrames", "DataStructures", "Distributed", "Distributions", "Downloads", "Graphs", "JLD2", "LazyArtifacts", "LightOSM", "LightSumTypes", "LinearAlgebra", "MacroTools", "PrecompileTools", "ProgressMeter", "Random", "Rotations", "Scratch", "StaticArrays", "StatsBase", "StreamSampling"]
-path = "/Users/harrison/ELSI/Agents/Agents.jl"
+git-tree-sha1 = "89025fcbb9cfca8e0fa1a237b148345ef92d9223"
+pinned = true
+repo-rev = "hdev"
+repo-url = "https://github.com/hbsmith/Agents.jl"
 uuid = "46ada45e-f475-11e8-01d0-f70cc89e6671"
 version = "6.2.10"
 
@@ -160,6 +163,7 @@ version = "1.16.0"
 [[deps.DataFrames]]
 deps = ["Compat", "DataAPI", "DataStructures", "Future", "InlineStrings", "InvertedIndices", "IteratorInterfaceExtensions", "LinearAlgebra", "Markdown", "Missings", "PooledArrays", "PrecompileTools", "PrettyTables", "Printf", "Random", "Reexport", "SentinelArrays", "SortingAlgorithms", "Statistics", "TableTraits", "Tables", "Unicode"]
 git-tree-sha1 = "fb61b4812c49343d7ef0b533ba982c46021938a6"
+pinned = true
 uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 version = "1.7.0"
 
@@ -182,6 +186,7 @@ version = "1.11.0"
 [[deps.Distances]]
 deps = ["LinearAlgebra", "Statistics", "StatsAPI"]
 git-tree-sha1 = "c7e3a542b999843086e2f29dac96a618c105be1d"
+pinned = true
 uuid = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
 version = "0.10.12"
 
@@ -201,6 +206,7 @@ version = "1.11.0"
 [[deps.Distributions]]
 deps = ["AliasTables", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns"]
 git-tree-sha1 = "6d8b535fd38293bc54b88455465a1386f8ac1c3c"
+pinned = true
 uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
 version = "0.25.119"
 
@@ -227,6 +233,7 @@ version = "1.6.0"
 [[deps.DrWatson]]
 deps = ["Dates", "FileIO", "JLD2", "LibGit2", "MacroTools", "Pkg", "Random", "Requires", "Scratch", "UnPack"]
 git-tree-sha1 = "17c9db646d6cb3f68a90053bf46faf5312d13b36"
+pinned = true
 uuid = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
 version = "2.18.0"
 
@@ -433,6 +440,7 @@ version = "0.9.1"
 
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
+pinned = true
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 version = "1.11.0"
 
@@ -506,6 +514,7 @@ version = "2023.12.12"
 [[deps.NearestNeighbors]]
 deps = ["Distances", "StaticArrays"]
 git-tree-sha1 = "8a3271d8309285f4db73b4f662b1b290c715e85e"
+pinned = true
 uuid = "b8a86587-4115-5ab1-83bc-aa920d37bbce"
 version = "0.4.21"
 
@@ -572,6 +581,7 @@ version = "2.8.2"
 
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "Random", "SHA", "TOML", "Tar", "UUIDs", "p7zip_jll"]
+pinned = true
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 version = "1.11.0"
 
@@ -607,6 +617,7 @@ version = "2.4.0"
 
 [[deps.Printf]]
 deps = ["Unicode"]
+pinned = true
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
 
@@ -647,6 +658,7 @@ version = "0.1.2"
 
 [[deps.Random]]
 deps = ["SHA"]
+pinned = true
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 version = "1.11.0"
 
@@ -768,6 +780,7 @@ version = "2.5.1"
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
 git-tree-sha1 = "0feb6b9031bd5c51f9072393eb5ab3efd31bf9e4"
+pinned = true
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
 version = "1.9.13"
 
@@ -793,6 +806,7 @@ version = "0.3.0"
 [[deps.Statistics]]
 deps = ["LinearAlgebra"]
 git-tree-sha1 = "ae3bb1eb3bba077cd276bc5cfc337cc65c3075c0"
+pinned = true
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 version = "1.11.1"
 weakdeps = ["SparseArrays"]
@@ -809,6 +823,7 @@ version = "1.7.0"
 [[deps.StatsBase]]
 deps = ["AliasTables", "DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
 git-tree-sha1 = "29321314c920c26684834965ec2ce0dacc9cf8e5"
+pinned = true
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.34.4"
 
@@ -856,6 +871,7 @@ version = "7.7.0+0"
 [[deps.Suppressor]]
 deps = ["Logging"]
 git-tree-sha1 = "6dbb5b635c5437c68c28c2ac9e39b87138f37c0a"
+pinned = true
 uuid = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 version = "0.2.8"
 
@@ -930,11 +946,13 @@ version = "2.13.6+1"
 [[deps.YAML]]
 deps = ["Base64", "Dates", "Printf", "StringEncodings"]
 git-tree-sha1 = "b46894beba6c05cd185d174654479aaec09ea6b1"
+pinned = true
 uuid = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 version = "0.4.13"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
+pinned = true
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
 version = "1.2.13+1"
 
