@@ -12,6 +12,7 @@ using NearestNeighbors
 using Distances
 using DataFrames
 using StatsBase
+using StaticArrays
 
 export Planet, 
        Life, 
@@ -60,8 +61,8 @@ See also [`Life`](@ref)
 ## So that's super annoying. See: https://github.com/JuliaLang/julia/issues/35053
 Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     id::Int
-    pos::NTuple{D,<:AbstractFloat} 
-    vel::NTuple{D,<:AbstractFloat} 
+    pos::SVector{D, Float64}
+    vel::SVector{D, Float64}
 
     composition::Vector{<:Real} ## Represents the planet's genotype
     initialcomposition::Vector{<:Real} = copy(composition) ## Same as composition until it's terraformed
@@ -76,7 +77,7 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     parentcompositions::Vector{<:Vector{<:Real}} = Vector{Float64}[] ## List of compositions of the direct life parent compositions at time of terraformation
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
-    s = "Planet 🪐 in $(D)D space with properties:."
+    s = "Planet in $(D)D space with properties:."
     s *= "\n id: $(planet.id)"
     s *= "\n pos: $(planet.pos)"
     s *= "\n vel: $(planet.vel)"
@@ -101,8 +102,8 @@ See also [`Planet`](@ref)
 """
 Base.@kwdef mutable struct Life{D} <:AbstractAgent
     id::Int
-    pos::NTuple{D,<:AbstractFloat}  #where {D,X<:AbstractFloat}
-    vel::NTuple{D,<:AbstractFloat} #where {D,X<:AbstractFloat}
+    pos::SVector{D, Float64}
+    vel::SVector{D, Float64}
     parentplanet::Planet
     composition::Vector{<:Real} ## Taken from parentplanet
     destination::Planet
@@ -110,7 +111,7 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
 end
 function Base.show(io::IO, life::Life{D}) where {D}
-    s = "Life 🦠 in $(D)D space with properties:."
+    s = "Life in $(D)D space with properties:."
     s *= "\n id: $(life.id)"
     s *= "\n pos: $(life.pos)"
     s *= "\n vel: $(life.vel)"
@@ -129,7 +130,16 @@ end
 Generate `n` random positions of dimension `D` within a tuple of maximum dimensions of the space given by `maxdim`.
 """
 function random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
-    collect(zip([rand(rng, Uniform(0, imax), n) for imax in maxdims]...)) :: Vector{NTuple{length(maxdims), Float64}}
+    # Generate random values for each dimension
+    random_vals = [rand(rng, Uniform(0, imax), n) for imax in maxdims]
+    
+    # Create SVectors from the random values
+    result = Vector{SVector{D, Float64}}(undef, n)
+    for i in 1:n
+        result[i] = SVector{D, Float64}(getindex.(random_vals, i))
+    end
+    
+    result
 end
 
 """
@@ -137,7 +147,10 @@ end
 
 Generate a vector of length `n` of `D` tuples, filled with 0s.
 """
-default_velocities(D,n) = fill(Tuple([0.0 for i in 1:D]), n) :: Vector{NTuple{D, Float64}}
+function default_velocities(D, n)
+    # Create a vector of SVectors filled with zeros
+    return [SVector{D, Float64}(zeros(D)) for _ in 1:n]
+end
 
 """
     random_compositions(rng, maxcomp, compsize, n)
@@ -158,7 +171,7 @@ random_radius(rng, rmin, rmax) = sqrt(rand(rng) * (rmax^2 - rmin^2) + rmin^2)
 
 Return only agents of type `agenttype` from `model`.
 """
-filter_agents(model,agenttype) = filter(kv->kv.second isa agenttype, model.agents)
+filter_agents(model,agenttype) = Iterators.filter(a->a isa agenttype, allagents(model))
 
 """
     random_shell_position(rng, rmin, rmax)
@@ -197,8 +210,8 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `compatibility_func::Function = compositionally_similar_planets`: Function to use for deciding what `Planet`s are compatible for future terraformation. 
 - `compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compatibility_func`.
 - `destination_func::Function = nearest_planet`:  Function to use for deciding which compatible `Planet` (which of the `planet.candidate_planet`s) should be the next destination. 
-- `pos::Vector{<:NTuple{D,Real}}`: the initial positions of all `Planet`s.
-- `vel::Vector{<:NTuple{D,Real}}`: the initial velocities of all `Planet`s.
+- `pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}}`: the initial positions of all `Planet`s.
+- `vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Float64`: the max value of any element within the composition vectors.
 - `compsize::Int`: the length of the compositon vectors.
 - `planetcompositions::Array{Float64, 2}`: an array of default compositon vectors.
@@ -250,11 +263,25 @@ mutable struct GalaxyParameters
         compatibility_func::Function = compositionally_similar_planets,
         compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing,
         destination_func::Function = nearest_planet,
-        pos::Vector{<:NTuple{D,Real}},
-        vel::Vector{<:NTuple{D,Real}},
+        pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}},
+        vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}},
         maxcomp::Real,
         compsize::Int,
         planetcompositions::Array{<:Real, 2}) where {D}
+
+        pos_dims = length(first(pos))
+        if !all(p -> length(p) == pos_dims, pos)
+            throw(ArgumentError("All positions must have the same dimensionality"))
+        end
+
+        vel_dims = length(first(vel))
+        if !all(v -> length(v) == vel_dims, vel)
+            throw(ArgumentError("All velocities must have the same dimensionality"))
+        end
+
+        if pos_dims != vel_dims
+            throw(ArgumentError("pos and vel must have the same dims"))
+        end
 
         if !(length(pos) == length(vel) == size(planetcompositions, 2))
             throw(ArgumentError("keyword arguments :pos and :vel must have the same length as the width of :planetcompositions"))
@@ -284,6 +311,17 @@ mutable struct GalaxyParameters
 
         ## SpaceKwargs
         SpaceKwargs === nothing && (SpaceKwargs = Dict(:periodic => true))
+
+        # Convert positions to SVectors if they're not already
+        if !(first(pos) isa SVector)
+            pos = [SVector{pos_dims, Float64}(p) for p in pos]
+        end
+        
+        # Convert velocities to SVectors if they're not already
+        if !(first(vel) isa SVector)
+            vel = [SVector{vel_dims, Float64}(v) for v in vel]
+        end
+
         
         new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions)
 
@@ -294,8 +332,8 @@ end
 
 """
     GalaxyParameters(rng::AbstractRNG;
-        pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-        vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+        pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+        vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
         planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
         kwargs...) where {D}
 
@@ -305,8 +343,8 @@ Can be called with only `rng` and one of `pos`, `vel` or `planetcompositions`, p
 Uses GalaxyParameters(rng::AbstractRNG, nplanets::Int; ...) constructor for other arguments
 """
 function GalaxyParameters(rng::AbstractRNG;
-    pos::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
-    vel::Union{Vector{<:NTuple{D,Real}}, Nothing} = nothing,
+    pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
+    vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}, Nothing} = nothing,
     planetcompositions::Union{Array{<:Real,2}, Nothing} = nothing,
     kwargs...) where {D}
 
@@ -423,7 +461,7 @@ nplanets(params::GalaxyParameters) = length(params.pos)
 
 Returns the number of alive planets.
 """
-count_living_planets(model) = length(filter(kv -> kv.second isa Planet && kv.second.alive, model.agents))
+count_living_planets(model) = count(a -> a isa Planet && a.alive, allagents(model))
 
 """
 
@@ -432,7 +470,13 @@ count_living_planets(model) = length(filter(kv -> kv.second isa Planet && kv.sec
 Assuming that the provided position is for the original `extent` size (of extent./m = original_extent), 
 return the equivilent position at the center of current `extent` (original_extent.*m).
 """
-center_position(pos::NTuple{D,Real}, extent::NTuple{D,Real}, m::Real) where {D} = pos.+((extent.-(extent./m))./2) 
+function center_position(
+    pos::Union{<:NTuple{D,Real}, <:AbstractVector{<:Real}}, 
+    extent::Union{<:NTuple{D,Real}, <:AbstractVector{<:Real}}, 
+    m::Real) where {D} 
+    
+    pos.+((extent.-(extent./m))./2) 
+end
 
 """
     galaxy_model_setup(params::GalaxyParameters)
@@ -441,9 +485,9 @@ Set up the galaxy model (planets and life) according to `params`.
 
 Calls [`galaxy_planet_setup`](@ref) and [`galaxy_life_setup`](@ref).
 """
-function galaxy_model_setup(params::GalaxyParameters)
+function galaxy_model_setup(params::GalaxyParameters, agent_step!, model_step!)
 
-    model = galaxy_planet_setup(params)
+    model = galaxy_planet_setup(params, agent_step!, model_step!)
     model = galaxy_life_setup(model, params::GalaxyParameters)
     model
 
@@ -453,13 +497,13 @@ end
 
 Initializes the GalaxyParameters struct from the provided dict.
 """
-function galaxy_model_setup(params::Dict)
+function galaxy_model_setup(params::Dict, agent_step!, model_step!)
 
     params = GalaxyParameters(
         params[:rng],
         params[:nplanets]; 
         filter(x -> first(x) ∉ [:rng, :nplanets], params)...)
-    model = galaxy_planet_setup(params)
+    model = galaxy_planet_setup(params, agent_step!, model_step!)
     model = galaxy_life_setup(model, params::GalaxyParameters)
     model
 
@@ -468,9 +512,9 @@ end
 """
     Custom scheduler the ensures newly added agents don't get activated on the step they're added.
     
-    The default scheduler is `keys(model.agents)` which gets modified in-place and causes problems.
+    The default scheduler is `keys(allagents(model))` which gets modified in-place and causes problems.
 """
-allocated_fastest(model::ABM) = collect(keys(model.agents))
+allocated_fastest(model::ABM) = collect(allids(model))
 
 """
     galaxy_planet_setup(params::GalaxyParameters)
@@ -479,7 +523,7 @@ Set up the galaxy's `Planet`s according to `params`.
 
 Called by [`galaxy_model_setup`](@ref).
 """
-function galaxy_planet_setup(params::GalaxyParameters)
+function galaxy_planet_setup(params::GalaxyParameters, agent_step!, model_step!)
 
     extent_multiplier = 1
     params.extent = extent_multiplier.*params.extent
@@ -490,7 +534,7 @@ function galaxy_planet_setup(params::GalaxyParameters)
         space = ContinuousSpace(params.extent; params.SpaceKwargs...)
     end
 
-    model = @suppress_err AgentBasedModel(
+    model = @suppress_err StandardABM(
         Union{Planet,Life},
         space,
         scheduler = allocated_fastest,
@@ -518,7 +562,10 @@ function galaxy_planet_setup(params::GalaxyParameters)
                         # :planetcompositions => params.planetcompositions); ## Why does having a semicolon here fix it???
         # rng=params.ABMkwargs[:rng],
         # warn=params.ABMkwargs[:warn]
-        params.ABMkwargs... ## Why does this not work??
+        ## This is where the rng lives
+        agent_step! = agent_step!,
+        model_step! = model_step!,
+        params.ABMkwargs... ## Why does this not work?? 
     )
 
     initialize_planets!(model, params, extent_multiplier)
@@ -539,7 +586,7 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     for _ in 1:params.nool
 
         planet = 
-            isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model.agents[params.ool]
+            isnothing(params.ool) ? random_agent(model, x -> x isa Planet && !x.alive && !x.claimed ) : model[params.ool]
         
         planet.alive = true
         planet.claimed = true
@@ -547,7 +594,7 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     end
 
     ## Spawn life (candidate planets have to be calculated after all alive planets are initialized)
-    for (_, planet) in filter(kv -> kv.second isa Planet && kv.second.alive, model.agents)
+    for planet in Iterators.filter(a -> a isa Planet && a.alive, allagents(model))
 
         # planet.candidate_planets = compatibleplanets(planet, model)
         find_compatible_planets!(planet, model)
@@ -573,14 +620,14 @@ Called by [`galaxy_model_setup`](@ref).
 """
 function initialize_planets!(model, params::GalaxyParameters, extent_multiplier)
     for i = 1:nplanets(params)
-        id = nextid(model)
+        id = Agents.nextid(model)
         pos = center_position(params.pos[i], params.extent, extent_multiplier)
         vel = params.vel[i]
         composition = params.planetcompositions[:, i]
 
-        planet = Planet(; id, pos, vel, composition)
+        planet = Planet(; id=id, pos=SA[pos...], vel=SA[vel...], composition=composition)
 
-        add_agent_pos!(planet, model)
+        add_agent_own_pos!(planet, model)
     end
     model
 end
@@ -593,11 +640,15 @@ Returns possible candidate planets filtered by the most basic requirements.
 e.g. Destination Planet not alive, claimed, or the same Planet as the parent.
 """
 function basic_candidate_planets(planet::Planet, model::ABM)
-    function iscandidate((_, p))
-        isa(p, Planet) && !p.alive && !p.claimed && p.id != planet.id
-    end
+    candidates = Iterators.filter(p -> 
+        p isa Planet && 
+        !p.alive && 
+        !p.claimed && 
+        p.id != planet.id, 
+        allagents(model)
+    )
     
-    convert(Vector{Planet}, collect(values(filter(iscandidate, model.agents))))
+    return convert(Vector{Planet}, collect(candidates))
 end
 
 function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
@@ -639,7 +690,7 @@ Note: Results are unsorted
 function nearest_k_planets(planet::Planet, planets::Vector{Planet}, k)
     
     planetpositions = planet_attribute_as_matrix(planets, :pos)
-    idxs, dists = knn(KDTree(planetpositions), collect(planet.pos), k)
+    idxs, dists = knn(KDTree(planetpositions), Vector(planet.pos), k)
     planets[idxs]
 
 end
@@ -670,7 +721,7 @@ Called by [`planets_in_range`](@ref).
 function planets_in_attribute_range(planet::Planet, planets::Vector{Planet}, attr::Symbol, r)
 
     planetattributes = planet_attribute_as_matrix(planets, attr)
-    idxs = inrange(KDTree(planetattributes), collect(getproperty(planet, attr)), r)
+    idxs = inrange(KDTree(planetattributes), Vector(getproperty(planet, attr)), r)
     planets[idxs]
 
 end
@@ -697,7 +748,7 @@ Called by [`nearest_planet`](@ref), [`most_similar_planet`](@ref).
 function closest_planet_by_attribute(planet::Planet, planets::Vector{Planet}, attr::Symbol)
 
     planetattributes = planet_attribute_as_matrix(planets, attr)
-    idx, dist = nn(KDTree(planetattributes), collect(getproperty(planet, attr)))
+    idx, dist = nn(KDTree(planetattributes), Vector(getproperty(planet, attr)))
     planets[idx]
 
 end
@@ -738,9 +789,9 @@ function spawnlife!(
     vel = direction(planet, destinationplanet) .* model.lifespeed
 
     life = Life(;
-        id = nextid(model),
+        id = Agents.nextid(model),
         pos = planet.pos,
-        vel = vel,
+        vel = SA[vel...],
         parentplanet = planet,
         composition = planet.composition,
         destination = destinationplanet,
@@ -748,7 +799,7 @@ function spawnlife!(
         ancestors
     ) ## Only "first" life won't have ancestors
 
-    life = add_agent_pos!(life, model)
+    life = add_agent_own_pos!(life, model)
 
     destinationplanet.claimed = true 
     ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
@@ -794,7 +845,7 @@ A valid `compmix_func`. Performs one-point crossover between the `lifecompositio
 
 The crossover point is after the `crossover_after_idx`, which is limited between 1 and length(`lifecomposition`)-1).
 
-The returned strand and crossover point are randomly chosen based on `model.rng``.
+The returned strand and crossover point are randomly chosen based on `abmrng(model)``.
 
 If mutated, substitute elements are chosen from random distribution of `Uniform(0, model.maxcomp)`.
 
@@ -803,7 +854,7 @@ See: https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)
 Related: [`average_compositions`](@ref), [`mutate_strand`](@ref), [`positions_to_mutate`](@ref).
 """
 function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
-    crossover_one_point(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
+    crossover_one_point(lifecomposition, planetcomposition, abmrng(model); mutation_rate, model.maxcomp)
 end
 """
     crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, crossover_after_idx::Int)
@@ -841,10 +892,10 @@ function crossover_one_point(lifecomposition::Vector{<:Real}, planetcomposition:
 end
 
 # function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition))
-#     horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp)
+#     horizontal_gene_transfer(lifecomposition, planetcomposition, abmrng(model); mutation_rate, model.maxcomp)
 # end
 function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, model::ABM; mutation_rate=1/length(lifecomposition), n_idxs_to_keep_from_destination=1)
-    horizontal_gene_transfer(lifecomposition, planetcomposition, model.rng; mutation_rate, model.maxcomp, n_idxs_to_keep_from_destination)
+    horizontal_gene_transfer(lifecomposition, planetcomposition, abmrng(model); mutation_rate, model.maxcomp, n_idxs_to_keep_from_destination)
 end
 
 function horizontal_gene_transfer(lifecomposition::Vector{<:Real}, planetcomposition::Vector{<:Real}, rng::AbstractRNG = Random.default_rng(); mutation_rate=1/length(lifecomposition), maxcomp=1, n_idxs_to_keep_from_destination=1)
@@ -933,7 +984,7 @@ function pos_is_inside_alive_radius(pos::Tuple, model::ABM, exact=true)
     
     neighbor_ids = collect(neighbor_func(pos,model,model.interaction_radius))
 
-    if length(filter(kv -> kv.first in neighbor_ids && kv.second isa Planet && kv.second.alive, model.agents)) > 0
+    if count(a -> a.id in neighbor_ids && a isa Planet && a.alive, allagents(model)) > 0
         return true
     else
         return false
@@ -980,11 +1031,11 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 function galaxy_agent_step_spawn_on_terraform!(life::Life, model)
 
     if life.destination == nothing
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
         spawn_if_candidate_planets!(life.destination, model, life)
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     else
         move_agent!(life, model, model.dt)
         life.destination_distance = distance(life.pos, life.destination.pos)
@@ -1019,10 +1070,10 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 function galaxy_agent_step_spawn_at_rate!(life::Life, model)
 
     if life.destination == nothing
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
         terraform!(life, life.destination, model)
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     else
         move_agent!(life, model, model.dt)
         life.destination_distance = distance(life.pos, life.destination.pos)
@@ -1056,10 +1107,10 @@ end
 function galaxy_agent_direct_step!(life::Life, model)
     
     if life.destination == nothing
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     elseif isapprox(life.destination_distance, 0, atol=0.5)
         terraform!(life, life.destination, model)
-        kill_agent!(life, model)
+        remove_agent!(life, model)
     else
         move_agent!(life, life.destination.pos, model)
         life.destination_distance = distance(life.pos, life.destination.pos)
@@ -1092,7 +1143,7 @@ e.g. Concatonate the :composition of every planet into a single matrix.
 function concatenate_planet_fields(field, model, planet_condition=nothing)
 
     field_values = []
-    for (id,planet) in filter_agents(model,Planet)
+    for planet in filter_agents(model,Planet)
 
         if planet_condition != nothing             
             planet_condition(planet) && push!(field_values, collect(getfield(planet, field)))
@@ -1127,7 +1178,7 @@ function PlanetMantelTest(model, xfield=:composition, yfield=:pos; dist_metric=E
     x = pairwise(dist_metric, concatenate_planet_fields(xfield, model, planet_condition), dims=2)
     y = pairwise(dist_metric, concatenate_planet_fields(yfield, model, planet_condition), dims=2)
 
-    MantelTest(x, y;  rng=model.rng, dist_metric=dist_metric, method=method, permutations=permutations, alternative=alternative)
+    MantelTest(x, y;  rng=abmrng(model), dist_metric=dist_metric, method=method, permutations=permutations, alternative=alternative)
 
 end
 
@@ -1194,33 +1245,27 @@ end
 ## Some functions to nest and unnest data for csv saving
 function unnest_agents(df_planets, ndims, compsize)
     # inspired from https://bkamins.github.io/julialang/2022/03/11/unnesting.html
-    # TODO streamline naming
-    df = transform(df_planets, :pos => AsTable)
+    # Create a new dataframe with extracted position components
+    pos_columns = DataFrame()
     
-    if ndims == 1
-        new_names = Dict("x1" => "x")
-    elseif ndims == 2
-        new_names = Dict("x1" => "x", "x2" => "y")
-    elseif ndims == 3
-        new_names = Dict("x1" => "x", "x2" => "y", "x3" => "z")
+    # Define dimension names programmatically
+    dim_names = ["x", "y", "z"][1:ndims]
+    
+    # Extract each dimension from the SVector with proper naming
+    for (i, name) in enumerate(dim_names)
+        pos_columns[!, Symbol(name)] = [p[i] for p in df_planets.pos]
+        vel_columns[!, Symbol("v_"*name)] = [p[i] for p in df_planets.vel]
     end
-    rename!(df, new_names)
-
-    ## Don't even save velocity data anymore
-    # df = transform(df, :vel => AsTable)
-    # if ndims == 1
-    #     new_names = Dict("x1" => "v_x")
-    # elseif ndims == 2
-    #     new_names = Dict("x1" => "v_x", "x2" => "v_y")
-    # elseif ndims == 3
-    #     new_names = Dict("x1" => "v_x", "x2" => "v_y", "x3" => "v_z")
-    # end
-    # rename!(df, new_names)
-
+    
+    # Join the position columns to the original dataframe
+    df = hcat(df_planets, pos_columns)
+    
+    # Do the same for composition (no change needed as it's already a Vector)
     df = transform(df, :composition => AsTable)
     new_names = Dict("x$i" => "comp_$(i)" for i in 1:compsize)
     rename!(df, new_names)
-
+    
+    # Remove original vector columns
     select!(df, Not([:pos, :composition, :agent_type]))
     return df
 end
@@ -1290,37 +1335,17 @@ end
 
 ##############################################################################################################################
 ## Interactive Plot utilities 
-##     REMOVED DUE TO ISSUE WITH REQUIRES, SEE: https://github.com/JuliaPackaging/Requires.jl/issues/111
-##     UPDATE 2023-05-29: I made a work around; Now in the script you just have to add e.g. InteractiveDynamics.agent2string(agent::Life) = TerraformingAgents.agent2string(agent::Life)
 ##############################################################################################################################
-"""
-Overload InteractiveDynamics.jl's agent2string function in order to force interactive plot hover text to display only 
-information for the ids under the cursor (instead of including nearby ids)
-
-For more information see: 
-https://github.com/JuliaDynamics/InteractiveDynamics.jl/blob/4a701abdb40abefc9e3bc6161bb223d22cd2ef2d/src/agents/inspection.jl#L99
-"""
-function agent2string(model::Agents.ABM{<:ContinuousSpace}, agent_pos)
-    ids = Agents.nearby_ids_exact(agent_pos, model, 0.0)
-
-    s = ""
-
-    for id in ids
-        s *= agent2string(model[id]) * "\n"
-    end
-
-    return s
-end
 
 """
-Overload InteractiveDynamics.jl's agent2string function with custom fields for Planets
+Overload Agents.jl's agent2string function with custom fields for Planets
 
-For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
+For more information see: https://juliadynamics.github.io/Agents.jl/stable/examples/agents_visualizations/#Agent-inspection
 https://stackoverflow.com/questions/37031133/how-do-you-format-a-string-when-interpolated-in-julia
 """
-function agent2string(agent::Planet)
+function Agents.agent2string(agent::Planet)
     """
-    ✨ Planet ✨
+    Planet
     id = $(agent.id)
     pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
     vel = $(agent.vel)
@@ -1338,14 +1363,14 @@ function agent2string(agent::Planet)
 end
 
 """
-Overload InteractiveDynamics.jl's agent2string function with custom fields for Life
+Overload Agents.jl's agent2string function with custom fields for Life
 
-For more information see: https://juliadynamics.github.io/InteractiveDynamics.jl/dev/agents/#InteractiveDynamics.agent2string
+For more information see: https://juliadynamics.github.io/Agents.jl/stable/examples/agents_visualizations/#Agent-inspection
 https://stackoverflow.com/questions/37031133/how-do-you-format-a-string-when-interpolated-in-julia
 """
-function agent2string(agent::Life)
+function Agents.agent2string(agent::Life)
     """
-    ✨ Life ✨
+    Life
     id = $(agent.id)
     pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
     vel = ($(join([@sprintf("%.2f", i) for i in agent.vel],", ")))
@@ -1359,92 +1384,5 @@ function agent2string(agent::Life)
     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
     
 end
-
-##############################################################################################################################
-## OBSOLETE/REMOVED
-##############################################################################################################################
-# """
-#     update_nplanets!(model::ABM)
-
-# Adds planets to the `model` at random positions if the interactive slider is changed.
-# """
-# function update_nplanets!(model)
-#     while model.properties[:nplanets] > length(filter(kv->kv.second isa Planet, model.agents))
-#         add_planet!(model::ABM)
-#     end
-# end
-
-# """
-#     add_planet!(model::ABM, min_dist, max_dist, max_attempts)
-
-# Adds a planet to the galaxy that is within the interaction radius of a non-living planet,
-# and outside the interaction radius of all living planets. Max attempts sets the limit of
-# iterations in the while loop to find a valid planet position (default = 10*nplanets).
-
-# Right now this is only called when using the interactive application, via changing the slider and resetting the simulation.
-
-# TODO: TEST IN 1 DIMENSION
-# """
-# function add_planet!(model::ABM, 
-#     min_dist=model.interaction_radius/10, 
-#     max_dist=model.interaction_radius, 
-#     max_attempts=10*length(filter(kv -> kv.second isa Planet, model.agents))
-# )
-
-#     id = nextid(model)
-#     ndims = length(model.space.dims)
-#     ndims > 3 && throw(ArgumentError("This function is only implemented for <=3 dimensions"))
-
-#     ## https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
-#     n_attempts = 0
-#     valid_pos = false
-#     while valid_pos == false && n_attempts < max_attempts
-
-#         ## Pick a random radius offset in the allowed interaction radius slice differently based on the dimension of the model
-#         ##   There's surely a cleaner way to write this....
-#         if ndims == 1
-#             r = random_radius(model.rng, min_dist, max_dist)^2
-#             r = r*Random.shuffle(model.rng, [-1,1])[1]
-#         elseif ndims == 2
-#             r = random_radius(model.rng, min_dist, max_dist)
-#             theta = rand(model.rng)*2*π
-#         elseif ndims == 3
-#             x,y,z = random_shell_position(model.rng, min_dist, max_dist)
-#         end
-
-#         for (_, planet) in Random.shuffle(model.rng, collect(filter(kv -> kv.second isa Planet && ~kv.second.alive, model.agents)))
-            
-#             ## Apply the random radius offset to a specific planet's position differently based on the dimension of the model
-#             if ndims == 1
-#                 pos = (planet.pos[1] + r,)
-#             elseif ndims == 2
-#                 pos = (planet.pos[1] + r*cos(theta), planet.pos[2] + r*sin(theta))
-#             elseif ndims == 3
-#                 pos = (planet.pos[1] + x, planet.pos[2] + y, planet.pos[3] + z)
-#             end
-            
-#             ## Only add a planet to the galaxy if within the interaction radius of a non-living planet
-#             if length(collect(nearby_ids_exact(pos,model,min_dist))) == 0 && ~pos_is_inside_alive_radius(pos,model)
-#                 valid_pos = true
-#                 vel = default_velocities(length(model.properties[:GalaxyParameters].extent), 1)[1] 
-#                 composition = vec(random_compositions(model.rng, model.maxcomp, model.compsize, 1))
-#                 newplanet = Planet(; id, pos, vel, composition)
-#                 add_agent_pos!(newplanet, model)
-#                 println("Planet added at $pos")
-#                 return model
-#             end
-
-#             n_attempts += 1
-
-#         end
-
-#     end
-
-#     println("Planet unable to be added in valid position within `max_attempts`")
-
-#     model
-
-# end
-
 
 end # module

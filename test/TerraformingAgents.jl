@@ -519,15 +519,15 @@ function TestActivateOnStepAfterSpawn()
             compatibility_func=nearest_k_planets,
             compatibility_kwargs=Dict(:k=>10),
             destination_func=most_similar_planet)
-        model = galaxy_model_setup(galaxyparams)
+        model = galaxy_model_setup(galaxyparams, galaxy_agent_step_spawn_on_terraform!, galaxy_model_step!)
 
-        @test Set(keys(model.agents)) == Set([5, 4, 6, 2, 3, 1])
+        @test Set(allids(model)) == Set([5, 4, 6, 2, 3, 1])
         for i in 1:4
-            step!(model, galaxy_agent_step_spawn_on_terraform!, galaxy_model_step!)
+            step!(model)
 
-            i == 1 && @test Set(keys(model.agents)) == Set([5, 4, 7, 2, 3, 1])
-            i == 2 && @test Set(keys(model.agents)) == Set([5, 4, 2, 8, 3, 1])
-            i == 3 && @test Set(keys(model.agents)) == Set([5, 4, 2, 9, 3, 1])
+            i == 1 && @test Set(allids(model)) == Set([5, 4, 7, 2, 3, 1])
+            i == 2 && @test Set(allids(model)) == Set([5, 4, 2, 8, 3, 1])
+            i == 3 && @test Set(allids(model)) == Set([5, 4, 2, 9, 3, 1])
 
         end
     end
