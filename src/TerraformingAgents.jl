@@ -1591,64 +1591,40 @@ function calculate_interception(r0, v_agent_speed, r1, v1)
     return v_agent, t
 end
 
+function calculate_interceptions_exhaustive(life::Life)
+    calculate_interceptions_exhaustive(life.pos, speed(life), life.parentplanet.candidate_planets)
+end
+
 """
-Optimized version that eliminates excessive allocations
+    calculate_interceptions_exhaustive(r0, v_agent_speed, planet_agents) -> (vs_agent, ts)
+
+Calculate interception vectors and times for multiple planets using the existing calculate_interception function.
+
+# Arguments
+- `r0::AbstractVector`: Interceptor's initial position vector
+- `v_agent_speed::Real`: Interceptor's constant speed (scalar, must be positive)
+- `planet_agents`: Collection of agents with .pos, .vel, and .id attributes
+
+# Returns
+- `vs_agent::Dict{Int,Vector{Float64}}`: Dictionary mapping planet IDs to required velocity vectors
+- `ts::Dict{Int,Float64}`: Dictionary mapping planet IDs to interception times
+
+# Details
+Simply calls calculate_interception for each planet and collects successful results.
 """
 function calculate_interceptions_exhaustive(r0, v_agent_speed, planet_agents)
-    n_planets = length(planet_agents)
-    dim = length(r0)
-    
-    # Pre-allocate result containers
     vs_agent = Dict{Int, Vector{Float64}}()
     ts = Dict{Int, Float64}()
     
-    # Process each planet individually (but with shared pre-allocated arrays)
-    temp_dr = Vector{Float64}(undef, dim)
-    temp_interception = Vector{Float64}(undef, dim)
-    temp_v_agent = Vector{Float64}(undef, dim)
-    
-    for agent in planet_agents
-        # Reuse temp arrays instead of allocating new ones
-        @. temp_dr = agent.pos - r0
+    for planet in planet_agents
+        v_agent, t = calculate_interception(r0, v_agent_speed, planet.pos, planet.vel)
         
-        # Calculate coefficients
-        v_dot_v = dot(agent.vel, agent.vel)
-        dr_dot_v = dot(temp_dr, agent.vel)
-        dr_dot_dr = dot(temp_dr, temp_dr)
-        
-        a = v_dot_v - v_agent_speed^2
-        b = 2 * dr_dot_v
-        c = dr_dot_dr
-        
-        # Check discriminant
-        discriminant = b^2 - 4*a*c
-        if discriminant < 0
-            continue
+        if v_agent !== nothing && t !== nothing
+            vs_agent[planet.id] = v_agent
+            ts[planet.id] = t
         end
-        
-        # Calculate times
-        sqrt_disc = sqrt(discriminant)
-        t1 = (-b + sqrt_disc) / (2*a)
-        t2 = (-b - sqrt_disc) / (2*a)
-        
-        # Choose appropriate time
-        t = if t1 > 0 && (t2 <= 0 || t1 < t2)
-            t1
-        elseif t2 > 0
-            t2
-        else
-            continue
-        end
-        
-        # Calculate interception point and velocity (reusing temp arrays)
-        @. temp_interception = agent.pos + agent.vel * t
-        @. temp_v_agent = (temp_interception - r0) / t
-        
-        # Store results (copy to avoid aliasing)
-        vs_agent[agent.id] = copy(temp_v_agent)
-        ts[agent.id] = t
     end
-
+    
     return vs_agent, ts
 end
 
