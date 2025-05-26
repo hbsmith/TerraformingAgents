@@ -1424,12 +1424,14 @@ function random_stellar_velocities(rng::AbstractRNG=Random.GLOBAL_RNG,
     return velocities
 end
 
-function calculate_interception(life::Life, model)
-    calculate_interception(life.pos, model.lifespeed, life.destination.pos, life.destination.vel)
+function calculate_interception(life::Life)
+    life_speed = round(hypot(life.vel...), digits=10)
+    calculate_interception(life.pos, life_speed, life.destination.pos, life.destination.vel)
 end
 
-function calculate_interception(starting_planet::Planet, destination_planet::Planet, model)
-    calculate_interception(starting_planet.pos, model.lifespeed, destination_planet.pos, destination_planet.vel)
+function calculate_interception(starting_planet::Planet, destination_planet::Planet)
+    life_speed = round(hypot(life.vel...), digits=10)
+    calculate_interception(starting_planet.pos, life_speed, destination_planet.pos, destination_planet.vel)
 end
 
 """
@@ -1517,8 +1519,9 @@ end
 using LinearAlgebra
 
 
-function calculate_interceptions_optimized(life::Life, model)
-    calculate_interceptions_optimized(life.pos, model.lifespeed, filter_agents(model, Planet))
+function calculate_interceptions_optimized(life::Life)
+    life_speed = round(hypot(life.vel...), digits=10)
+    calculate_interceptions_optimized(life.pos, life_speed, life.parentplanet.candidate_planets)
 end
 """
     calculate_interceptions_optimized(r0, v_agent_speed, planet_agents) -> (vs_agent, ts, planet_ids)
