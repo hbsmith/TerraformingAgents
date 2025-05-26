@@ -50,6 +50,13 @@ Return euclidean distance between two points.
 distance(p1,p2) = hypot((p1 .- p2)...)
 
 """
+    speed(a)
+
+Return speed of Agent based on its velocity, rounded to 10 digits.
+"""
+speed(a::AbstractAgent) = round(hypot(a.vel...), digits=10)
+
+"""
     Planet{D} <: AbstractAgent
 
 One of the two Agent types. Can be terraformed by `Life`. Exists in space of dimension `D`.
@@ -1425,13 +1432,11 @@ function random_stellar_velocities(rng::AbstractRNG=Random.GLOBAL_RNG,
 end
 
 function calculate_interception(life::Life)
-    life_speed = round(hypot(life.vel...), digits=10)
-    calculate_interception(life.pos, life_speed, life.destination.pos, life.destination.vel)
+    calculate_interception(life.pos, speed(life), life.destination.pos, life.destination.vel)
 end
 
 function calculate_interception(starting_planet::Planet, destination_planet::Planet)
-    life_speed = round(hypot(life.vel...), digits=10)
-    calculate_interception(starting_planet.pos, life_speed, destination_planet.pos, destination_planet.vel)
+    calculate_interception(starting_planet.pos, speed(life), destination_planet.pos, destination_planet.vel)
 end
 
 """
@@ -1520,8 +1525,7 @@ using LinearAlgebra
 
 
 function calculate_interceptions_optimized(life::Life)
-    life_speed = round(hypot(life.vel...), digits=10)
-    calculate_interceptions_optimized(life.pos, life_speed, life.parentplanet.candidate_planets)
+    calculate_interceptions_optimized(life.pos, speed(life), life.parentplanet.candidate_planets)
 end
 """
     calculate_interceptions_optimized(r0, v_agent_speed, planet_agents) -> (vs_agent, ts, planet_ids)
