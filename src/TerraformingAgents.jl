@@ -673,6 +673,9 @@ function basic_candidate_planets(planet::Planet, model::ABM)
         p.id != planet.id, 
         allagents(model)
     )
+    #TODO: Add filter for making sure candidates have relative velocity < lifespeed if traveling away from planet 
+    #TODO: In theory, need to check relative speed also when planet is moving towards us, need to check time it takes to get to closest approach <= lifespeed*distance of closest approach
+    # I think this is just the same as checking if there can be a valid interception time though.
     
     return convert(Vector{Planet}, collect(candidates))
 end
@@ -779,18 +782,85 @@ function closest_planet_by_attribute(planet::Planet, planets::Vector{Planet}, at
 
 end
 
-nearest_planet(planet::Planet, planets::Vector{Planet}) = closest_planet_by_attribute(planet, planets, :pos)
-most_similar_planet(planet::Planet, planets::Vector{Planet}) = closest_planet_by_attribute(planet, planets, :composition)
+# Destination functions
+nearest_planet(planet::Planet, planets::Vector{Planet}; model) = closest_planet_by_attribute(planet, planets, :pos)
+most_similar_planet(planet::Planet, planets::Vector{Planet}; model) = closest_planet_by_attribute(planet, planets, :composition)
+function closest_planet_by_travel_time(planet, planets, model)
+    (vs_agent, ts) = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidateplanets)
+    (idxs, _) = findmin(ts)
+    planets[idx]
+end
+
+##########################################################################################
+# Compatibility functions relates to time instead of distance
+# These always have to use the comprehensive calculation. The basic distance compatibilities should only use the basic function. 
+##########################################################################################
+# compat
+function planets_within_travel_time(planet, model; t)
+    candidateplanets = basic_candidate_planets(planet, model)
+    (vs_agent, ts) = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidateplanets)
+    (idxs, _) = filter(p -> p.second < t, ts)
+    planets(idxs)
+end
+
+# compat
+function nearest_k_planets_by_travel_time(planet, model; k)
+    candidateplanets = basic_candidate_planets(planet, model)
+    (vs_agent, ts) = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidateplanets)
+    (idxs, _) = partialsort(collect(ts), 1:k, by=last)
+    planets(idxs)
+end
 
 function spawn_if_candidate_planets!(
     planet::Planet,
     model::ABM,
-    life::Union{Life,Nothing} = nothing
+    life::Union{Life,Nothing} = nothing;
+    calculate_interception = :exhaustive # or :simple. Only used when stars/planets move.
 )
     ## Only spawn life if there are compatible Planets
     candidateplanets = planet.candidate_planets
-    # if length(candidateplanets) == 0
-    #     println("Planet $(planet.id) has no compatible planets. It's the end of its line.")
+    destination_planet = model.destination_func(planet, planet.candidate_planets, model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
+    destination_distance = distance(destination_planet.pos, planet.pos)
+    destination_planet_relative_vel = destination_planet.vel .- planet.vel
+    if destination_planet_relative_vel == 0
+        vel = direction(planet, destination_planet) .* model.lifespeed
+    elseif calculate_interception == :simple
+        (vel, time_to_intercept) = calculate_interception(planet, destination_planet, model)
+        vel==nothing && return model #(vel=0.0.*spacesize(model))
+    elseif calculate_interception == :exhaustive
+        (vs_agent, ts) = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidateplanets)
+        (_, destination_id) = findmin(ts)
+        vel = vel[destination_id]
+
+    end
+    if length(candidateplanets) != 0
+        isnothing(life) ?  spawnlife!(planet, model) : spawnlife!(planet, model, ancestors = push!(life.ancestors, life))
+    end
+    model
+end
+
+function spawn_if_candidate_planets!(
+    planet::Planet,
+    model::ABM,
+    life::Union{Life,Nothing} = nothing;
+    calculate_interception = :exhaustive # or :simple. Only used when stars/planets move.
+)
+    ## Only spawn life if there are compatible Planets
+    candidateplanets = planet.candidate_planets
+    destination_planet = model.destination_func(planet, planet.candidate_planets) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
+    destination_distance = distance(destination_planet.pos, planet.pos)
+    destination_planet_relative_vel = destination_planet.vel .- planet.vel
+    if destination_planet_relative_vel == 0
+        vel = direction(planet, destination_planet) .* model.lifespeed
+    elseif calculate_interception == :simple
+        (vel, time_to_intercept) = calculate_interception(planet, destination_planet, model)
+        vel==nothing && return model #(vel=0.0.*spacesize(model))
+    elseif calculate_interception == :exhaustive
+        (vs_agent, ts) = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidateplanets)
+        (_, destination_id) = findmin(ts)
+        vel = vel[destination_id]
+
+    end
     if length(candidateplanets) != 0
         isnothing(life) ?  spawnlife!(planet, model) : spawnlife!(planet, model, ancestors = push!(life.ancestors, life))
     end
@@ -1524,11 +1594,11 @@ end
 using LinearAlgebra
 
 
-function calculate_interceptions_optimized(life::Life)
-    calculate_interceptions_optimized(life.pos, speed(life), life.parentplanet.candidate_planets)
+function calculate_interceptions_exhaustive(life::Life)
+    calculate_interceptions_exhaustive(life.pos, speed(life), life.parentplanet.candidate_planets)
 end
 """
-    calculate_interceptions_optimized(r0, v_agent_speed, planet_agents) -> (vs_agent, ts, planet_ids)
+    calculate_interceptions_exhaustive(r0, v_agent_speed, planet_agents) -> (vs_agent, ts, planet_ids)
 
 Calculate interception velocities and times for an agent to intercept multiple planets
 using fully vectorized operations for maximum computational efficiency.
@@ -1555,7 +1625,7 @@ the entire calculation process.
 - Optimized for large numbers of agents through complete vectorization
 - Avoids unnecessary memory allocations and function calls
 """
-function calculate_interceptions_optimized(r0, v_agent_speed, planet_agents)
+function calculate_interceptions_exhaustive(r0, v_agent_speed, planet_agents)
     # Extract positions and velocities into matrices
     positions, velocities, ids = extract_agent_data(planet_agents, length(r0))
     
@@ -1731,7 +1801,7 @@ function process_valid_interceptions(positions, velocities, ids, r0,
     # Prepare result containers
     vs_agent = Dict{Int, Vector{Float64}}()
     ts = Dict{Int, Float64}()
-    planet_ids = ids[final_indices]
+    # planet_ids = ids[final_indices]
     
     # Calculate interception vectors
     for (idx, t) in zip(final_indices, t_vals)
@@ -1746,7 +1816,7 @@ function process_valid_interceptions(positions, velocities, ids, r0,
         ts[planet_id] = t
     end
     
-    return vs_agent, ts, planet_ids
+    return vs_agent, ts #, planet_ids
 end
 
 ##############################################################################################################################
