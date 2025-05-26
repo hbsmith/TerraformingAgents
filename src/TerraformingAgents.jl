@@ -785,10 +785,10 @@ end
 # Destination functions
 nearest_planet(planet::Planet, planets::Vector{Planet}; model) = closest_planet_by_attribute(planet, planets, :pos)
 most_similar_planet(planet::Planet, planets::Vector{Planet}; model) = closest_planet_by_attribute(planet, planets, :composition)
-function closest_planet_by_travel_time(planet, planets, model)
+function fastest_planet_to_reach(planet::Planet, planets::Vector{Planet}; model)
     (vs_agent, ts) = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidateplanets)
     (idxs, _) = findmin(ts)
-    planets[idx]
+    planets[idx], vel
 end
 
 ##########################################################################################
@@ -811,30 +811,74 @@ function nearest_k_planets_by_travel_time(planet, model; k)
     planets(idxs)
 end
 
+# TODO: Move find_compatible_planets! function AWAY from the terraform! function, and into this function, if planets are moving (because distances change in that case)
 function spawn_if_candidate_planets!(
     planet::Planet,
     model::ABM,
     life::Union{Life,Nothing} = nothing;
-    calculate_interception = :exhaustive # or :simple. Only used when stars/planets move.
-)
-    ## Only spawn life if there are compatible Planets
-    candidateplanets = planet.candidate_planets
-    destination_planet = model.destination_func(planet, planet.candidate_planets, model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
-    destination_distance = distance(destination_planet.pos, planet.pos)
-    destination_planet_relative_vel = destination_planet.vel .- planet.vel
-    if destination_planet_relative_vel == 0
-        vel = direction(planet, destination_planet) .* model.lifespeed
-    elseif calculate_interception == :simple
-        (vel, time_to_intercept) = calculate_interception(planet, destination_planet, model)
-        vel==nothing && return model #(vel=0.0.*spacesize(model))
-    elseif calculate_interception == :exhaustive
-        (vs_agent, ts) = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidateplanets)
-        (_, destination_id) = findmin(ts)
-        vel = vel[destination_id]
+    n_tries
+    )
 
-    end
+    nonmoving_planets = all([all(iszero, v.vel) for v in filter_agents(model, Planet)]) # true if no movement
+    if nonmoving_planets
+        candidateplanets = planet.candidate_planets
+        destination_planet = model.destination_func(planet, planet.candidate_planets; model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
+        destination_distance = distance(destination_planet.pos, planet.pos)
+        vel = direction(planet, destination_planet) .* model.lifespeed
+    else
+        if model.compatibility_func == compositionally_similar_planets
+            find_compatible_planets!(planet, model)
+            candidateplanets = planet.candidate_planets
+            
+            if model.destination_func == nearest_planet
+                vel=nothing 
+                while vel==nothing
+                    # TODO: Add cutoff here to prevent this from getting caught in a loop if there are no valid destinations
+                    # TODO: Return the sorted list of the nearest planets instead of recalculating each time
+                    destination_planet = model.destination_func(planet, candidateplanets; model)
+                    filter!(p-> p.id != destination_planet.id, candidateplanets)
+                    (vel, _) = calculate_interception(planet, destination_planet, model)
+                end 
+                SPAWN_LIFE(destination_planet, vel) 
+            
+            elseif model.destination_func == fastest_planet_to_reach
+                #TODO: kwarg here to accept max number of planets to search within distance
+                (destination_planet, vel) = model.destination_func(planet, candidateplanets; model)
+                SPAWN_LIFE(destination_planet, vel) 
+            end
+
+        elseif model.compatibility_func == planets_in_range
+            find_compatible_planets!(planet, model)
+            candidateplanets = planet.candidate_planets
+
+            if model.destination_func == most_similar_planet 
+
+                vel=nothing 
+                while vel==nothing
+                    destination_planet = model.destination_func(planet, candidateplanets; model)
+                    filter!(p-> p.id != destination_planet.id, candidateplanets)
+                    (vel, _) = calculate_interception(planet, destination_planet, model)
+                end 
+                SPAWN_LIFE(destination_planet, vel) 
+            end
+
+        elseif model.compatibility_func == planets_within_travel_time
+
+            find_compatible_planets!(planet, model)
+            candidateplanets = planet.candidate_planets
+
+            if model.destination_func == most_similar_planet 
+
+                (destination_planet, vel) = model.destination_func(planet, candidateplanets; model)
+                SPAWN_LIFE(destination_planet, vel) 
+
+            end
+
+        end
+
+    ## Now that you have vel an destination planet
     if length(candidateplanets) != 0
-        isnothing(life) ?  spawnlife!(planet, model) : spawnlife!(planet, model, ancestors = push!(life.ancestors, life))
+        isnothing(life) ?  spawnlife!(planet, model, vel, destination_planet) : spawnlife!(planet, model, vel, destination_planet, ancestors = push!(life.ancestors, life))
     end
     model
 end
@@ -866,7 +910,32 @@ end
 #     end
 #     model
 # end
+function spawnlife!(
+    planet::Planet,
+    model::ABM,
+    vel,
+    destination_planet;
+    ancestors::Vector{Life} = Life[]
+    )
 
+    life = Life(;
+        id = Agents.nextid(model),
+        pos = planet.pos,
+        vel = SA[vel...],
+        parentplanet = planet,
+        composition = planet.composition,
+        destination = destination_planet,
+        destination_distance = distance(destination_planet.pos, planet.pos),
+        ancestors
+    ) ## Only "first" life won't have ancestors
+
+    life = add_agent_own_pos!(life, model)
+
+    destination_planet.claimed = true 
+    ## NEED TO MAKE SURE THAT THE FIRST LIFE HAS PROPERTIES RECORDED ON THE FIRST PLANET
+    model
+
+end
 """
     spawnlife!(planet::Planet, model::ABM; ancestors::Vector{Life} = Life[])
 
@@ -880,7 +949,7 @@ function spawnlife!(
     ancestors::Vector{Life} = Life[]
     )
 
-    destination_planet = model.destination_func(planet, planet.candidate_planets) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
+    destination_planet = model.destination_func(planet, planet.candidate_planets; model) #model.compatibility_func(planet, model) #nearest_planet(planet, planet.candidate_planets)
     destination_distance = distance(destination_planet.pos, planet.pos)
     
     # TODO: find destinations not by current distance, but by which planet would be fastest to reach? Seems computationally taxing though
@@ -1505,8 +1574,8 @@ function calculate_interception(life::Life)
     calculate_interception(life.pos, speed(life), life.destination.pos, life.destination.vel)
 end
 
-function calculate_interception(starting_planet::Planet, destination_planet::Planet)
-    calculate_interception(starting_planet.pos, speed(life), destination_planet.pos, destination_planet.vel)
+function calculate_interception(starting_planet::Planet, destination_planet::Planet, model)
+    calculate_interception(starting_planet.pos, model.lifespeed, destination_planet.pos, destination_planet.vel)
 end
 
 """
