@@ -816,7 +816,7 @@ function spawn_if_candidate_planets!(
     planet::Planet,
     model::ABM,
     life::Union{Life,Nothing} = nothing;
-    n_tries
+    n_tries=10 # try to find 10 destination planets based on the interception characteristics , after that give up and avoid spawning.
     )
 
     nonmoving_planets = all([all(iszero, v.vel) for v in filter_agents(model, Planet)]) # true if no movement
