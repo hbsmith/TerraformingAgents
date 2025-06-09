@@ -692,7 +692,7 @@ function compositionally_similar_planets_static(planet::Planet, candidates::Vect
     planets_in_attribute_range(planet, candidates, :composition, allowed_diff)
 end
 
-function nearest_k_planets_static(planet::Planet, candidates::Vector{<:Planet}, k)
+function nearest_k_planets_static(planet::Planet, candidates::Vector{<:Planet}; k)
     n_candidates = length(candidates)
     if n_candidates == 0
         return Planet[]
@@ -705,7 +705,7 @@ function nearest_k_planets_static(planet::Planet, candidates::Vector{<:Planet}, 
     candidates[idxs]
 end
 
-function planets_in_range_static(planet::Planet, candidates::Vector{<:Planet}, r)
+function planets_in_range_static(planet::Planet, candidates::Vector{<:Planet}; r)
     length(candidates) == 0 && return Planet[]
     planets_in_attribute_range(planet, candidates, :pos, r)
 end
@@ -797,27 +797,32 @@ function planets_in_range_moving(planet::Planet, candidates::Vector{<:Planet}, m
     return (compatible_planets, compatible_velocities, compatible_times)
 end
 
-function nearest_k_planets_by_travel_time_moving(planet::Planet, candidates::Vector{<:Planet}, model::ABM; k)
+function nearest_k_planets_by_travel_time_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; k)
     length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
     velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
     
-    # Only consider planets that have valid interceptions
-    valid_planet_ids = collect(keys(times_dict))
-    length(valid_planet_ids) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
+    # Build arrays in the same order - use candidates order as the reference
+    valid_data = []
+    for candidate in candidates
+        if candidate.id in keys(times_dict)
+            push!(valid_data, (candidate, velocities_dict[candidate.id], times_dict[candidate.id]))
+        end
+    end
     
-    # Get the corresponding planets, times, and velocities
-    valid_planets = [p for p in candidates if p.id in valid_planet_ids]
-    valid_times = [times_dict[id] for id in valid_planet_ids]
-    valid_velocities = [velocities_dict[id] for id in valid_planet_ids]
+    length(valid_data) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
-    n_valid = length(valid_planets)
-    k = min(k, n_valid)
+    k = min(k, length(valid_data))
     
-    # Sort by travel time
-    sorted_indices = partialsortperm(valid_times, 1:k)
+    # Sort by travel time (third element of tuple)
+    sorted_data = partialsort(valid_data, 1:k, by=x->x[3])
     
-    return (valid_planets[sorted_indices], valid_velocities[sorted_indices], valid_times[sorted_indices])
+    # Extract sorted arrays
+    result_planets = [item[1] for item in sorted_data]
+    result_velocities = [item[2] for item in sorted_data]
+    result_times = [item[3] for item in sorted_data]
+    
+    return (result_planets, result_velocities, result_times)
 end
 
 # Moving destination functions
