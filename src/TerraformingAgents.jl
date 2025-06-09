@@ -676,7 +676,7 @@ function basic_candidate_planets(planet::Planet, model::ABM)
     return convert(Vector{Planet}, collect(candidates))
 end
 
-function planet_attribute_as_matrix(planets::Vector{Planet}, attr::Symbol)
+function planet_attribute_as_matrix(planets::Vector{<:Planet}, attr::Symbol)
     length(planets) == 0 && throw(ArgumentError("planets is empty"))
     planet_attributes = map(x -> getproperty(x, attr), planets)
     ## need to collect because when attr = :pos, the result is a Vector of Tuples
@@ -687,12 +687,12 @@ end
 # Static Planet Functions (original logic)
 ##########################################################################################
 
-function compositionally_similar_planets_static(planet::Planet, candidates::Vector{Planet}; allowed_diff)
+function compositionally_similar_planets_static(planet::Planet, candidates::Vector{<:Planet}; allowed_diff)
     length(candidates) == 0 && return Planet[]
     planets_in_attribute_range(planet, candidates, :composition, allowed_diff)
 end
 
-function nearest_k_planets_static(planet::Planet, candidates::Vector{Planet}, k)
+function nearest_k_planets_static(planet::Planet, candidates::Vector{<:Planet}, k)
     n_candidates = length(candidates)
     if n_candidates == 0
         return Planet[]
@@ -705,27 +705,27 @@ function nearest_k_planets_static(planet::Planet, candidates::Vector{Planet}, k)
     candidates[idxs]
 end
 
-function planets_in_range_static(planet::Planet, candidates::Vector{Planet}, r)
+function planets_in_range_static(planet::Planet, candidates::Vector{<:Planet}, r)
     length(candidates) == 0 && return Planet[]
     planets_in_attribute_range(planet, candidates, :pos, r)
 end
 
-function planets_in_attribute_range(planet::Planet, planets::Vector{Planet}, attr::Symbol, r)
+function planets_in_attribute_range(planet::Planet, planets::Vector{<:Planet}, attr::Symbol, r)
     planetattributes = planet_attribute_as_matrix(planets, attr)
     idxs = inrange(KDTree(planetattributes), Vector(getproperty(planet, attr)), r)
     planets[idxs]
 end
 
 # Static destination functions
-function nearest_planet_static(planet::Planet, candidates::Vector{Planet})
+function nearest_planet_static(planet::Planet, candidates::Vector{<:Planet})
     closest_planet_by_attribute(planet, candidates, :pos)
 end
 
-function most_similar_planet_static(planet::Planet, candidates::Vector{Planet})
+function most_similar_planet_static(planet::Planet, candidates::Vector{<:Planet})
     closest_planet_by_attribute(planet, candidates, :composition)
 end
 
-function closest_planet_by_attribute(planet::Planet, planets::Vector{Planet}, attr::Symbol)
+function closest_planet_by_attribute(planet::Planet, planets::Vector{<:Planet}, attr::Symbol)
     planetattributes = planet_attribute_as_matrix(planets, attr)
     idx, dist = nn(KDTree(planetattributes), Vector(getproperty(planet, attr)))
     planets[idx]
@@ -735,7 +735,7 @@ end
 # Moving Planet Functions (with interception calculations)
 ##########################################################################################
 
-function compositionally_similar_planets_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; allowed_diff)
+function compositionally_similar_planets_moving(planet::Planet, candidates::Vector{<:Planet}, model::ABM; allowed_diff)
     length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
     # Calculate all interceptions once
@@ -758,7 +758,7 @@ function compositionally_similar_planets_moving(planet::Planet, candidates::Vect
     return (compatible_planets, compatible_velocities, compatible_times)
 end
 
-function planets_within_travel_time_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; max_time)
+function planets_within_travel_time_moving(planet::Planet, candidates::Vector{<:Planet}, model::ABM; max_time)
     length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
     velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
@@ -775,7 +775,7 @@ function planets_within_travel_time_moving(planet::Planet, candidates::Vector{Pl
     return (valid_planets, valid_velocities, valid_times)
 end
 
-function planets_in_range_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; r)
+function planets_in_range_moving(planet::Planet, candidates::Vector{<:Planet}, model::ABM; r)
     length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
     velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
@@ -797,7 +797,7 @@ function planets_in_range_moving(planet::Planet, candidates::Vector{Planet}, mod
     return (compatible_planets, compatible_velocities, compatible_times)
 end
 
-function nearest_k_planets_by_travel_time_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; k)
+function nearest_k_planets_by_travel_time_moving(planet::Planet, candidates::Vector{<:Planet}, model::ABM; k)
     length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
     velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
@@ -821,14 +821,14 @@ function nearest_k_planets_by_travel_time_moving(planet::Planet, candidates::Vec
 end
 
 # Moving destination functions
-function nearest_planet_moving(planets::Vector{Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64})
+function nearest_planet_moving(planets::Vector{<:Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64})
     length(planets) == 0 && return (nothing, nothing)
     
     min_idx = argmin([norm(p.pos) for p in planets])  # or use times if you prefer
     return (planets[min_idx], velocities[min_idx])
 end
 
-function most_similar_planet_moving(reference_planet::Planet, planets::Vector{Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64})
+function most_similar_planet_moving(reference_planet::Planet, planets::Vector{<:Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64})
     length(planets) == 0 && return (nothing, nothing)
     
     # Find most compositionally similar
@@ -837,7 +837,7 @@ function most_similar_planet_moving(reference_planet::Planet, planets::Vector{Pl
     return (planets[min_idx], velocities[min_idx])
 end
 
-function fastest_planet_to_reach_moving(planets::Vector{Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64})
+function fastest_planet_to_reach_moving(planets::Vector{<:Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64})
     length(planets) == 0 && return (nothing, nothing)
     
     min_idx = argmin(times)
@@ -916,7 +916,7 @@ function spawn_moving!(planet::Planet, model::ABM, life::Union{Life,Nothing})
     return model
 end
 
-function spawn_moving_exhaustive!(planet::Planet, candidates::Vector{Planet}, model::ABM, life::Union{Life,Nothing})
+function spawn_moving_exhaustive!(planet::Planet, candidates::Vector{<:Planet}, model::ABM, life::Union{Life,Nothing})
     # Calculate ALL interceptions upfront
     compatible_planets, velocities, times = apply_compatibility_moving(planet, candidates, model)
     length(compatible_planets) == 0 && return model
@@ -932,7 +932,7 @@ function spawn_moving_exhaustive!(planet::Planet, candidates::Vector{Planet}, mo
     end
 end
 
-function spawn_moving_lazy!(planet::Planet, candidates::Vector{Planet}, model::ABM, life::Union{Life,Nothing})
+function spawn_moving_lazy!(planet::Planet, candidates::Vector{<:Planet}, model::ABM, life::Union{Life,Nothing})
     # Filter candidates without calculating interceptions
     filtered_candidates = apply_compatibility_lazy(planet, candidates, model)
     length(filtered_candidates) == 0 && return model
@@ -954,7 +954,7 @@ end
 # Lazy Calculation Functions (for moving planets when exhaustive calc not needed)
 ##########################################################################################
 
-function apply_compatibility_lazy(planet::Planet, candidates::Vector{Planet}, model::ABM)
+function apply_compatibility_lazy(planet::Planet, candidates::Vector{<:Planet}, model::ABM)
     # These are the same as static versions since they don't need velocity/time data
     if model.compatibility_func == :compositionally_similar
         isnothing(model.compatibility_kwargs) && error("compositionally_similar requires 'allowed_diff' parameter in compatibility_kwargs")
@@ -970,7 +970,7 @@ function apply_compatibility_lazy(planet::Planet, candidates::Vector{Planet}, mo
     end
 end
 
-function get_destination_candidates_lazy(planet::Planet, candidates::Vector{Planet}, model::ABM)
+function get_destination_candidates_lazy(planet::Planet, candidates::Vector{<:Planet}, model::ABM)
     # Return candidates in the order we should try them
     if model.destination_func == :nearest
         # Sort by distance, try closest first
@@ -991,7 +991,7 @@ end
 # Compatibility and Destination Function Dispatchers
 ##########################################################################################
 
-function apply_compatibility_static(planet::Planet, candidates::Vector{Planet}, model::ABM)
+function apply_compatibility_static(planet::Planet, candidates::Vector{<:Planet}, model::ABM)
     if model.compatibility_func == :compositionally_similar
         isnothing(model.compatibility_kwargs) && error("compositionally_similar requires 'allowed_diff' parameter in compatibility_kwargs")
         return compositionally_similar_planets_static(planet, candidates; model.compatibility_kwargs...)
@@ -1006,7 +1006,7 @@ function apply_compatibility_static(planet::Planet, candidates::Vector{Planet}, 
     end
 end
 
-function apply_compatibility_moving(planet::Planet, candidates::Vector{Planet}, model::ABM)
+function apply_compatibility_moving(planet::Planet, candidates::Vector{<:Planet}, model::ABM)
     if model.compatibility_func == :compositionally_similar
         isnothing(model.compatibility_kwargs) && error("compositionally_similar requires 'allowed_diff' parameter in compatibility_kwargs")
         return compositionally_similar_planets_moving(planet, candidates, model; model.compatibility_kwargs...)
@@ -1024,7 +1024,7 @@ function apply_compatibility_moving(planet::Planet, candidates::Vector{Planet}, 
     end
 end
 
-function apply_destination_static(planet::Planet, candidates::Vector{Planet}, model::ABM)
+function apply_destination_static(planet::Planet, candidates::Vector{<:Planet}, model::ABM)
     if model.destination_func == :nearest
         return nearest_planet_static(planet, candidates)
     elseif model.destination_func == :most_similar
@@ -1034,7 +1034,7 @@ function apply_destination_static(planet::Planet, candidates::Vector{Planet}, mo
     end
 end
 
-function apply_destination_moving(planet::Planet, candidates::Vector{Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64}, model::ABM)
+function apply_destination_moving(planet::Planet, candidates::Vector{<:Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64}, model::ABM)
     if model.destination_func == :nearest
         return nearest_planet_moving(candidates, velocities, times)
     elseif model.destination_func == :most_similar
