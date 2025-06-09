@@ -917,12 +917,14 @@ end
 function apply_compatibility_lazy(planet::Planet, candidates::Vector{Planet}, model::ABM)
     # These are the same as static versions since they don't need velocity/time data
     if model.compatibility_func == :compositionally_similar
-        return compositionally_similar_planets_static(planet, candidates; 
-                                                     allowed_diff = model.compatibility_params.allowed_diff)
+        isnothing(model.compatibility_kwargs) && error("compositionally_similar requires 'allowed_diff' parameter in compatibility_kwargs")
+        return compositionally_similar_planets_static(planet, candidates; model.compatibility_kwargs...)
     elseif model.compatibility_func == :planets_in_range
-        return planets_in_range_static(planet, candidates, model.compatibility_params.r)
+        isnothing(model.compatibility_kwargs) && error("planets_in_range requires 'r' parameter in compatibility_kwargs")
+        return planets_in_range_static(planet, candidates; model.compatibility_kwargs...)
     elseif model.compatibility_func == :nearest_k
-        return nearest_k_planets_static(planet, candidates, model.compatibility_params.k)
+        isnothing(model.compatibility_kwargs) && error("nearest_k requires 'k' parameter in compatibility_kwargs")
+        return nearest_k_planets_static(planet, candidates; model.compatibility_kwargs...)
     else
         error("Compatibility function $(model.compatibility_func) requires exhaustive calculation")
     end
@@ -951,12 +953,14 @@ end
 
 function apply_compatibility_static(planet::Planet, candidates::Vector{Planet}, model::ABM)
     if model.compatibility_func == :compositionally_similar
-        return compositionally_similar_planets_static(planet, candidates; 
-                                                     allowed_diff = model.compatibility_params.allowed_diff)
+        isnothing(model.compatibility_kwargs) && error("compositionally_similar requires 'allowed_diff' parameter in compatibility_kwargs")
+        return compositionally_similar_planets_static(planet, candidates; model.compatibility_kwargs...)
     elseif model.compatibility_func == :planets_in_range
-        return planets_in_range_static(planet, candidates, model.compatibility_params.r)
+        isnothing(model.compatibility_kwargs) && error("planets_in_range requires 'r' parameter in compatibility_kwargs")
+        return planets_in_range_static(planet, candidates; model.compatibility_kwargs...)
     elseif model.compatibility_func == :nearest_k
-        return nearest_k_planets_static(planet, candidates, model.compatibility_params.k)
+        isnothing(model.compatibility_kwargs) && error("nearest_k requires 'k' parameter in compatibility_kwargs")
+        return nearest_k_planets_static(planet, candidates; model.compatibility_kwargs...)
     else
         error("Unknown compatibility function: $(model.compatibility_func)")
     end
@@ -964,17 +968,17 @@ end
 
 function apply_compatibility_moving(planet::Planet, candidates::Vector{Planet}, model::ABM)
     if model.compatibility_func == :compositionally_similar
-        return compositionally_similar_planets_moving(planet, candidates, model;
-                                                     allowed_diff = model.compatibility_params.allowed_diff)
+        isnothing(model.compatibility_kwargs) && error("compositionally_similar requires 'allowed_diff' parameter in compatibility_kwargs")
+        return compositionally_similar_planets_moving(planet, candidates, model; model.compatibility_kwargs...)
     elseif model.compatibility_func == :planets_in_range
-        return planets_in_range_moving(planet, candidates, model;
-                                      r = model.compatibility_params.r)
+        isnothing(model.compatibility_kwargs) && error("planets_in_range requires 'r' parameter in compatibility_kwargs")
+        return planets_in_range_moving(planet, candidates, model; model.compatibility_kwargs...)
     elseif model.compatibility_func == :within_travel_time
-        return planets_within_travel_time_moving(planet, candidates, model;
-                                               max_time = model.compatibility_params.max_time)
+        isnothing(model.compatibility_kwargs) && error("within_travel_time requires 'max_time' parameter in compatibility_kwargs")
+        return planets_within_travel_time_moving(planet, candidates, model; model.compatibility_kwargs...)
     elseif model.compatibility_func == :nearest_k_by_time
-        return nearest_k_planets_by_travel_time_moving(planet, candidates, model;
-                                                      k = model.compatibility_params.k)
+        isnothing(model.compatibility_kwargs) && error("nearest_k_by_time requires 'k' parameter in compatibility_kwargs")
+        return nearest_k_planets_by_travel_time_moving(planet, candidates, model; model.compatibility_kwargs...)
     else
         error("Unknown compatibility function: $(model.compatibility_func)")
     end
