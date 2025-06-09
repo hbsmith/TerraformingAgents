@@ -736,58 +736,95 @@ end
 ##########################################################################################
 
 function compositionally_similar_planets_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; allowed_diff)
-    length(candidates) == 0 && return (Planet[], Vector{Float64}[], Float64[])
+    length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
     # Calculate all interceptions once
-    velocities, times = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
+    velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
     
-    # Filter by composition
-    compatible_planets = planets_in_attribute_range(planet, candidates, :composition, allowed_diff)
-    compatible_indices = [findfirst(p -> p.id == cp.id, candidates) for cp in compatible_planets]
-    filter!(!isnothing, compatible_indices)
+    # Only consider planets that have valid interceptions
+    valid_planet_ids = collect(keys(times_dict))
+    length(valid_planet_ids) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
-    return (candidates[compatible_indices], velocities[compatible_indices], times[compatible_indices])
+    # Filter candidates to only those with valid interceptions
+    reachable_candidates = [p for p in candidates if p.id in valid_planet_ids]
+    
+    # Filter by composition among the reachable candidates
+    compatible_planets = planets_in_attribute_range(planet, reachable_candidates, :composition, allowed_diff)
+    
+    # Get velocities and times for the compatible planets
+    compatible_velocities = [velocities_dict[p.id] for p in compatible_planets]
+    compatible_times = [times_dict[p.id] for p in compatible_planets]
+    
+    return (compatible_planets, compatible_velocities, compatible_times)
 end
 
 function planets_within_travel_time_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; max_time)
-    length(candidates) == 0 && return (Planet[], Vector{Float64}[], Float64[])
+    length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
-    velocities, times = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
-    valid_indices = findall(t -> t < max_time, times)
+    velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
     
-    return (candidates[valid_indices], velocities[valid_indices], times[valid_indices])
+    # Filter by travel time
+    valid_entries = [(id, time) for (id, time) in times_dict if time < max_time]
+    length(valid_entries) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
+    
+    valid_ids = [entry[1] for entry in valid_entries]
+    valid_planets = [p for p in candidates if p.id in valid_ids]
+    valid_velocities = [velocities_dict[id] for id in valid_ids]
+    valid_times = [times_dict[id] for id in valid_ids]
+    
+    return (valid_planets, valid_velocities, valid_times)
 end
 
 function planets_in_range_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; r)
-    length(candidates) == 0 && return (Planet[], Vector{Float64}[], Float64[])
+    length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
-    velocities, times = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
+    velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
     
-    # Filter by position range
-    compatible_planets = planets_in_range_static(planet, candidates, r)
-    compatible_indices = [findfirst(p -> p.id == cp.id, candidates) for cp in compatible_planets]
-    filter!(!isnothing, compatible_indices)
+    # Only consider planets that have valid interceptions
+    valid_planet_ids = collect(keys(times_dict))
+    length(valid_planet_ids) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
-    return (candidates[compatible_indices], velocities[compatible_indices], times[compatible_indices])
+    # Filter candidates to only those with valid interceptions
+    reachable_candidates = [p for p in candidates if p.id in valid_planet_ids]
+    
+    # Filter by position range among the reachable candidates
+    compatible_planets = planets_in_range_static(planet, reachable_candidates, r)
+    
+    # Get velocities and times for the compatible planets
+    compatible_velocities = [velocities_dict[p.id] for p in compatible_planets]
+    compatible_times = [times_dict[p.id] for p in compatible_planets]
+    
+    return (compatible_planets, compatible_velocities, compatible_times)
 end
 
 function nearest_k_planets_by_travel_time_moving(planet::Planet, candidates::Vector{Planet}, model::ABM; k)
-    length(candidates) == 0 && return (Planet[], Vector{Float64}[], Float64[])
+    length(candidates) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
-    velocities, times = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
+    velocities_dict, times_dict = calculate_interceptions_exhaustive(planet.pos, model.lifespeed, candidates)
     
-    n_candidates = length(candidates)
-    k = min(k, n_candidates)
+    # Only consider planets that have valid interceptions
+    valid_planet_ids = collect(keys(times_dict))
+    length(valid_planet_ids) == 0 && return (Planet[], Vector{Vector{Float64}}[], Float64[])
     
-    sorted_indices = partialsortperm(times, 1:k)
-    return (candidates[sorted_indices], velocities[sorted_indices], times[sorted_indices])
+    # Get the corresponding planets, times, and velocities
+    valid_planets = [p for p in candidates if p.id in valid_planet_ids]
+    valid_times = [times_dict[id] for id in valid_planet_ids]
+    valid_velocities = [velocities_dict[id] for id in valid_planet_ids]
+    
+    n_valid = length(valid_planets)
+    k = min(k, n_valid)
+    
+    # Sort by travel time
+    sorted_indices = partialsortperm(valid_times, 1:k)
+    
+    return (valid_planets[sorted_indices], valid_velocities[sorted_indices], valid_times[sorted_indices])
 end
 
 # Moving destination functions
 function nearest_planet_moving(planets::Vector{Planet}, velocities::Vector{Vector{Float64}}, times::Vector{Float64})
     length(planets) == 0 && return (nothing, nothing)
     
-    min_idx = argmin([norm(pos) for pos in [p.pos for p in planets]])  # or use times if you prefer
+    min_idx = argmin([norm(p.pos) for p in planets])  # or use times if you prefer
     return (planets[min_idx], velocities[min_idx])
 end
 
