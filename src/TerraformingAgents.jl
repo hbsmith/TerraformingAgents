@@ -56,9 +56,6 @@ Return speed of Agent based on its velocity, rounded to 10 digits.
 """
 speed(a::AbstractAgent) = round(hypot(a.vel...), digits=10)
 
-get_ancestors(life::Union{Life,Nothing}) = isnothing(life) ? Life[] : push!(copy(life.ancestors), life)
-
-
 """
     Planet{D} <: AbstractAgent
 
@@ -133,6 +130,8 @@ function Base.show(io::IO, life::Life{D}) where {D}
     s *= "\n\n (†) id shown in-place of object"
     print(io, s)
 end
+
+get_ancestors(life::Union{Life,Nothing}) = isnothing(life) ? Life[] : push!(copy(life.ancestors), life)
 
 """
     random_positions(rng, maxdims::NTuple{D,X}, n) where {D,X<:Real}
@@ -217,9 +216,9 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `spawn_rate::Real = 0.02`: the frequency at which to send out life from every living planet (in units of dt) (only used for `galaxy_agent_step_spawn_at_rate!`)
 - `compmix_func::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compmix_func`.
-- `compatibility_func::Function = compositionally_similar_planets`: Function to use for deciding what `Planet`s are compatible for future terraformation. 
+- `compatibility_func::Symbol = compositionally_similar_planets`: Name of function to use for deciding what `Planet`s are compatible for future terraformation. 
 - `compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compatibility_func`.
-- `destination_func::Function = nearest_planet`:  Function to use for deciding which compatible `Planet` (which of the `planet.candidate_planet`s) should be the next destination. 
+- `destination_func::Symbol = nearest_planet`:  Name of function to use for deciding which compatible `Planet` (which of the `planet.candidate_planet`s) should be the next destination. 
 - `pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}}`: the initial positions of all `Planet`s.
 - `vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}}`: the initial velocities of all `Planet`s.
 - `maxcomp::Float64`: the max value of any element within the composition vectors.
@@ -270,9 +269,9 @@ mutable struct GalaxyParameters
         spawn_rate::Real = 0.02,
         compmix_func::Function = average_compositions,
         compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing,
-        compatibility_func::Function = compositionally_similar_planets,
+        compatibility_func::Symbol = :compositionally_similar,
         compatibility_kwargs::Union{Dict{Symbol},Nothing} = nothing,
-        destination_func::Function = nearest_planet,
+        destination_func::Symbol = :nearest,
         pos::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}},
         vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}},
         maxcomp::Real,
@@ -625,8 +624,6 @@ function galaxy_life_setup(model, params::GalaxyParameters)
     ## Spawn life (candidate planets have to be calculated after all alive planets are initialized)
     for planet in Iterators.filter(a -> a isa Planet && a.alive, allagents(model))
 
-        # planet.candidate_planets = compatibleplanets(planet, model)
-        find_compatible_planets!(planet, model)
         spawn_if_candidate_planets!(planet, model)
 
     end
@@ -1439,9 +1436,6 @@ positions_to_mutate(random_strand, mutation_rate=1/length(random_strand)) = rand
 ## Should I make the below funciton take as input (life.composition, planet.composition, model) instead of (life, planet, model)?
 mix_compositions!(life::Life, planet::Planet, model::ABM) = isnothing(model.compmix_kwargs) ? planet.composition = model.compmix_func(life.composition, planet.composition, model) : planet.composition = model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
 
-## I think I can actually simplify the below since all compatible_planet functions are going to take the model as input, so I don't need to check for the precense of model.compatibility_kwargs first? maybe?
-find_compatible_planets!(planet::Planet, model::ABM) = isnothing(model.compatibility_kwargs) ? planet.candidate_planets = model.compatibility_func(planet, model) : planet.candidate_planets = model.compatibility_func(planet, model; model.compatibility_kwargs...)
-
 """
     terraform!(life::Life, planet::Planet, model::ABM)
 
@@ -1463,9 +1457,6 @@ function terraform!(life::Life, planet::Planet, model::ABM)
     push!(planet.parentplanets, life.parentplanet)
     push!(planet.parentcompositions, life.composition)
     
-    ## Calculate candidate planets
-    find_compatible_planets!(planet, model)
-
     # planet.claimed = true ## Test to make sure this is already true beforehand
 end
 
