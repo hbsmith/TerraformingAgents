@@ -921,9 +921,6 @@ function spawn_moving_exhaustive!(planet::Planet, candidates::Vector{<:Planet}, 
     compatible_planets, velocities, times = apply_compatibility_moving(planet, candidates, model)
     length(compatible_planets) == 0 && return model
     
-
-    @show compatible_planets
-    @show typeof(compatible_planets)
     # Select destination (returns planet and velocity)
     destination_planet, vel = apply_destination_moving(planet, compatible_planets, velocities, times, model)
     
