@@ -82,6 +82,8 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     parentplanets::Vector{Planet} = Planet[] ## List of Planet objects that are this planet's direct parent
     parentlifes::Vector{<:AbstractAgent} = AbstractAgent[] ## List of Life objects that are this planet's direct parent
     parentcompositions::Vector{<:Vector{<:Real}} = Vector{Float64}[] ## List of compositions of the direct life parent compositions at time of terraformation
+
+    reached_boundary::Bool = false
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
     s = "Planet in $(D)D space with properties:."
@@ -95,6 +97,7 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     s *= "\n parentplanets (†‡): $(length(planet.parentplanets) == 0 ? "No parentplanet" : planet.parentplanets[end].id)"
     s *= "\n parentlifes (†‡): $(length(planet.parentlifes) == 0 ? "No parentlife" : planet.parentlifes[end].id)"
     s *= "\n parentcompositions (‡): $(length(planet.parentcompositions) == 0 ? "No parentcomposition" : planet.parentcompositions[end])"
+    s *= "\n reached boundary: $(planet.reached_boundary)"
     s *= "\n\n (†) id shown in-place of object"
     s *= "\n (‡) only last value listed"
     print(io, s)
@@ -502,7 +505,8 @@ function center_and_scale(
     extent::Union{<:NTuple{D,Real}, <:AbstractVector{<:Real}}, 
     m::Real) where {D} 
 
-    (pos./m) .+ (extent./2) .- (m/2)
+    # (pos./m) .+ (extent./2)  .- (m/2)
+    pos./m .+ (extent./2) .- (extent./m./2)
 
 end
 
@@ -1219,6 +1223,36 @@ positions_to_mutate(random_strand, mutation_rate=1/length(random_strand)) = rand
 mix_compositions!(life::Life, planet::Planet, model::ABM) = isnothing(model.compmix_kwargs) ? planet.composition = model.compmix_func(life.composition, planet.composition, model) : planet.composition = model.compmix_func(life.composition, planet.composition, model; model.compmix_kwargs...)
 
 """
+    check_agent_at_boundary!(agent, model)
+
+Check if an agent has reached the space boundary and update its `reached_boundary` status.
+Handles 1D, 2D, and 3D GridSpace automatically.
+
+# Arguments
+- `agent`: The agent to check (must have `reached_boundary` field)
+- `model`: The ABM model containing the space
+- `tolerance`: Small value to account for floating point precision (default: 1e-10)
+"""
+function check_agent_at_boundary!(agent, model; tolerance=1e-10)
+    # Skip if already marked as at boundary
+    if agent.reached_boundary
+        return
+    end
+    
+    space_dims = spacesize(model) #size(model.space)
+    pos = agent.pos
+    # @show agent.id, pos
+    n_dims = length(space_dims)
+    
+    # Check boundary for each dimension
+    for dim in 1:n_dims
+        if pos[dim] <= tolerance || pos[dim] >= (space_dims[dim] - tolerance)
+            agent.reached_boundary = true
+            return
+        end
+    end
+end
+"""
     terraform!(life::Life, planet::Planet, model::ABM)
 
 Performs actions on `life` and `planet` associated with successful terraformation. Takes
@@ -1370,6 +1404,7 @@ function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
     end
 
     move_agent!(planet, model, model.dt)
+    check_agent_at_boundary!(planet, model)
 
 end
 
