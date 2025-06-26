@@ -536,7 +536,7 @@ function calculate_reachable_destinations_nbody(planet::Planet, model::ABM, curr
     basic_candidates = basic_candidate_planets(planet, model)
     
     # If no N-body data, fall back to existing behavior
-    if !haskey(model, :nbody_data) || model.nbody_data === nothing
+    if !hasproperty(model, :nbody_data) || model.nbody_data === nothing
         return basic_candidates
     end
     
@@ -1148,7 +1148,7 @@ function spawn_if_candidate_planets!(
     model::ABM,
     life::Union{Life,Nothing} = nothing
 )
-    if haskey(model, :nbody_data) && model.nbody_data !== nothing
+    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
         spawn_if_candidate_planets_nbody!(planet, model, life)
     elseif planets_are_static(model)
         spawn_static!(planet, model, life)
@@ -1166,7 +1166,7 @@ This replaces the existing function when N-body mode is active.
 """
 function spawn_if_candidate_planets_nbody!(planet::Planet, model::ABM, life::Union{Life,Nothing} = nothing)
     # Check launch rate limiting for N-body mode
-    if haskey(model, :nbody_data) && model.nbody_data !== nothing
+    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
         current_timestep = model.current_nbody_timestep
         
         # Respect launch rate limits (one launch per timestep)
@@ -1197,7 +1197,7 @@ function spawn_if_candidate_planets_nbody!(planet::Planet, model::ABM, life::Uni
     end
     
     # Create mission-style life or regular life depending on mode
-    if haskey(model, :nbody_data) && model.nbody_data !== nothing
+    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
         # N-body mission mode
         spawnlife_mission!(planet, model, destination_planet, life)
     else
@@ -1643,7 +1643,7 @@ This can replace your existing model step function.
 """
 function galaxy_model_step!(model::ABM)
     # Handle N-body timestep advancement
-    if haskey(model, :nbody_data) && model.nbody_data !== nothing
+    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
         # Advance N-body timestep
         current_timestep = model.current_nbody_timestep
         model.current_nbody_timestep = current_timestep + 1
@@ -1777,7 +1777,7 @@ Modified agent step function that handles N-body mode.
 """
 function galaxy_agent_step_nbody!(agent::Planet, model::ABM)
     # Update planet positions from N-body data if available
-    if haskey(model, :nbody_data) && model.nbody_data !== nothing && agent.nbody_star_id !== nothing
+    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing && agent.nbody_star_id !== nothing
         current_timestep = model.current_nbody_timestep
         
         # Get position from N-body data and convert to model coordinates  
