@@ -84,6 +84,10 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
     parentcompositions::Vector{<:Vector{<:Real}} = Vector{Float64}[] ## List of compositions of the direct life parent compositions at time of terraformation
 
     reached_boundary::Bool = false
+
+    # New fields for N-body integration (with defaults for backward compatibility)
+    last_launch_timestep::Int = -1000  # When planet last launched a mission
+    nbody_star_id::Union{Int,Nothing} = nothing  # Corresponding star ID in N-body data
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
     s = "Planet in $(D)D space with properties:."
@@ -97,6 +101,8 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     s *= "\n parentplanets (†‡): $(length(planet.parentplanets) == 0 ? "No parentplanet" : planet.parentplanets[end].id)"
     s *= "\n parentlifes (†‡): $(length(planet.parentlifes) == 0 ? "No parentlife" : planet.parentlifes[end].id)"
     s *= "\n parentcompositions (‡): $(length(planet.parentcompositions) == 0 ? "No parentcomposition" : planet.parentcompositions[end])"
+    s *= "\n last_launch_timestep: $(planet.last_launch_timestep)"
+    s *= "\n nbody_star_id: $(planet.nbody_star_id)"
     s *= "\n reached boundary: $(planet.reached_boundary)"
     s *= "\n\n (†) id shown in-place of object"
     s *= "\n (‡) only last value listed"
@@ -119,6 +125,10 @@ Base.@kwdef mutable struct Life{D} <:AbstractAgent
     destination::Planet
     destination_distance::Real
     ancestors::Vector{Life} ## Life agents that phylogenetically preceded this one
+    # New fields for N-body integration (with defaults for backward compatibility)
+    departure_timestep::Int = -1  # When mission was launched (-1 = not a mission)
+    arrival_timestep::Int = -1    # When mission will arrive (-1 = not a mission)  
+    is_mission::Bool = false      # True if this is a teleporting mission
 end
 function Base.show(io::IO, life::Life{D}) where {D}
     s = "Life in $(D)D space with properties:."
@@ -130,6 +140,9 @@ function Base.show(io::IO, life::Life{D}) where {D}
     s *= "\n destination (†): $(life.destination.id)"
     s *= "\n destination_distance: $(life.destination_distance)"
     s *= "\n ancestors (†): $(length(life.ancestors) == 0 ? "No ancestors" : [i.id for i in life.ancestors])" ## Haven't tested the else condition here yet
+    s *= "\n departure_timestep: $(life.departure_timestep)"
+    s *= "\n arrival_timestep: $(life.arrival_timestep)"
+    s *= "\n is_mission: $(life.is_mission)"
     s *= "\n\n (†) id shown in-place of object"
     print(io, s)
 end
@@ -1849,6 +1862,9 @@ function Agents.agent2string(agent::Planet)
     parentplanets (†‡): $(length(agent.parentplanets) == 0 ? "No parentplanet" : agent.parentplanets[end].id)
     parentlifes (†‡): $(length(agent.parentlifes) == 0 ? "No parentlife" : agent.parentlifes[end].id)
     parentcompositions (‡): $(length(agent.parentcompositions) == 0 ? "No parentcomposition" : "[$(join([@sprintf("%.2f", i) for i in agent.parentcompositions[end]],", "))]")
+    last_launch_timestep: $(@sprintf("%.2f", agent.last_launch_timestep))
+    nbody_star_id: $(agent.nbody_star_id)
+    reached boundary: $(agent.reached_boundary)
     """
     ## Have to exclude this because it's taking up making the rest of the screen invisible
     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
@@ -1872,6 +1888,9 @@ function Agents.agent2string(agent::Life)
     destination (†): $(agent.destination.id)
     destination_distance: $(agent.destination_distance)
     ancestors (†): $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
+    departure_timestep: $(@sprintf("%.2f", agent.departure_timestep))
+    arrival_timestep: $(@sprintf("%.2f", agent.arrival_timestep))
+    is_mission: $(agent.is_mission)
     """
     ## Have to exclude this because it's taking up making the rest of the screen invisible
     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
