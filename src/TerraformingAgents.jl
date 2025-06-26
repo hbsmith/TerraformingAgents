@@ -13,6 +13,7 @@ using Distances
 using DataFrames
 using StatsBase
 using StaticArrays
+using CSV
 
 export Planet, 
        Life, 
@@ -32,6 +33,10 @@ export Planet,
        horizontal_gene_transfer, 
        split_df_agent, 
        clean_df
+
+export NBodyData, load_nbody_data, get_nbody_position,
+       calculate_reachable_destinations_nbody, spawn_if_candidate_planets_nbody!,
+       spawnlife_mission!, galaxy_agent_step_nbody!, setup_nbody_simulation
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -212,6 +217,25 @@ function random_shell_position(rng, rmin, rmax)
     end
 end
 
+"""
+Data structure to hold N-body trajectory data that integrates with existing GalaxyParameters
+"""
+struct NBodyData
+    # Core position data indexed by (star_id, timestep) 
+    positions::Dict{Tuple{Int,Int}, SVector{3,Float64}}
+    
+    # Time information extracted from the data
+    timesteps::Vector{Int}
+    times::Vector{Float64}  # Actual time values from CSV
+    star_ids::Vector{Int}
+    dt::Float64  # Time step size (derived from data)
+    
+    function NBodyData(positions, timesteps, times, star_ids)
+        # Calculate dt from the time data
+        dt = length(times) > 1 ? times[2] - times[1] : 1000.0
+        new(positions, sort(timesteps), sort(times), sort(star_ids), dt)
+    end
+end
 
 """
     GalaxyParameters
@@ -441,6 +465,224 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     ## Calls the internal constructor. I still don't understand how this works and passes the correct keyword arguments to the correct places
     GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
 end
+
+
+##############################################################################################################################
+## NBody Core
+##############################################################################################################################
+# CORE DATA STRUCTURES AND LOADING
+"""
+    load_nbody_data(csv_path::String)
+
+Load N-body simulation data from CSV file and return NBodyData structure.
+CSV should have columns: star, timestep, time, x, y, z
+"""
+function load_nbody_data(csv_path::String)
+    println("Loading N-body data from: $csv_path")
+    
+    df = CSV.read(csv_path, DataFrame)
+    
+    # Validate required columns
+    required_cols = [:star, :timestep, :time, :x, :y, :z]
+    missing_cols = setdiff(required_cols, names(df))
+    if !isempty(missing_cols)
+        error("Missing required columns: $missing_cols")
+    end
+    
+    # Build position dictionary
+    positions = Dict{Tuple{Int,Int}, SVector{3,Float64}}()
+    
+    println("Processing $(nrow(df)) position records...")
+    for row in eachrow(df)
+        star_id = Int(row.star)
+        timestep = Int(row.timestep)
+        pos = SVector{3,Float64}(row.x, row.y, row.z)
+        positions[(star_id, timestep)] = pos
+    end
+    
+    # Extract metadata
+    timesteps = sort(unique(df.timestep))
+    times = sort(unique(df.time))
+    star_ids = sort(unique(df.star))
+    
+    println("Loaded data for $(length(star_ids)) stars over $(length(timesteps)) timesteps")
+    println("Time range: $(minimum(times)) to $(maximum(times))")
+    
+    return NBodyData(positions, timesteps, times, star_ids)
+end
+
+"""
+    get_nbody_position(nbody_data::NBodyData, star_id::Int, timestep::Int)
+
+Get position of a star at a specific timestep from N-body data.
+"""
+function get_nbody_position(nbody_data::NBodyData, star_id::Int, timestep::Int)
+    key = (star_id, timestep)
+    if !haskey(nbody_data.positions, key)
+        error("Position not found for star $star_id at timestep $timestep")
+    end
+    return nbody_data.positions[key]
+end
+
+# MAIN INTEGRATION FUNCTIONS (these replace/extend your existing functions):
+"""
+    calculate_reachable_destinations_nbody(planet::Planet, model::ABM, current_timestep::Int)
+
+Modified version of basic_candidate_planets that uses N-body data for reachability.
+Extends your existing candidate planet selection with N-body constraints.
+"""
+function calculate_reachable_destinations_nbody(planet::Planet, model::ABM, current_timestep::Int)
+    # Start with basic candidate filtering (reuse existing logic)
+    basic_candidates = basic_candidate_planets(planet, model)
+    
+    # If no N-body data, fall back to existing behavior
+    if !haskey(model.properties, :nbody_data) || model.nbody_data === nothing
+        return basic_candidates
+    end
+    
+    nbody_data = model.nbody_data
+    max_velocity = get(model.properties, :max_velocity, 0.001)  # kpc/year default
+    
+    # Check if we can launch (not at final timestep)
+    arrival_timestep = current_timestep + 1
+    if arrival_timestep > maximum(nbody_data.timesteps)
+        return Planet[]
+    end
+    
+    origin_pos = get_nbody_position(nbody_data, planet.nbody_star_id, current_timestep)
+    max_distance = max_velocity * nbody_data.dt  # Travel distance in one timestep
+    
+    # Filter candidates by N-body reachability
+    reachable_candidates = Planet[]
+    for candidate in basic_candidates
+        if candidate.nbody_star_id !== nothing
+            try
+                dest_pos = get_nbody_position(nbody_data, candidate.nbody_star_id, arrival_timestep)
+                travel_distance = norm(dest_pos - origin_pos)
+                
+                if travel_distance <= max_distance
+                    push!(reachable_candidates, candidate)
+                end
+            catch
+                # If position not available, skip this candidate
+                continue
+            end
+        else
+            # If no N-body mapping, include in candidates (backward compatibility)
+            push!(reachable_candidates, candidate)
+        end
+    end
+    
+    return reachable_candidates
+end
+
+"""
+    spawnlife_mission!(planet::Planet, model::ABM, destination_planet::Planet, parent_life::Union{Life,Nothing})
+
+Create a mission-style life agent for N-body simulations.
+This creates a Life agent that will "teleport" to destination after travel time.
+"""
+function spawnlife_mission!(planet::Planet, model::ABM, destination_planet::Planet, parent_life::Union{Life,Nothing})
+    current_timestep = get(model.properties, :current_nbody_timestep, 0)
+    
+    # Create life agent at planet position but as a "mission"
+    life = Life(;
+        id = Agents.nextid(model),
+        pos = planet.pos,
+        vel = SVector{3,Float64}(0, 0, 0),  # No velocity needed for missions
+        parentplanet = planet,
+        composition = planet.composition,
+        destination = destination_planet,
+        destination_distance = 0.0,  # Not used for missions
+        ancestors = get_ancestors(parent_life),
+        
+        # Mission-specific fields
+        departure_timestep = current_timestep,
+        arrival_timestep = current_timestep + 1,
+        is_mission = true
+    )
+    
+    add_agent_own_pos!(life, model)
+    
+    # Mark destination as claimed and update launch tracking
+    destination_planet.claimed = true
+    planet.last_launch_timestep = current_timestep
+    
+    return model
+end
+
+"""
+    setup_nbody_simulation(params::GalaxyParameters, nbody_data::NBodyData)
+
+Setup function that extends your existing galaxy_model_setup to work with N-body data.
+This modifies the existing setup to add N-body integration while preserving compatibility.
+"""
+function setup_nbody_simulation(params::GalaxyParameters, nbody_data::NBodyData)
+    # Create model using existing setup but with N-body modifications
+    model = galaxy_planet_setup(params, galaxy_agent_step_nbody!, galaxy_model_step!)
+    
+    # Add N-body data and configuration to model properties
+    model.nbody_data = nbody_data
+    model.current_nbody_timestep = minimum(nbody_data.timesteps)
+    model.max_velocity = get(params, :max_velocity, 0.001)  # kpc/year
+    
+    # Calculate space offset for coordinate transformation
+    initial_timestep = model.current_nbody_timestep
+    initial_positions = [get_nbody_position(nbody_data, star_id, initial_timestep) for star_id in nbody_data.star_ids]
+    min_coords = minimum(hcat(initial_positions...), dims=2)[:, 1]
+    model.space_offset = SVector{3,Float64}(min_coords...)
+    
+    # Map planet IDs to N-body star IDs (assume 1:1 mapping for now)
+    planet_count = 0
+    for planet in filter_agents(model, Planet)
+        planet_count += 1
+        if planet_count <= length(nbody_data.star_ids)
+            planet.nbody_star_id = nbody_data.star_ids[planet_count]
+            # Update planet position from N-body data
+            world_pos = get_nbody_position(nbody_data, planet.nbody_star_id, initial_timestep)
+            planet.pos = world_pos - model.space_offset
+        end
+    end
+    
+    # Initialize life using existing logic
+    model = galaxy_life_setup(model, params)
+    
+    return model
+end
+
+# HELPER FUNCTIONS (these support the main integration functions):
+"""
+Helper functions to reuse existing compatibility and destination logic
+"""
+function apply_compatibility_function(planet::Planet, candidates::Vector{Planet}, model::ABM)
+    # Reuse your existing compatibility function dispatch logic
+    if model.compatibility_func == :compositionally_similar
+        return compositionally_similar_planets_static(planet, candidates; model.compatibility_kwargs...)
+    elseif model.compatibility_func == :planets_in_range
+        return planets_in_range_static(planet, candidates; model.compatibility_kwargs...)
+    elseif model.compatibility_func == :nearest_k
+        return nearest_k_planets_static(planet, candidates; model.compatibility_kwargs...)
+    else
+        error("Unknown compatibility function: $(model.compatibility_func)")
+    end
+end
+
+function apply_destination_function(planet::Planet, candidates::Vector{Planet}, model::ABM)
+    # Reuse your existing destination function dispatch logic
+    if model.destination_func == :nearest
+        return nearest_planet_static(planet, candidates)
+    elseif model.destination_func == :most_similar
+        return most_similar_planet_static(planet, candidates)
+    else
+        error("Unknown destination function: $(model.destination_func)")
+    end
+end
+# OPTIONAL UTILITY FUNCTIONS (useful for testing and analysis):
+# - validate_nbody_data(nbody_data::NBodyData)
+# - analyze_reachability(nbody_data::NBodyData, max_velocity::Float64, sample_timesteps::Int=10)
+# - create_test_nbody_data(n_stars::Int=10, n_timesteps::Int=100; kwargs...)
+# - run_quick_test(csv_path::Union{String,Nothing}=nothing)
+
 
 # """
 #     Other kwargs of ABM besides properties (which fall into GalaxyProperties above)
@@ -1961,6 +2203,8 @@ function calculate_interceptions_exhaustive(r0, v_agent_speed, planet_agents)
     
     return vs_agent, ts
 end
+
+
 
 ##############################################################################################################################
 ## Interactive Plot utilities 
