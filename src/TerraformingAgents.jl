@@ -906,11 +906,64 @@ function spawn_if_candidate_planets!(
     model::ABM,
     life::Union{Life,Nothing} = nothing
 )
-    if planets_are_static(model)
+    if haskey(model.properties, :nbody_data) && model.nbody_data !== nothing
+        spawn_if_candidate_planets_nbody!(planet, model, life)
+    elseif planets_are_static(model)
         spawn_static!(planet, model, life)
     else
         spawn_moving!(planet, model, life)
     end
+    return model
+end
+
+"""
+    spawn_if_candidate_planets_nbody!(planet::Planet, model::ABM, life::Union{Life,Nothing} = nothing)
+
+Modified version of existing spawn_if_candidate_planets! that works with N-body data.
+This replaces the existing function when N-body mode is active.
+"""
+function spawn_if_candidate_planets_nbody!(planet::Planet, model::ABM, life::Union{Life,Nothing} = nothing)
+    # Check launch rate limiting for N-body mode
+    if haskey(model.properties, :nbody_data) && model.nbody_data !== nothing
+        current_timestep = get(model.properties, :current_nbody_timestep, 0)
+        
+        # Respect launch rate limits (one launch per timestep)
+        if (current_timestep - planet.last_launch_timestep) < 1
+            return model
+        end
+        
+        # Get candidates using N-body constraints
+        candidates = calculate_reachable_destinations_nbody(planet, model, current_timestep)
+    else
+        # Fall back to existing behavior
+        candidates = basic_candidate_planets(planet, model)
+    end
+    
+    if length(candidates) == 0
+        return model
+    end
+    
+    # Use existing compatibility and destination functions with candidates
+    compatible_planets = apply_compatibility_function(planet, candidates, model)
+    if length(compatible_planets) == 0
+        return model
+    end
+    
+    destination_planet = apply_destination_function(planet, compatible_planets, model)
+    if destination_planet === nothing
+        return model
+    end
+    
+    # Create mission-style life or regular life depending on mode
+    if haskey(model.properties, :nbody_data) && model.nbody_data !== nothing
+        # N-body mission mode
+        spawnlife_mission!(planet, model, destination_planet, life)
+    else
+        # Regular continuous travel mode
+        vel = direction(planet, destination_planet) .* model.lifespeed
+        spawnlife!(planet, model, vel, destination_planet; ancestors = get_ancestors(life))
+    end
+    
     return model
 end
 
@@ -1322,7 +1375,7 @@ Custom `model_step` to be called by `Agents.step!`.
 # Notes:
 Right now this only updates the number of planets in the simulation if the interactive slider is changed.
 """
-function galaxy_model_step!(model)
+function galaxy_model_step_core!(model)
     
     current_n_living_planets = count_living_planets(model)
 
@@ -1338,6 +1391,32 @@ function galaxy_model_step!(model)
     # model.n_terraformed_on_step = max_life_id(model) - model.max_life_id
     model.s += 1
 
+end
+
+"""
+    galaxy_model_step!(model::ABM)
+
+Modified model step function that advances N-body timestep when in N-body mode.
+This can replace your existing model step function.
+"""
+function galaxy_model_step!(model::ABM)
+    # Handle N-body timestep advancement
+    if haskey(model.properties, :nbody_data) && model.nbody_data !== nothing
+        # Advance N-body timestep
+        current_timestep = get(model.properties, :current_nbody_timestep, 0)
+        model.current_nbody_timestep = current_timestep + 1
+        
+        # Set model dt to match N-body data
+        model.dt = model.nbody_data.dt
+        
+        # Check if we've reached end of N-body data
+        if model.current_nbody_timestep > maximum(model.nbody_data.timesteps)
+            println("Reached end of N-body data at timestep $(model.current_nbody_timestep)")
+        end
+    end
+    
+    # Rest of existing model step logic
+    galaxy_model_step_core!(model)
 end
 
 """
@@ -1447,6 +1526,44 @@ function galaxy_agent_direct_step!(planet::Planet, model)
 
     move_agent!(planet, model, model.dt)
 
+end
+
+"""
+    galaxy_agent_step_nbody!(agent::Union{Planet,Life}, model::ABM)
+
+Modified agent step function that handles N-body mode.
+"""
+function galaxy_agent_step_nbody!(agent::Planet, model::ABM)
+    # Update planet positions from N-body data if available
+    if haskey(model.properties, :nbody_data) && model.nbody_data !== nothing && agent.nbody_star_id !== nothing
+        current_timestep = get(model.properties, :current_nbody_timestep, 0)
+        
+        # Get position from N-body data and convert to model coordinates  
+        world_pos = get_nbody_position(model.nbody_data, agent.nbody_star_id, current_timestep)
+        space_offset = get(model.properties, :space_offset, SVector{3,Float64}(0,0,0))
+        agent.pos = world_pos - space_offset
+    else
+        # Fall back to existing planet movement, or error
+        throw(ArgumentError("`galaxy_agent_step_nbody!` requires nbody_data")) 
+    end
+end
+
+function galaxy_agent_step_nbody!(agent::Life, model::ABM)
+    # In N-body mode, all Life agents should be missions
+    if get(agent, :is_mission, true)
+        # Mission mode: check if arrival time reached
+        current_timestep = get(model.properties, :current_nbody_timestep, 0)
+        if current_timestep >= agent.arrival_timestep
+            # Mission arrives - terraform and remove
+            terraform!(agent, agent.destination, model)
+            spawn_if_candidate_planets_nbody!(agent.destination, model, agent)
+            remove_agent!(agent, model)
+        end
+        # No movement needed for missions - they just wait until arrival time
+    else
+        # This shouldn't happen in N-body mode
+        throw(ArgumentError("Life agent in N-body mode should be a mission but is_mission=false for agent $(agent.id)"))
+    end
 end
 
 
