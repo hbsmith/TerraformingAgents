@@ -270,6 +270,8 @@ mutable struct GalaxyParameters
     maxcomp
     compsize
     planetcompositions    
+    nbody_data
+    max_velocity
 
     function GalaxyParameters(;
         rng::AbstractRNG = Random.default_rng(),
@@ -292,7 +294,11 @@ mutable struct GalaxyParameters
         vel::Union{Vector{<:NTuple{D,Real}}, Vector{<:AbstractVector{<:Real}}},
         maxcomp::Real,
         compsize::Int,
-        planetcompositions::Array{<:Real, 2}) where {D}
+        planetcompositions::Array{<:Real, 2},
+        # New fields for N-body integration (optional)
+        nbody_data::Union{NBodyData,Nothing} = nothing,
+        max_velocity::Float64 = 0.001  # kpc/year, used when nbody_data provided
+        ) where {D}
 
         pos_dims = length(first(pos))
         if !all(p -> length(p) == pos_dims, pos)
@@ -348,7 +354,7 @@ mutable struct GalaxyParameters
         end
 
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions, nbody_data, max_velocity)
 
     end
     
