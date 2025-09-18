@@ -468,40 +468,51 @@ end
 Constructor for N-body simulations where planet count, positions, and extent are determined by the N-body data.
 """
 function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
-    extent::Union{NTuple{3,<:Real}, Nothing} = nothing,  # Allow override
+    extent::Union{NTuple{3,<:Real}, Nothing} = nothing,
+    spacing::Union{Real, Nothing} = nothing,
     maxcomp=10, 
     compsize=10,
-    padding_factor=0.1,  # New parameter for extent calculation
+    padding_factor=0.1,
     kwargs...)
     
-    # Calculate optimal extent if not provided
+    # Calculate optimal extent and spacing if not provided
     if extent === nothing
-        extent = calculate_optimal_extent(nbody_data; padding_factor)
+        extent, calculated_spacing = calculate_optimal_extent(nbody_data; padding_factor, spacing)
         @info "Calculated optimal extent from N-body data: $extent"
+        
+        # Use calculated spacing if user didn't provide one
+        if spacing === nothing
+            spacing = calculated_spacing
+        end
     else
         @info "Using user-provided extent: $extent"
+        # If user provided extent but no spacing, calculate compatible spacing
+        if spacing === nothing
+            spacing = minimum(extent) / 20.0
+        end
     end
     
-    # Extract planet information from N-body data
+    # Add spacing to SpaceArgs
+    args = Dict{Symbol,Any}(kwargs)
+    if haskey(args, :SpaceArgs)
+        args[:SpaceArgs][:spacing] = spacing
+    else
+        args[:SpaceArgs] = Dict(:spacing => spacing)
+    end
+    
+    # Rest of constructor...
     nplanets = length(nbody_data.star_ids)
     initial_timestep = minimum(nbody_data.timesteps)
     
-    # Get positions from N-body data
     initial_positions = [get_nbody_position(nbody_data, star_id, initial_timestep) 
                         for star_id in nbody_data.star_ids]
     
-    # Convert to simulation coordinates (will be adjusted later in setup)
     pos = [SVector{3, Float64}(p) for p in initial_positions]
-    
-    # Velocities are irrelevant for N-body mode (positions are pre-calculated)
     vel = [SVector{3, Float64}(0, 0, 0) for _ in 1:nplanets]
-    
-    # Generate random compositions for the planets
     planetcompositions = random_compositions(rng, maxcomp, compsize, nplanets)
     
-    # Call the main constructor
     GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, 
-                    planetcompositions, nbody_data, kwargs...)
+                    planetcompositions, nbody_data, args...)
 end
 
 # Convenience constructor without explicit RNG
@@ -703,12 +714,12 @@ function apply_destination_function(planet::Planet, candidates::Vector{Planet}, 
 end
 
 """
-    calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1)
+    calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spacing=nothing)
 
 Calculate optimal extent for simulation space based on N-body data boundaries.
-Adds padding to ensure all trajectories fit comfortably within the space.
+Ensures extent values are compatible with ContinuousSpace spacing requirements.
 """
-function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1)
+function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spacing=nothing)
     # Get all positions across all timesteps
     all_positions = collect(values(nbody_data.positions))
     
@@ -726,8 +737,18 @@ function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1)
     # Add padding (default 10% on each side)
     padded_ranges = ranges .* (1 + 2 * padding_factor)
     
-    # Return as tuple for extent
-    return tuple(padded_ranges...)
+    # If no spacing provided, calculate a reasonable default
+    if spacing === nothing
+        spacing = minimum(padded_ranges) / 20.0
+    end
+    
+    # Round up each dimension to be exactly divisible by spacing
+    adjusted_ranges = ceil.(padded_ranges ./ spacing) .* spacing
+    
+    @info "Raw extent: $(tuple(padded_ranges...)), Adjusted extent: $(tuple(adjusted_ranges...)), Spacing: $spacing"
+    
+    # Return both extent and spacing
+    return tuple(adjusted_ranges...), spacing
 end
 # OPTIONAL UTILITY FUNCTIONS (useful for testing and analysis):
 # - validate_nbody_data(nbody_data::NBodyData)
