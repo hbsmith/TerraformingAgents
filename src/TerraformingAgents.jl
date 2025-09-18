@@ -293,6 +293,7 @@ mutable struct GalaxyParameters
     compsize
     planetcompositions    
     nbody_data
+    space_offset
 
     function GalaxyParameters(;
         rng::AbstractRNG = Random.default_rng(),
@@ -449,28 +450,10 @@ The main external constructor for `GalaxyParameters` (other external constructor
 # Notes:
 Calls the internal constructor.
 """
-function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
-    extent=(1.0, 1.0), 
-    maxcomp=10, 
-    compsize=10,
-    pos=random_positions(rng, extent, nplanets),
-    vel=default_velocities(length(extent), nplanets),
-    planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
-    kwargs...)
-
-    ## Calls the internal constructor. I still don't understand how this works and passes the correct keyword arguments to the correct places
-    GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
-end
-
-"""
-    GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData; kwargs...)
-
-Constructor for N-body simulations where planet count, positions, and extent are determined by the N-body data.
-"""
 function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
     extent::Union{NTuple{3,<:Real}, Nothing} = nothing,
     spacing::Union{Real, Nothing} = nothing,
-    space_offset::Union{SVector{3,Float64}, Nothing} = nothing,  # New parameter
+    space_offset::Union{SVector{3,Float64}, Nothing} = nothing,
     maxcomp=10, 
     compsize=10,
     padding_factor=0.1,
@@ -479,9 +462,7 @@ function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
     # Calculate optimal extent, spacing, and offset if not provided
     if extent === nothing
         extent, calculated_spacing, calculated_offset = calculate_optimal_extent(nbody_data; padding_factor, spacing)
-        # @info "Calculated optimal extent from N-body data: $extent"
         
-        # Use calculated values if user didn't provide them
         if spacing === nothing
             spacing = calculated_spacing
         end
@@ -490,12 +471,11 @@ function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
         end
     else
         @info "Using user-provided extent: $extent"
-        # If user provided extent but no spacing/offset, calculate them
         if spacing === nothing
             spacing = minimum(extent) / 20.0
         end
         if space_offset === nothing
-            # Calculate offset from initial timestep positions
+            # Calculate offset logic here...
             initial_timestep = minimum(nbody_data.timesteps)
             first_pos = get_nbody_position(nbody_data, nbody_data.star_ids[1], initial_timestep)
             min_coords = collect(first_pos)
@@ -509,16 +489,13 @@ function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
         end
     end
     
-    # Add spacing and space_offset to args
+    # Add spacing to SpaceArgs but don't include space_offset
     args = Dict{Symbol,Any}(kwargs)
     if haskey(args, :SpaceArgs)
         args[:SpaceArgs][:spacing] = spacing
     else
         args[:SpaceArgs] = Dict{Symbol,Union{Real,Tuple}}(:spacing => spacing)
     end
-    
-    # Store space_offset for later use
-    args[:space_offset] = space_offset
     
     # Rest of constructor...
     nplanets = length(nbody_data.star_ids)
@@ -531,8 +508,14 @@ function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
     vel = [SVector{3, Float64}(0, 0, 0) for _ in 1:nplanets]
     planetcompositions = random_compositions(rng, maxcomp, compsize, nplanets)
     
-    GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, 
-                    planetcompositions, nbody_data, args...)
+    # Create the GalaxyParameters object
+    params = GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, 
+                             planetcompositions, nbody_data, args...)
+    
+    # Store space_offset in the created object (add this field to GalaxyParameters struct)
+    params.space_offset = space_offset
+    
+    return params
 end
 
 # Convenience constructor without explicit RNG
@@ -894,8 +877,8 @@ function galaxy_model_setup(params::GalaxyParameters, agent_step!, model_step!)
     
     println("Setting up life...")
     model = galaxy_life_setup(model, params)
-    model
     println("Model setup complete.")
+    model
 end
 """
     galaxy_model_setup(params::Dict)
