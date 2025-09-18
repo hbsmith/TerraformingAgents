@@ -470,36 +470,55 @@ Constructor for N-body simulations where planet count, positions, and extent are
 function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
     extent::Union{NTuple{3,<:Real}, Nothing} = nothing,
     spacing::Union{Real, Nothing} = nothing,
+    space_offset::Union{SVector{3,Float64}, Nothing} = nothing,  # New parameter
     maxcomp=10, 
     compsize=10,
     padding_factor=0.1,
     kwargs...)
     
-    # Calculate optimal extent and spacing if not provided
+    # Calculate optimal extent, spacing, and offset if not provided
     if extent === nothing
-        extent, calculated_spacing = calculate_optimal_extent(nbody_data; padding_factor, spacing)
+        extent, calculated_spacing, calculated_offset = calculate_optimal_extent(nbody_data; padding_factor, spacing)
         # @info "Calculated optimal extent from N-body data: $extent"
         
-        # Use calculated spacing if user didn't provide one
+        # Use calculated values if user didn't provide them
         if spacing === nothing
             spacing = calculated_spacing
         end
+        if space_offset === nothing
+            space_offset = calculated_offset
+        end
     else
         @info "Using user-provided extent: $extent"
-        # If user provided extent but no spacing, calculate compatible spacing
+        # If user provided extent but no spacing/offset, calculate them
         if spacing === nothing
             spacing = minimum(extent) / 20.0
         end
+        if space_offset === nothing
+            # Calculate offset from initial timestep positions
+            initial_timestep = minimum(nbody_data.timesteps)
+            first_pos = get_nbody_position(nbody_data, nbody_data.star_ids[1], initial_timestep)
+            min_coords = collect(first_pos)
+            for star_id in nbody_data.star_ids[2:end]
+                pos = get_nbody_position(nbody_data, star_id, initial_timestep)
+                for i in 1:3
+                    min_coords[i] = min(min_coords[i], pos[i])
+                end
+            end
+            space_offset = SVector{3,Float64}(min_coords...)
+        end
     end
     
-    # Add spacing to SpaceArgs
+    # Add spacing and space_offset to args
     args = Dict{Symbol,Any}(kwargs)
     if haskey(args, :SpaceArgs)
         args[:SpaceArgs][:spacing] = spacing
     else
-        # Create new SpaceArgs dict that can hold both spacing (Real) and extent (Tuple)
         args[:SpaceArgs] = Dict{Symbol,Union{Real,Tuple}}(:spacing => spacing)
     end
+    
+    # Store space_offset for later use
+    args[:space_offset] = space_offset
     
     # Rest of constructor...
     nplanets = length(nbody_data.star_ids)
@@ -663,23 +682,16 @@ end
 Initialize N-body specific model properties and update planet positions.
 """
 function initialize_nbody_properties!(model::ABM, params::GalaxyParameters)
-    nbody_data = params.nbody_data
-    
-    # Calculate space offset for coordinate transformation
+    # Space offset already calculated and stored in model properties
+    # Just update planet positions
     initial_timestep = model.current_nbody_timestep
-    initial_positions = [get_nbody_position(nbody_data, star_id, initial_timestep) 
-                        for star_id in nbody_data.star_ids]
     
-    min_coords = minimum(hcat(initial_positions...), dims=2)[:, 1]
-    model.space_offset = SVector{3,Float64}(min_coords...)
-    
-    # Update all planet positions from N-body data
     for planet in filter_agents(model, Planet)
-        world_pos = get_nbody_position(nbody_data, planet.id, initial_timestep)
+        world_pos = get_nbody_position(model.nbody_data, planet.id, initial_timestep)
         planet.pos = world_pos - model.space_offset
     end
     
-    @info "N-body properties initialized for $(length(initial_positions)) planets"
+    @info "N-body properties initialized for $(length(model.nbody_data.star_ids)) planets"
 end
 
 # HELPER FUNCTIONS (these support the main integration functions):
@@ -713,8 +725,8 @@ end
 """
     calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spacing=nothing)
 
-Calculate optimal extent for simulation space based on N-body data boundaries.
-Ensures extent values are compatible with ContinuousSpace spacing requirements.
+Calculate optimal extent and space offset for simulation space based on N-body data boundaries.
+Returns both extent and the coordinate offset needed for translation.
 """
 function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spacing=nothing)
     # Get all positions across all timesteps
@@ -724,7 +736,7 @@ function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spa
         error("No position data found in N-body data")
     end
     
-    # Find min/max coordinates across all dimensions
+    # Find min/max coordinates across all dimensions in single pass
     min_coords = [minimum(pos[i] for pos in all_positions) for i in 1:3]
     max_coords = [maximum(pos[i] for pos in all_positions) for i in 1:3]
     
@@ -742,10 +754,16 @@ function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spa
     # Round up each dimension to be exactly divisible by spacing
     adjusted_ranges = ceil.(padded_ranges ./ spacing) .* spacing
     
-    @info "Raw extent:\t$(tuple(padded_ranges...)) \nAdjusted extent:\t$(tuple(adjusted_ranges...)), Spacing: $spacing"
+    # Create space offset from minimum coordinates
+    space_offset = SVector{3,Float64}(min_coords...)
     
-    # Return both extent and spacing
-    return tuple(adjusted_ranges...), spacing
+    @info "Raw extent:\t$(tuple(padded_ranges...))"
+    @info "Adjusted extent:\t$(tuple(adjusted_ranges...))"
+    @info "Spacing:\t$spacing"
+    @info "Space offset:\t$space_offset"
+    
+    # Return extent, spacing, and offset
+    return tuple(adjusted_ranges...), spacing, space_offset
 end
 # OPTIONAL UTILITY FUNCTIONS (useful for testing and analysis):
 # - validate_nbody_data(nbody_data::NBodyData)
@@ -945,7 +963,7 @@ function galaxy_planet_setup(params::GalaxyParameters, agent_step!, model_step!)
     if params.nbody_data !== nothing
         properties[:nbody_data] = params.nbody_data
         properties[:current_nbody_timestep] = minimum(params.nbody_data.timesteps)
-        properties[:space_offset] = SVector{3,Float64}(0, 0, 0)  # Will be set properly later
+        properties[:space_offset] = params.space_offset  # Use pre-calculated value
     end
 
     model = @suppress_err StandardABM(
