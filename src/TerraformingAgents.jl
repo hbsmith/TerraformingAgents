@@ -478,7 +478,7 @@ function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
     # Calculate optimal extent and spacing if not provided
     if extent === nothing
         extent, calculated_spacing = calculate_optimal_extent(nbody_data; padding_factor, spacing)
-        @info "Calculated optimal extent from N-body data: $extent"
+        # @info "Calculated optimal extent from N-body data: $extent"
         
         # Use calculated spacing if user didn't provide one
         if spacing === nothing
@@ -848,6 +848,7 @@ Setup function that respects the user's explicit choice of step functions.
 For N-body simulations, user must explicitly provide galaxy_agent_step_nbody! and galaxy_model_step_nbody!.
 """
 function galaxy_model_setup(params::GalaxyParameters, agent_step!, model_step!)
+    println("Setting up galaxy...")
     # Validate that N-body mode uses appropriate step functions
     if params.nbody_data !== nothing
         if agent_step! != galaxy_agent_step_nbody! || model_step! != galaxy_model_step_nbody!
@@ -864,15 +865,19 @@ function galaxy_model_setup(params::GalaxyParameters, agent_step!, model_step!)
         @info "N-body mode: Using pre-calculated planet trajectories"
     end
     
+    println("Setting up planets...")
     model = galaxy_planet_setup(params, agent_step!, model_step!)
     
     # Add N-body properties if data provided
     if params.nbody_data !== nothing
+        println("Initializing N-body properties...")
         initialize_nbody_properties!(model, params)
     end
     
+    println("Setting up life...")
     model = galaxy_life_setup(model, params)
     model
+    println("Model setup complete.")
 end
 """
     galaxy_model_setup(params::Dict)
