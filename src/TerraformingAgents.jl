@@ -345,7 +345,7 @@ mutable struct GalaxyParameters
         ## ABMkwargs
         if ABMkwargs === nothing 
             ABMkwargs = Dict(:rng => rng, :warn => false)
-        elseif :rng in ABMkwargs
+        elseif haskey(ABMkwargs, :rng)
             rng != ABMkwargs[:rng] && throw(ArgumentError("rng and ABMkwargs[:rng] do not match. ABMkwargs[:rng] will inherit from rng if ABMkwargs[:rng] not provided."))
         else
             ABMkwargs[:rng] = rng
@@ -354,7 +354,7 @@ mutable struct GalaxyParameters
         ## SpaceArgs
         if SpaceArgs === nothing
             SpaceArgs = Dict(:extent => extent)
-        elseif :extent in SpaceArgs
+        elseif haskey(SpaceArgs, :extent)  # ← Change this line
             extent != SpaceArgs[:extent] && throw(ArgumentError("extent and SpaceArgs[:extent] do not match. SpaceArgs[:extent] will inherit from extent if SpaceArgs[:extent] not provided."))
         else
             SpaceArgs[:extent] = extent
