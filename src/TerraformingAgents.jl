@@ -497,7 +497,8 @@ function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
     if haskey(args, :SpaceArgs)
         args[:SpaceArgs][:spacing] = spacing
     else
-        args[:SpaceArgs] = Dict(:spacing => spacing)
+        # Create new SpaceArgs dict that can hold both spacing (Real) and extent (Tuple)
+        args[:SpaceArgs] = Dict{Symbol,Union{Real,Tuple}}(:spacing => spacing)
     end
     
     # Rest of constructor...
@@ -913,8 +914,10 @@ function galaxy_planet_setup(params::GalaxyParameters, agent_step!, model_step!)
     extent_multiplier = 1
     params.extent = extent_multiplier.*params.extent
 
-    if :spacing in keys(params.SpaceArgs)
-        space = ContinuousSpace(params.extent, params.SpaceArgs[:spacing]; params.SpaceKwargs...)
+    if haskey(params.SpaceArgs, :spacing)
+        space = ContinuousSpace(params.extent; 
+                        spacing=params.SpaceArgs[:spacing], 
+                        params.SpaceKwargs...)
     else
         space = ContinuousSpace(params.extent; params.SpaceKwargs...)
     end
