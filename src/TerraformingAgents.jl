@@ -665,9 +665,6 @@ Initialize N-body specific model properties and update planet positions.
 function initialize_nbody_properties!(model::ABM, params::GalaxyParameters)
     nbody_data = params.nbody_data
     
-    model.nbody_data = nbody_data
-    model.current_nbody_timestep = minimum(nbody_data.timesteps)
-    
     # Calculate space offset for coordinate transformation
     initial_timestep = model.current_nbody_timestep
     initial_positions = [get_nbody_position(nbody_data, star_id, initial_timestep) 
@@ -677,7 +674,6 @@ function initialize_nbody_properties!(model::ABM, params::GalaxyParameters)
     model.space_offset = SVector{3,Float64}(min_coords...)
     
     # Update all planet positions from N-body data
-    # Planet IDs automatically match star IDs since we created them that way
     for planet in filter_agents(model, Planet)
         world_pos = get_nbody_position(nbody_data, planet.id, initial_timestep)
         planet.pos = world_pos - model.space_offset
@@ -922,38 +918,39 @@ function galaxy_planet_setup(params::GalaxyParameters, agent_step!, model_step!)
         space = ContinuousSpace(params.extent; params.SpaceKwargs...)
     end
 
+    properties = Dict(:dt => params.dt,
+                :lifespeed => params.lifespeed,
+                :interaction_radius => params.interaction_radius,
+                :nplanets => nplanets(params),
+                :maxcomp => params.maxcomp,
+                :compsize => params.compsize,
+                :s => 0,
+                :n_living_planets => params.nool,
+                :terraformed_on_step => true,
+                :n_terraformed_on_step => params.nool,
+                :spawn_rate => params.spawn_rate,
+                :GalaxyParameters => params,
+                :compmix_func => params.compmix_func,
+                :compmix_kwargs => params.compmix_kwargs,
+                :compatibility_func => params.compatibility_func,
+                :compatibility_kwargs => params.compatibility_kwargs,
+                :destination_func => params.destination_func)
+
+    # Add N-body properties if N-body data is provided
+    if params.nbody_data !== nothing
+        properties[:nbody_data] = params.nbody_data
+        properties[:current_nbody_timestep] = minimum(params.nbody_data.timesteps)
+        properties[:space_offset] = SVector{3,Float64}(0, 0, 0)  # Will be set properly later
+    end
+
     model = @suppress_err StandardABM(
         Union{Planet,Life},
         space,
         scheduler = allocated_fastest,
-        properties = Dict(:dt => params.dt,
-                        :lifespeed => params.lifespeed,
-                        :interaction_radius => params.interaction_radius,
-                        :nplanets => nplanets(params),
-                        :maxcomp => params.maxcomp,
-                        :compsize => params.compsize,
-                        :s => 0, ## track the model step number,
-                        :n_living_planets => params.nool,
-                        :terraformed_on_step => true,
-                        :n_terraformed_on_step => params.nool,
-                        :spawn_rate => params.spawn_rate,
-                        :GalaxyParameters => params,
-                        :compmix_func => params.compmix_func,
-                        :compmix_kwargs => params.compmix_kwargs,
-                        :compatibility_func => params.compatibility_func,
-                        :compatibility_kwargs => params.compatibility_kwargs,
-                        :destination_func => params.destination_func);
-                        # :nlife => length(params.ool)
-                        # :ool => params.ool,
-                        # :pos => params.pos,
-                        # :vel => params.vel,
-                        # :planetcompositions => params.planetcompositions); ## Why does having a semicolon here fix it???
-        # rng=params.ABMkwargs[:rng],
-        # warn=params.ABMkwargs[:warn]
-        ## This is where the rng lives
+        properties = properties,
         agent_step! = agent_step!,
         model_step! = model_step!,
-        params.ABMkwargs... ## Why does this not work?? 
+        params.ABMkwargs...
     )
 
     initialize_planets!(model, params, extent_multiplier)
