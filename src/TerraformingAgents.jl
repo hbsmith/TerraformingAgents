@@ -742,7 +742,7 @@ function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spa
     # Round up each dimension to be exactly divisible by spacing
     adjusted_ranges = ceil.(padded_ranges ./ spacing) .* spacing
     
-    @info "Raw extent: $(tuple(padded_ranges...)), Adjusted extent: $(tuple(adjusted_ranges...)), Spacing: $spacing"
+    @info "Raw extent:\t$(tuple(padded_ranges...)) \nAdjusted extent:\t$(tuple(adjusted_ranges...)), Spacing: $spacing"
     
     # Return both extent and spacing
     return tuple(adjusted_ranges...), spacing
@@ -945,7 +945,7 @@ function galaxy_planet_setup(params::GalaxyParameters, agent_step!, model_step!)
 
     model = @suppress_err StandardABM(
         Union{Planet,Life},
-        space,
+        space;
         scheduler = allocated_fastest,
         properties = properties,
         agent_step! = agent_step!,
@@ -996,8 +996,7 @@ Initialize `Planet`s in the galaxy.
 
 `Planet` positions are adjusted to `center_position`, based on `extent_multiplier`.
 
-This acts to increase the space seen by the user when plotting, and put the simulation in the center of the space, 
-so that there is room to add more planets.
+This acts to increase the space seen by the user when plotting, and put the simulation in the center of the space.
 
 Called by [`galaxy_model_setup`](@ref).
 """
