@@ -36,7 +36,7 @@ export Planet,
 
 export NBodyData, load_nbody_data, get_nbody_position,
        calculate_reachable_destinations_nbody, spawn_if_candidate_planets_nbody!,
-       spawnlife_mission!, galaxy_agent_step_nbody!, setup_nbody_simulation
+       spawnlife_mission!, galaxy_agent_step_nbody!, galaxy_model_step_nbody!
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -106,7 +106,6 @@ function Base.show(io::IO, planet::Planet{D}) where {D}
     s *= "\n parentlifes (†‡): $(length(planet.parentlifes) == 0 ? "No parentlife" : planet.parentlifes[end].id)"
     s *= "\n parentcompositions (‡): $(length(planet.parentcompositions) == 0 ? "No parentcomposition" : planet.parentcompositions[end])"
     s *= "\n last_launch_timestep: $(planet.last_launch_timestep)"
-    s *= "\n nbody_star_id: $(planet.nbody_star_id)"
     s *= "\n reached boundary: $(planet.reached_boundary)"
     s *= "\n\n (†) id shown in-place of object"
     s *= "\n (‡) only last value listed"
@@ -559,24 +558,14 @@ function get_nbody_position(nbody_data::NBodyData, star_id::Int, timestep::Int)
     return nbody_data.positions[key]
 end
 
-# MAIN INTEGRATION FUNCTIONS (these replace/extend your existing functions):
-"""
-    calculate_reachable_destinations_nbody(planet::Planet, model::ABM, current_timestep::Int)
-
-Modified version of basic_candidate_planets that uses N-body data for reachability.
-Extends your existing candidate planet selection with N-body constraints.
-"""
 function calculate_reachable_destinations_nbody(planet::Planet, model::ABM, current_timestep::Int)
-    # Start with basic candidate filtering (reuse existing logic)
     basic_candidates = basic_candidate_planets(planet, model)
     
-    # If no N-body data, fall back to existing behavior
     if !hasproperty(model, :nbody_data) || model.nbody_data === nothing
         return basic_candidates
     end
     
     nbody_data = model.nbody_data
-    max_velocity = model.max_velocity  # kpc/year default
     
     # Check if we can launch (not at final timestep)
     arrival_timestep = current_timestep + 1
@@ -584,27 +573,28 @@ function calculate_reachable_destinations_nbody(planet::Planet, model::ABM, curr
         return Planet[]
     end
     
-    origin_pos = get_nbody_position(nbody_data, planet.nbody_star_id, current_timestep)
-    max_distance = max_velocity * nbody_data.dt  # Travel distance in one timestep
+    # Use agent.id directly as star_id
+    if !(planet.id in nbody_data.star_ids)
+        @warn "Planet $(planet.id) not found in N-body data"
+        return Planet[]
+    end
     
-    # Filter candidates by N-body reachability
+    origin_pos = get_nbody_position(nbody_data, planet.id, current_timestep)
+    max_distance = model.lifespeed * nbody_data.dt  # Use existing lifespeed
+    
     reachable_candidates = Planet[]
     for candidate in basic_candidates
-        if candidate.nbody_star_id !== nothing
+        if candidate.id in nbody_data.star_ids
             try
-                dest_pos = get_nbody_position(nbody_data, candidate.nbody_star_id, arrival_timestep)
+                dest_pos = get_nbody_position(nbody_data, candidate.id, arrival_timestep)
                 travel_distance = norm(dest_pos - origin_pos)
                 
                 if travel_distance <= max_distance
                     push!(reachable_candidates, candidate)
                 end
             catch
-                # If position not available, skip this candidate
-                continue
+                continue  # Skip if position not available
             end
-        else
-            # If no N-body mapping, include in candidates (backward compatibility)
-            push!(reachable_candidates, candidate)
         end
     end
     
@@ -647,42 +637,32 @@ function spawnlife_mission!(planet::Planet, model::ABM, destination_planet::Plan
 end
 
 """
-    setup_nbody_simulation(params::GalaxyParameters, nbody_data::NBodyData)
+    initialize_nbody_properties!(model::ABM, params::GalaxyParameters)
 
-Setup function that extends your existing galaxy_model_setup to work with N-body data.
-This modifies the existing setup to add N-body integration while preserving compatibility.
+Initialize N-body specific model properties and update planet positions.
 """
-function setup_nbody_simulation(params::GalaxyParameters, nbody_data::NBodyData)
-    # Create model using existing setup but with N-body modifications
-    model = galaxy_planet_setup(params, galaxy_agent_step_nbody!, galaxy_model_step!)
+function initialize_nbody_properties!(model::ABM, params::GalaxyParameters)
+    nbody_data = params.nbody_data
     
-    # Add N-body data and configuration to model properties
     model.nbody_data = nbody_data
     model.current_nbody_timestep = minimum(nbody_data.timesteps)
-    model.max_velocity = model.max_velocity  # kpc/year
     
     # Calculate space offset for coordinate transformation
     initial_timestep = model.current_nbody_timestep
-    initial_positions = [get_nbody_position(nbody_data, star_id, initial_timestep) for star_id in nbody_data.star_ids]
+    initial_positions = [get_nbody_position(nbody_data, star_id, initial_timestep) 
+                        for star_id in nbody_data.star_ids]
+    
     min_coords = minimum(hcat(initial_positions...), dims=2)[:, 1]
     model.space_offset = SVector{3,Float64}(min_coords...)
     
-    # Map planet IDs to N-body star IDs (assume 1:1 mapping for now)
-    planet_count = 0
+    # Update all planet positions from N-body data
+    # Planet IDs automatically match star IDs since we created them that way
     for planet in filter_agents(model, Planet)
-        planet_count += 1
-        if planet_count <= length(nbody_data.star_ids)
-            planet.nbody_star_id = nbody_data.star_ids[planet_count]
-            # Update planet position from N-body data
-            world_pos = get_nbody_position(nbody_data, planet.nbody_star_id, initial_timestep)
-            planet.pos = world_pos - model.space_offset
-        end
+        world_pos = get_nbody_position(nbody_data, planet.id, initial_timestep)
+        planet.pos = world_pos - model.space_offset
     end
     
-    # Initialize life using existing logic
-    model = galaxy_life_setup(model, params)
-    
-    return model
+    @info "N-body properties initialized for $(length(initial_positions)) planets"
 end
 
 # HELPER FUNCTIONS (these support the main integration functions):
@@ -1716,6 +1696,32 @@ function galaxy_model_step!(model::ABM)
 end
 
 """
+    galaxy_model_step_nbody!(model::ABM)
+
+N-body model step function that advances N-body timestep.
+"""
+function galaxy_model_step_nbody!(model::ABM)
+    # Handle N-body timestep advancement
+    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
+        current_timestep = model.current_nbody_timestep
+        model.current_nbody_timestep = current_timestep + 1
+        
+        # Set model dt to match N-body data
+        model.dt = model.nbody_data.dt
+        
+        # Check if we've reached end of N-body data
+        if model.current_nbody_timestep > maximum(model.nbody_data.timesteps)
+            @info "Reached end of N-body data at timestep $(model.current_nbody_timestep)"
+        end
+    else
+        error("N-body model step called without N-body data")
+    end
+    
+    # Rest of existing model step logic
+    galaxy_model_step_core!(model)
+end
+
+"""
     galaxy_agent_step_spawn_on_terraform!(life::Life, model)
 
 Custom `agent_step!` for Life. 
@@ -1830,17 +1836,17 @@ end
 Modified agent step function that handles N-body mode.
 """
 function galaxy_agent_step_nbody!(agent::Planet, model::ABM)
-    # Update planet positions from N-body data if available
-    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing && agent.nbody_star_id !== nothing
+    if !hasproperty(model, :nbody_data) || model.nbody_data === nothing
+        error("N-body agent step called without N-body data")
+    end
+    
+    # Use agent.id directly as star_id
+    if agent.id in model.nbody_data.star_ids
         current_timestep = model.current_nbody_timestep
-        
-        # Get position from N-body data and convert to model coordinates  
-        world_pos = get_nbody_position(model.nbody_data, agent.nbody_star_id, current_timestep)
-        space_offset = model.space_offset
-        agent.pos = world_pos - space_offset
+        world_pos = get_nbody_position(model.nbody_data, agent.id, current_timestep)
+        agent.pos = world_pos - model.space_offset
     else
-        # Fall back to existing planet movement, or error
-        throw(ArgumentError("`galaxy_agent_step_nbody!` requires nbody_data")) 
+        @warn "Planet $(agent.id) not found in N-body data - position not updated"
     end
 end
 
@@ -2284,7 +2290,6 @@ function Agents.agent2string(agent::Planet)
     parentlifes (†‡): $(length(agent.parentlifes) == 0 ? "No parentlife" : agent.parentlifes[end].id)
     parentcompositions (‡): $(length(agent.parentcompositions) == 0 ? "No parentcomposition" : "[$(join([@sprintf("%.2f", i) for i in agent.parentcompositions[end]],", "))]")
     last_launch_timestep: $(@sprintf("%.2f", agent.last_launch_timestep))
-    nbody_star_id: $(agent.nbody_star_id)
     reached boundary: $(agent.reached_boundary)
     """
     ## Have to exclude this because it's taking up making the rest of the screen invisible
