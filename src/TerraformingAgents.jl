@@ -92,7 +92,6 @@ Base.@kwdef mutable struct Planet{D} <: AbstractAgent
 
     # New fields for N-body integration (with defaults for backward compatibility)
     last_launch_timestep::Int = -1000  # When planet last launched a mission
-    nbody_star_id::Union{Int,Nothing} = nothing  # Corresponding star ID in N-body data
 end
 function Base.show(io::IO, planet::Planet{D}) where {D}
     s = "Planet in $(D)D space with properties:."
@@ -295,7 +294,6 @@ mutable struct GalaxyParameters
     compsize
     planetcompositions    
     nbody_data
-    max_velocity
 
     function GalaxyParameters(;
         rng::AbstractRNG = Random.default_rng(),
@@ -321,7 +319,6 @@ mutable struct GalaxyParameters
         planetcompositions::Array{<:Real, 2},
         # New fields for N-body integration (optional)
         nbody_data::Union{NBodyData,Nothing} = nothing,
-        max_velocity::Float64 = 0.001  # kpc/year, used when nbody_data provided
         ) where {D}
 
         pos_dims = length(first(pos))
@@ -378,7 +375,7 @@ mutable struct GalaxyParameters
         end
 
         
-        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions, nbody_data, max_velocity)
+        new(rng, extent, ABMkwargs, SpaceArgs, SpaceKwargs, dt, lifespeed, interaction_radius, ool, nool, spawn_rate, compmix_func, compmix_kwargs, compatibility_func, compatibility_kwargs, destination_func, pos, vel, maxcomp, compsize, planetcompositions, nbody_data)
 
     end
     
@@ -466,6 +463,44 @@ function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
     GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
 end
 
+"""
+    GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData; kwargs...)
+
+Constructor for N-body simulations where planet count and positions are determined by the N-body data.
+"""
+function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
+    extent=(1.0, 1.0),
+    maxcomp=10, 
+    compsize=10,
+    kwargs...)
+    
+    # Extract planet information from N-body data
+    nplanets = length(nbody_data.star_ids)
+    initial_timestep = minimum(nbody_data.timesteps)
+    
+    # Get positions from N-body data
+    initial_positions = [get_nbody_position(nbody_data, star_id, initial_timestep) 
+                        for star_id in nbody_data.star_ids]
+    
+    # Convert to simulation coordinates (will be adjusted later in setup)
+    pos = [SVector{3, Float64}(p) for p in initial_positions]
+    
+    # Velocities are irrelevant for N-body mode (positions are pre-calculated)
+    vel = [SVector{3, Float64}(0, 0, 0) for _ in 1:nplanets]
+    
+    # Generate random compositions for the planets
+    planetcompositions = random_compositions(rng, maxcomp, compsize, nplanets)
+    
+    # Call the main constructor
+    GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, 
+                    planetcompositions, nbody_data, kwargs...)
+end
+
+# Convenience constructor without explicit RNG
+function GalaxyParameters(nbody_data::NBodyData; kwargs...)
+    GalaxyParameters(Random.default_rng(), nbody_data; kwargs...)
+end
+
 
 ##############################################################################################################################
 ## NBody Core
@@ -484,7 +519,7 @@ function load_nbody_data(csv_path::String)
     
     # Validate required columns
     required_cols = [:star, :timestep, :time, :x, :y, :z]
-    missing_cols = setdiff(required_cols, names(df))
+    missing_cols = setdiff(required_cols, propertynames(df))
     if !isempty(missing_cols)
         error("Missing required columns: $missing_cols")
     end
@@ -772,18 +807,37 @@ function center_and_scale(
 end
 
 """
-    galaxy_model_setup(params::GalaxyParameters)
+    galaxy_model_setup(params::GalaxyParameters, agent_step!, model_step!)
 
-Set up the galaxy model (planets and life) according to `params`. 
-
-Calls [`galaxy_planet_setup`](@ref) and [`galaxy_life_setup`](@ref).
+Setup function that respects the user's explicit choice of step functions.
+For N-body simulations, user must explicitly provide galaxy_agent_step_nbody! and galaxy_model_step_nbody!.
 """
 function galaxy_model_setup(params::GalaxyParameters, agent_step!, model_step!)
-
+    # Validate that N-body mode uses appropriate step functions
+    if params.nbody_data !== nothing
+        if agent_step! != galaxy_agent_step_nbody! || model_step! != galaxy_model_step_nbody!
+            error("""
+            N-body mode detected but incompatible step functions provided.
+            For N-body simulations, you must use:
+              agent_step! = galaxy_agent_step_nbody!
+              model_step! = galaxy_model_step_nbody!
+            
+            This is required because N-body simulations use pre-calculated positions
+            rather than physics-based movement.
+            """)
+        end
+        @info "N-body mode: Using pre-calculated planet trajectories"
+    end
+    
     model = galaxy_planet_setup(params, agent_step!, model_step!)
-    model = galaxy_life_setup(model, params::GalaxyParameters)
+    
+    # Add N-body properties if data provided
+    if params.nbody_data !== nothing
+        initialize_nbody_properties!(model, params)
+    end
+    
+    model = galaxy_life_setup(model, params)
     model
-
 end
 """
     galaxy_model_setup(params::Dict)
