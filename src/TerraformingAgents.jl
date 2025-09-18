@@ -465,13 +465,22 @@ end
 """
     GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData; kwargs...)
 
-Constructor for N-body simulations where planet count and positions are determined by the N-body data.
+Constructor for N-body simulations where planet count, positions, and extent are determined by the N-body data.
 """
 function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
-    extent=(1.0, 1.0),
+    extent::Union{NTuple{3,<:Real}, Nothing} = nothing,  # Allow override
     maxcomp=10, 
     compsize=10,
+    padding_factor=0.1,  # New parameter for extent calculation
     kwargs...)
+    
+    # Calculate optimal extent if not provided
+    if extent === nothing
+        extent = calculate_optimal_extent(nbody_data; padding_factor)
+        @info "Calculated optimal extent from N-body data: $extent"
+    else
+        @info "Using user-provided extent: $extent"
+    end
     
     # Extract planet information from N-body data
     nplanets = length(nbody_data.star_ids)
@@ -691,6 +700,34 @@ function apply_destination_function(planet::Planet, candidates::Vector{Planet}, 
     else
         error("Unknown destination function: $(model.destination_func)")
     end
+end
+
+"""
+    calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1)
+
+Calculate optimal extent for simulation space based on N-body data boundaries.
+Adds padding to ensure all trajectories fit comfortably within the space.
+"""
+function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1)
+    # Get all positions across all timesteps
+    all_positions = collect(values(nbody_data.positions))
+    
+    if isempty(all_positions)
+        error("No position data found in N-body data")
+    end
+    
+    # Find min/max coordinates across all dimensions
+    min_coords = [minimum(pos[i] for pos in all_positions) for i in 1:3]
+    max_coords = [maximum(pos[i] for pos in all_positions) for i in 1:3]
+    
+    # Calculate ranges for each dimension
+    ranges = max_coords .- min_coords
+    
+    # Add padding (default 10% on each side)
+    padded_ranges = ranges .* (1 + 2 * padding_factor)
+    
+    # Return as tuple for extent
+    return tuple(padded_ranges...)
 end
 # OPTIONAL UTILITY FUNCTIONS (useful for testing and analysis):
 # - validate_nbody_data(nbody_data::NBodyData)
