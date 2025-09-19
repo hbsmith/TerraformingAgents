@@ -32,7 +32,8 @@ export Planet,
        crossover_one_point, 
        horizontal_gene_transfer, 
        split_df_agent, 
-       clean_df
+       clean_df,
+       count_living_planets
 
 export NBodyData, load_nbody_data, get_nbody_position,
        calculate_reachable_destinations_nbody, spawn_if_candidate_planets_nbody!,
@@ -450,6 +451,71 @@ The main external constructor for `GalaxyParameters` (other external constructor
 # Notes:
 Calls the internal constructor.
 """
+function GalaxyParameters(rng::AbstractRNG, nplanets::Int;
+    extent=(1.0, 1.0), 
+    maxcomp=10, 
+    compsize=10,
+    pos=random_positions(rng, extent, nplanets),
+    vel=default_velocities(length(extent), nplanets),
+    planetcompositions=random_compositions(rng, maxcomp, compsize, nplanets),
+    kwargs...)
+
+    ## Calls the internal constructor. I still don't understand how this works and passes the correct keyword arguments to the correct places
+    GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, planetcompositions, kwargs...)
+end
+
+"""
+    GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData; kwargs...)
+
+Constructor for N-body simulations where planet count, positions, and simulation extent 
+are automatically determined from pre-calculated N-body trajectory data.
+
+# Arguments
+- `rng::AbstractRNG`: Random number generator for composition generation and other stochastic processes
+- `nbody_data::NBodyData`: Pre-loaded N-body simulation data containing star trajectories
+
+# Keyword Arguments
+- `extent::Union{NTuple{3,<:Real}, Nothing} = nothing`: Simulation space extent. If `nothing`, 
+  automatically calculated from N-body data bounds with padding
+- `spacing::Union{Real, Nothing} = nothing`: Grid spacing for ContinuousSpace. If `nothing`, 
+  set to `minimum(extent)/20` and adjusted to ensure extent divisibility
+- `space_offset::Union{SVector{3,Float64}, Nothing} = nothing`: Coordinate transformation offset 
+  from N-body world coordinates to simulation coordinates. If `nothing`, calculated as minimum 
+  coordinates from N-body data
+- `maxcomp::Real = 10`: Maximum value for randomly generated planet composition elements
+- `compsize::Int = 10`: Length of planet composition vectors
+- `padding_factor::Float64 = 0.1`: Fraction of data range to add as padding when calculating 
+  automatic extent (e.g., 0.1 = 10% padding on each side)
+- `kwargs...`: Additional parameters passed to the main GalaxyParameters constructor
+
+# Returns
+`GalaxyParameters` object configured for N-body simulation with:
+- Number of planets matching number of stars in N-body data
+- Planet IDs corresponding to star IDs in N-body data
+- Initial positions from first timestep of N-body data
+- Zero velocities (positions come from N-body data, not physics simulation)
+- Automatically sized simulation extent with appropriate spacing
+- Random planet compositions
+
+# Notes
+- This constructor automatically handles coordinate system conversion between N-body simulation 
+  coordinates and Agents.jl simulation coordinates
+- Planet positions will be updated each timestep from N-body data during simulation
+- Requires use of `galaxy_agent_step_nbody!` and `galaxy_model_step_nbody!` step functions
+- Simulation length is limited by the number of timesteps in the N-body data
+
+# Example
+```julia
+nbody_data = load_nbody_data("trajectory.csv")
+rng = MersenneTwister(1234)
+params = GalaxyParameters(rng, nbody_data; 
+                         lifespeed=0.001, 
+                         padding_factor=0.15)
+model = galaxy_model_setup(params, galaxy_agent_step_nbody!, galaxy_model_step_nbody!)
+```
+
+Related functions: `load_nbody_data`, `galaxy_agent_step_nbody!`, `galaxy_model_step_nbody!`
+"""
 function GalaxyParameters(rng::AbstractRNG, nbody_data::NBodyData;
     extent::Union{NTuple{3,<:Real}, Nothing} = nothing,
     spacing::Union{Real, Nothing} = nothing,
@@ -584,7 +650,7 @@ end
 function calculate_reachable_destinations_nbody(planet::Planet, model::ABM, current_timestep::Int)
     basic_candidates = basic_candidate_planets(planet, model)
     
-    if !hasproperty(model, :nbody_data) || model.nbody_data === nothing
+    if !haskey(abmproperties(model), :nbody_data) || model.nbody_data === nothing
         return basic_candidates
     end
     
@@ -1245,7 +1311,7 @@ function spawn_if_candidate_planets!(
     model::ABM,
     life::Union{Life,Nothing} = nothing
 )
-    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
+    if haskey(abmproperties(model), :nbody_data) && model.nbody_data !== nothing
         spawn_if_candidate_planets_nbody!(planet, model, life)
     elseif planets_are_static(model)
         spawn_static!(planet, model, life)
@@ -1263,7 +1329,7 @@ This replaces the existing function when N-body mode is active.
 """
 function spawn_if_candidate_planets_nbody!(planet::Planet, model::ABM, life::Union{Life,Nothing} = nothing)
     # Check launch rate limiting for N-body mode
-    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
+    if haskey(abmproperties(model), :nbody_data) && model.nbody_data !== nothing
         current_timestep = model.current_nbody_timestep
         
         # Respect launch rate limits (one launch per timestep)
@@ -1294,7 +1360,7 @@ function spawn_if_candidate_planets_nbody!(planet::Planet, model::ABM, life::Uni
     end
     
     # Create mission-style life or regular life depending on mode
-    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
+    if haskey(abmproperties(model), :nbody_data) && model.nbody_data !== nothing
         # N-body mission mode
         spawnlife_mission!(planet, model, destination_planet, life)
     else
@@ -1740,7 +1806,7 @@ This can replace your existing model step function.
 """
 function galaxy_model_step!(model::ABM)
     # Handle N-body timestep advancement
-    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
+    if haskey(abmproperties(model), :nbody_data) && model.nbody_data !== nothing
         # Advance N-body timestep
         current_timestep = model.current_nbody_timestep
         model.current_nbody_timestep = current_timestep + 1
@@ -1765,7 +1831,7 @@ N-body model step function that advances N-body timestep.
 """
 function galaxy_model_step_nbody!(model::ABM)
     # Handle N-body timestep advancement
-    if hasproperty(model, :nbody_data) && model.nbody_data !== nothing
+    if haskey(abmproperties(model), :nbody_data) && model.nbody_data !== nothing
         current_timestep = model.current_nbody_timestep
         model.current_nbody_timestep = current_timestep + 1
         
@@ -1899,7 +1965,7 @@ end
 Modified agent step function that handles N-body mode.
 """
 function galaxy_agent_step_nbody!(agent::Planet, model::ABM)
-    if !hasproperty(model, :nbody_data) || model.nbody_data === nothing
+    if !haskey(abmproperties(model), :nbody_data) || model.nbody_data === nothing
         error("N-body agent step called without N-body data")
     end
     
