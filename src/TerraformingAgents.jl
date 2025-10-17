@@ -33,7 +33,8 @@ export Planet,
        horizontal_gene_transfer, 
        split_df_agent, 
        clean_df,
-       count_living_planets
+       count_living_planets,
+       nplanets
 
 export NBodyData, load_nbody_data, get_nbody_position,
        calculate_reachable_destinations_nbody, spawn_if_candidate_planets_nbody!,
@@ -899,10 +900,12 @@ function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Flo
         spacing = minimum(padded_ranges) / 20.0
     end
     
-    # Round up to be divisible by spacing
-    adjusted_ranges = ceil.(padded_ranges ./ spacing) .* spacing
+    # Calculate number of cells needed and derive exact extent from that
+    # This ensures extent = n_cells * spacing exactly
+    n_cells = ceil.(Int, padded_ranges ./ spacing)
+    adjusted_ranges = n_cells .* spacing
     
-    @info "CNS5 extent calculation:" raw_extent=tuple(padded_ranges...) adjusted_extent=tuple(adjusted_ranges...) spacing=spacing
+    @info "CNS5 extent calculation:" raw_extent=tuple(padded_ranges...) n_cells=tuple(n_cells...) adjusted_extent=tuple(adjusted_ranges...) spacing=spacing
     
     return tuple(adjusted_ranges...), spacing
 end
@@ -966,6 +969,10 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
         extent, calculated_spacing = calculate_optimal_extent_from_positions(
             cns5_data.positions, cns5_data.velocities, t_offset; 
             padding_factor, spacing)
+
+        @show extent
+        @show calculated_spacing
+        @show extent./calculated_spacing
         
         if spacing === nothing
             spacing = calculated_spacing
