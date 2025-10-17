@@ -879,15 +879,17 @@ Calculate optimal extent for simulation space based on position data and future 
 """
 function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Float64}}, 
                                                 velocities::Vector{SVector{3,Float64}},
-                                                t_offset::Float64;
+                                                t_start::Float64,
+                                                t_end::Float64;
                                                 padding_factor::Float64 = 0.1,
                                                 spacing::Union{Real,Nothing} = nothing)
     
-    # Calculate positions at both t=0 and t=t_offset to capture full range
-    positions_at_offset = [p + v * t_offset for (p, v) in zip(positions, velocities)]
-    all_positions = vcat(positions, positions_at_offset)
+    # Calculate positions at both start and end of simulation
+    positions_at_start = [p + v * t_start for (p, v) in zip(positions, velocities)]
+    positions_at_end = [p + v * t_end for (p, v) in zip(positions, velocities)]
+    all_positions = vcat(positions_at_start, positions_at_end)
     
-    # Find min/max coordinates
+    # Find min/max coordinates across the entire simulation timespan
     min_coords = [minimum(pos[i] for pos in all_positions) for i in 1:3]
     max_coords = [maximum(pos[i] for pos in all_positions) for i in 1:3]
     
@@ -903,11 +905,11 @@ function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Flo
         spacing = 1.0
     end
     
-    # Ensure extent is divisible by spacing by rounding up to nearest multiple
+    # Ensure extent is divisible by spacing
     n_cells = ceil.(Int, adjusted_ranges ./ spacing)
     final_extent = tuple((Float64(n) * spacing for n in n_cells)...)
     
-    @info "CNS5 extent calculation:" raw_extent=tuple(padded_ranges...) rounded_extent=tuple(Float64.(adjusted_ranges)...) final_extent=final_extent spacing=spacing
+    @info "CNS5 extent calculation:" timespan=(t_start, t_end) raw_extent=tuple(padded_ranges...) final_extent=final_extent spacing=spacing
     
     return final_extent, spacing
 end
@@ -951,6 +953,8 @@ run!(model, 500)
 """
 function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
     t_offset::Float64 = 0.0,
+    n_steps::Union{Int,Nothing} = nothing,
+    dt::Float64 = 100.0,
     extent::Union{NTuple{3,<:Real}, Nothing} = nothing,
     spacing::Union{Real, Nothing} = nothing,
     padding_factor::Float64 = 0.1,
@@ -960,21 +964,26 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
     
     @info "Initializing GalaxyParameters from CNS5 data" n_stars=length(cns5_data.star_ids) t_offset=t_offset catalog_epoch=cns5_data.catalog_epoch
     
-    # Apply time offset to positions
-    # If t_offset = -50000, positions are rewound 50k years into the past
+    # Apply time offset to get starting positions
     pos = [SVector{3,Float64}(p + v * t_offset) 
            for (p, v) in zip(cns5_data.positions, cns5_data.velocities)]
     vel = cns5_data.velocities
     
     # Calculate extent if not provided
     if extent === nothing
+        # Determine simulation timespan
+        if n_steps !== nothing
+            t_end = t_offset + (n_steps * dt)
+            @info "Auto-calculating extent for simulation timespan" t_start=t_offset t_end=t_end total_time=(t_end - t_offset)
+        else
+            # If n_steps not provided, just use current positions with padding
+            t_end = t_offset
+            @warn "n_steps not provided - extent calculated for initial positions only. Planets may reach boundaries during simulation."
+        end
+        
         extent, calculated_spacing = calculate_optimal_extent_from_positions(
-            cns5_data.positions, cns5_data.velocities, t_offset; 
+            cns5_data.positions, cns5_data.velocities, t_offset, t_end;
             padding_factor, spacing)
-
-        @show extent
-        @show calculated_spacing
-        @show extent./calculated_spacing
         
         if spacing === nothing
             spacing = calculated_spacing
@@ -982,7 +991,7 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
     else
         @info "Using user-provided extent: $extent"
         if spacing === nothing
-            spacing = minimum(extent) / 20.0
+            spacing = 1.0
         end
     end
     
@@ -1000,9 +1009,9 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
     
     @info "CNS5 initialization complete" nplanets=nplanets extent=extent spacing=spacing
     
-    # Call main constructor
+    # Call main constructor (pass dt explicitly)
     return GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, 
-                           planetcompositions, args...)
+                           planetcompositions, dt=dt, args...)
 end
 
 # Convenience constructor without explicit RNG
@@ -2322,6 +2331,8 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 """
 function galaxy_agent_step_spawn_at_rate!(life::Life, model)
 
+    @show life.pos
+
     if life.destination == nothing
         remove_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
@@ -2340,6 +2351,9 @@ end
 Custom `agent_step!` for Planet. Spawns life at a fixed rate. 
 """
 function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
+
+    @show planet.pos
+    @show planet.vel
 
     planet.alive && (planet.spawn_threshold += model.dt * model.spawn_rate)
 
