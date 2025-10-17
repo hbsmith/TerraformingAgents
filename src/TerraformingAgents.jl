@@ -589,6 +589,415 @@ function GalaxyParameters(nbody_data::NBodyData; kwargs...)
     GalaxyParameters(Random.default_rng(), nbody_data; kwargs...)
 end
 
+##############################################################################################################################
+## CNS5 Catalog Integration
+##############################################################################################################################
+
+# Physical constants
+const PC_PER_KM_S_PER_YR = 1.0227121650537077e-6  # conversion 1 km/s -> pc/yr
+
+"""
+    CNS5Data
+
+Structure to hold processed CNS5 catalog data with positions and velocities.
+
+# Fields
+- `positions::Vector{SVector{3,Float64}}`: Cartesian positions in parsecs (ICRS-ish frame)
+- `velocities::Vector{SVector{3,Float64}}`: Cartesian velocities in pc/yr
+- `star_ids::Vector{Int}`: Original catalog row indices (1-based)
+- `catalog_epoch::Float64`: Reference epoch of the catalog (e.g., 2000.0 for J2000)
+"""
+struct CNS5Data
+    positions::Vector{SVector{3,Float64}}
+    velocities::Vector{SVector{3,Float64}}
+    star_ids::Vector{Int}
+    catalog_epoch::Float64
+end
+
+# Helper conversion functions
+deg2rad_cns5(x) = x * π / 180.0
+mas2rad_cns5(x) = x * 1e-3 / 3600.0 * π/180.0
+
+"""
+    radec_to_xyz(ra_deg, dec_deg, dist_pc)
+
+Convert RA/Dec (degrees) + distance (pc) to Cartesian coordinates (pc) in ICRS-ish frame.
+"""
+function radec_to_xyz(ra_deg, dec_deg, dist_pc)
+    ra = deg2rad_cns5(ra_deg)
+    dec = deg2rad_cns5(dec_deg)
+    x = dist_pc * cos(dec) * cos(ra)
+    y = dist_pc * cos(dec) * sin(ra)
+    z = dist_pc * sin(dec)
+    return SVector{3,Float64}(x, y, z)
+end
+
+"""
+    motions_to_velocity_vec(ra_deg, dec_deg, pmra, pmdec, rv, parallax)
+
+Convert observables to velocity vector in pc/yr.
+- pmra, pmdec: proper motions in mas/yr
+- rv: radial velocity in km/s
+- parallax: parallax in mas
+"""
+function motions_to_velocity_vec(ra_deg, dec_deg, pmra, pmdec, rv, parallax)
+    d_pc = 1000.0 / parallax
+    
+    # Tangential velocities (km/s): v = 4.74057 * mu_masyr * d_pc
+    k = 4.74057e-3
+    v_ra_kms  = k * pmra * d_pc
+    v_dec_kms = k * pmdec * d_pc
+    
+    # Unit basis vectors (ICRS-like)
+    ra = deg2rad_cns5(ra_deg)
+    dec = deg2rad_cns5(dec_deg)
+    u_ra  = SVector{3,Float64}(-sin(ra), cos(ra), 0.0)
+    u_dec = SVector{3,Float64}(-cos(ra)*sin(dec), -sin(ra)*sin(dec), cos(dec))
+    u_rad = SVector{3,Float64}(cos(dec)*cos(ra), cos(dec)*sin(ra), sin(dec))
+    
+    # Combine components to get velocity in km/s, then convert to pc/yr
+    v_kms = v_ra_kms * u_ra + v_dec_kms * u_dec + rv * u_rad
+    return v_kms * PC_PER_KM_S_PER_YR
+end
+
+"""
+    parse_vizier_types(csv_path::String)
+
+Parse VizieR column metadata from TSV file to determine proper column types.
+Returns a dictionary mapping column names to Julia types.
+"""
+function parse_vizier_types(csv_path::String)
+    types_dict = Dict{String, Type}()
+    
+    open(csv_path, "r") do file
+        for line in eachline(file)
+            if startswith(line, "#Column")
+                parts = split(line, '\t')
+                if length(parts) >= 4
+                    col_name = strip(parts[2])
+                    format_spec = strip(parts[3])
+                    description = strip(parts[4])
+                    
+                    format_match = match(r"\(([AIFaiflf])(\d+)(?:\.(\d+))?\)", format_spec)
+                    if format_match !== nothing
+                        format_type = uppercase(format_match.captures[1])[1]
+                        nullable = occursin('?', description)
+                        
+                        if format_type == 'I'
+                            base_type = Int
+                        elseif format_type == 'F'
+                            base_type = Float64
+                        else
+                            base_type = String
+                        end
+                        
+                        julia_type = nullable ? Union{base_type, Missing} : base_type
+                        types_dict[col_name] = julia_type
+                    end
+                end
+            end
+        end
+    end
+    
+    return types_dict
+end
+
+"""
+    load_cns5_catalog(csv_path::String; kwargs...)
+
+Load CNS5 catalog from VizieR TSV file and convert to positions/velocities.
+
+# Arguments
+- `csv_path::String`: Path to CNS5 TSV file from VizieR
+
+# Keyword Arguments
+- `sample_uncertainty::Bool = false`: If true, sample from observational error distributions
+- `rv_default_sigma::Float64 = 30.0`: Default RV uncertainty (km/s) for stars with missing RV
+- `max_stars::Union{Int,Nothing} = nothing`: Maximum number of stars to load (for testing)
+- `rng::AbstractRNG = Random.default_rng()`: Random number generator for uncertainty sampling
+- `catalog_epoch::Float64 = 2000.0`: Reference epoch of the catalog (J2000)
+
+# Returns
+`CNS5Data` structure containing positions, velocities, star IDs, and catalog epoch
+
+# Example
+```julia
+# Load catalog with mean values
+cns5_data = load_cns5_catalog("cns5_tab_sep.tsv")
+
+# Load with uncertainty sampling
+cns5_data = load_cns5_catalog("cns5_tab_sep.tsv", 
+                             sample_uncertainty=true, 
+                             rng=MersenneTwister(42))
+```
+"""
+function load_cns5_catalog(csv_path::String;
+                          sample_uncertainty::Bool = false,
+                          rv_default_sigma::Float64 = 30.0,
+                          max_stars::Union{Int,Nothing} = nothing,
+                          rng::AbstractRNG = Random.default_rng(),
+                          catalog_epoch::Float64 = 2000.0)
+    
+    println("Loading CNS5 catalog from: $csv_path")
+    
+    # Parse column types from VizieR metadata
+    vizier_types = parse_vizier_types(csv_path)
+    println("Parsed $(length(vizier_types)) column types from VizieR metadata")
+    
+    # Clean whitespace issues in file
+    raw_text = read(csv_path, String)
+    cleaned_text = replace(raw_text, r" +\t" => "\t")
+    cleaned_text = replace(cleaned_text, r"\t +\t" => "\t\t")
+    
+    # Write to temp file
+    temp_path = tempname() * ".tsv"
+    write(temp_path, cleaned_text)
+    
+    # Read with parsed types
+    df = CSV.read(temp_path, DataFrame; 
+                 delim='\t', 
+                 comment="#", 
+                 header=1, 
+                 skipto=4,
+                 missingstring="",
+                 stripwhitespace=true,
+                 types=vizier_types)
+    
+    rm(temp_path)
+    
+    Nrows = size(df, 1)
+    println("Loaded $(Nrows) rows from catalog")
+    
+    # Extract columns directly from VizieR CNS5 data
+    ra = df.RAJ2000
+    dec = df.DEJ2000
+    parallax = df.plx
+    parallax_error = df.e_plx
+    pmra = df.pmRA
+    pmdec = df.pmDE
+    pmra_error = df.e_pmRA
+    pmdec_error = df.e_pmDE
+    rv = df.RV
+    rv_error = df.e_RV
+    
+    # Create validity mask: positive parallax and non-missing coordinates
+    valid_mask = .!ismissing.(parallax) .&& (parallax .> 0.0) .&& 
+                 .!ismissing.(ra) .&& .!ismissing.(dec)
+    
+    println("Valid stars: $(sum(valid_mask)) / $(Nrows)")
+    if sum(.!valid_mask) > 0
+        println("Filtered out $(sum(.!valid_mask)) stars with invalid astrometry")
+    end
+    
+    # Limit to requested number if specified
+    idxs = findall(valid_mask)
+    if max_stars !== nothing && length(idxs) > max_stars
+        idxs = idxs[1:max_stars]
+        println("Limited to first $max_stars stars")
+    end
+    
+    M = length(idxs)
+    println("Processing $M stars")
+    
+    # Process each star
+    positions = Vector{SVector{3,Float64}}(undef, M)
+    velocities = Vector{SVector{3,Float64}}(undef, M)
+    star_ids = Vector{Int}(undef, M)
+    
+    for (i, rowidx) in enumerate(idxs)
+        star_ids[i] = rowidx
+        
+        # Get values for this star
+        ra_i = ra[rowidx]
+        dec_i = dec[rowidx]
+        plx = parallax[rowidx]
+        pmr = pmra[rowidx]
+        pmd = pmdec[rowidx]
+        rv_i = rv[rowidx]
+        
+        # Handle errors
+        e_plx = (ismissing(parallax_error[rowidx]) || parallax_error[rowidx] == 0.0) ? 
+                max(0.05, abs(0.01 * plx)) : parallax_error[rowidx]
+        e_pmr = (ismissing(pmra_error[rowidx]) || pmra_error[rowidx] isa Number) ? 
+                pmra_error[rowidx] : 0.1
+        e_pmd = (ismissing(pmdec_error[rowidx]) || pmdec_error[rowidx] isa Number) ? 
+                pmdec_error[rowidx] : 0.1
+        e_rv = ismissing(rv_error[rowidx]) ? rv_default_sigma : rv_error[rowidx]
+        rv_central = ismissing(rv_i) ? 0.0 : rv_i
+        
+        if sample_uncertainty
+            # Sample from error distributions
+            plx_dist = truncated(Normal(plx, e_plx), 1e-6, Inf)
+            pmr_dist = Normal(pmr, e_pmr)
+            pmd_dist = Normal(pmd, e_pmd)
+            rv_dist = Normal(rv_central, e_rv)
+            
+            plx_s = rand(rng, plx_dist)
+            pmr_s = rand(rng, pmr_dist)
+            pmd_s = rand(rng, pmd_dist)
+            rv_s = rand(rng, rv_dist)
+            
+            d_pc = 1000.0 / plx_s
+            positions[i] = radec_to_xyz(ra_i, dec_i, d_pc)
+            velocities[i] = motions_to_velocity_vec(ra_i, dec_i, pmr_s, pmd_s, rv_s, plx_s)
+        else
+            # Use mean values
+            d_pc = 1000.0 / plx
+            positions[i] = radec_to_xyz(ra_i, dec_i, d_pc)
+            velocities[i] = motions_to_velocity_vec(ra_i, dec_i, pmr, pmd, rv_central, plx)
+        end
+    end
+    
+    println("Successfully processed $M stars")
+    if sample_uncertainty
+        println("Used uncertainty sampling (Monte Carlo)")
+    else
+        println("Used mean values (deterministic)")
+    end
+    
+    return CNS5Data(positions, velocities, star_ids, catalog_epoch)
+end
+
+"""
+    calculate_optimal_extent_from_positions(positions, velocities, t_offset; padding_factor=0.1, spacing=nothing)
+
+Calculate optimal extent for simulation space based on position data and future motion.
+
+# Arguments
+- `positions::Vector{SVector{3,Float64}}`: Initial positions
+- `velocities::Vector{SVector{3,Float64}}`: Velocities
+- `t_offset::Float64`: Time offset to consider (for checking future/past extent)
+- `padding_factor::Float64 = 0.1`: Fraction of range to add as padding
+- `spacing::Union{Real,Nothing} = nothing`: Grid spacing (auto-calculated if nothing)
+
+# Returns
+- `extent::NTuple{3,Float64}`: Simulation space extent
+- `spacing::Float64`: Grid spacing adjusted for divisibility
+"""
+function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Float64}}, 
+                                                velocities::Vector{SVector{3,Float64}},
+                                                t_offset::Float64;
+                                                padding_factor::Float64 = 0.1,
+                                                spacing::Union{Real,Nothing} = nothing)
+    
+    # Calculate positions at both t=0 and t=t_offset to capture full range
+    positions_at_offset = [p + v * t_offset for (p, v) in zip(positions, velocities)]
+    all_positions = vcat(positions, positions_at_offset)
+    
+    # Find min/max coordinates
+    min_coords = [minimum(pos[i] for pos in all_positions) for i in 1:3]
+    max_coords = [maximum(pos[i] for pos in all_positions) for i in 1:3]
+    
+    # Calculate ranges with padding
+    ranges = max_coords .- min_coords
+    padded_ranges = ranges .* (1 + 2 * padding_factor)
+    
+    # Calculate spacing if not provided
+    if spacing === nothing
+        spacing = minimum(padded_ranges) / 20.0
+    end
+    
+    # Round up to be divisible by spacing
+    adjusted_ranges = ceil.(padded_ranges ./ spacing) .* spacing
+    
+    @info "CNS5 extent calculation:" raw_extent=tuple(padded_ranges...) adjusted_extent=tuple(adjusted_ranges...) spacing=spacing
+    
+    return tuple(adjusted_ranges...), spacing
+end
+
+"""
+    GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data; kwargs...)
+
+Constructor for initializing GalaxyParameters from CNS5 catalog data.
+
+# Arguments
+- `rng::AbstractRNG`: Random number generator
+- `cns5_data::CNS5Data`: Loaded CNS5 catalog data
+
+# Keyword Arguments
+- `t_offset::Float64 = 0.0`: Time offset in years from catalog epoch. Negative values 
+  go backward in time (e.g., -50000.0 starts 50k years before J2000)
+- `extent::Union{NTuple{3,<:Real}, Nothing} = nothing`: Simulation space extent 
+  (auto-calculated if nothing)
+- `spacing::Union{Real, Nothing} = nothing`: Grid spacing (auto-calculated if nothing)
+- `padding_factor::Float64 = 0.1`: Padding factor for auto-calculated extent
+- `maxcomp::Real = 10`: Maximum composition value
+- `compsize::Int = 10`: Length of composition vectors
+- `kwargs...`: Additional parameters passed to main GalaxyParameters constructor
+
+# Returns
+`GalaxyParameters` configured for CNS5 simulation
+
+# Example
+```julia
+# Start 50,000 years in the past
+cns5_data = load_cns5_catalog("cns5.tsv")
+params = GalaxyParameters(rng, cns5_data; 
+                         t_offset = -50000.0,
+                         dt = 100.0,
+                         lifespeed = 0.001)
+model = galaxy_model_setup(params, galaxy_agent_step_spawn_at_rate!, galaxy_model_step!)
+
+# Run for 500 steps (50k years) to reach present day
+run!(model, 500)
+```
+"""
+function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
+    t_offset::Float64 = 0.0,
+    extent::Union{NTuple{3,<:Real}, Nothing} = nothing,
+    spacing::Union{Real, Nothing} = nothing,
+    padding_factor::Float64 = 0.1,
+    maxcomp::Real = 10,
+    compsize::Int = 10,
+    kwargs...)
+    
+    @info "Initializing GalaxyParameters from CNS5 data" n_stars=length(cns5_data.star_ids) t_offset=t_offset catalog_epoch=cns5_data.catalog_epoch
+    
+    # Apply time offset to positions
+    # If t_offset = -50000, positions are rewound 50k years into the past
+    pos = [SVector{3,Float64}(p + v * t_offset) 
+           for (p, v) in zip(cns5_data.positions, cns5_data.velocities)]
+    vel = cns5_data.velocities
+    
+    # Calculate extent if not provided
+    if extent === nothing
+        extent, calculated_spacing = calculate_optimal_extent_from_positions(
+            cns5_data.positions, cns5_data.velocities, t_offset; 
+            padding_factor, spacing)
+        
+        if spacing === nothing
+            spacing = calculated_spacing
+        end
+    else
+        @info "Using user-provided extent: $extent"
+        if spacing === nothing
+            spacing = minimum(extent) / 20.0
+        end
+    end
+    
+    # Set up SpaceArgs with spacing
+    args = Dict{Symbol,Any}(kwargs)
+    if haskey(args, :SpaceArgs)
+        args[:SpaceArgs][:spacing] = spacing
+    else
+        args[:SpaceArgs] = Dict{Symbol,Union{Real,Tuple}}(:spacing => spacing)
+    end
+    
+    # Generate random compositions
+    nplanets = length(cns5_data.star_ids)
+    planetcompositions = random_compositions(rng, maxcomp, compsize, nplanets)
+    
+    @info "CNS5 initialization complete" nplanets=nplanets extent=extent spacing=spacing
+    
+    # Call main constructor
+    return GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, 
+                           planetcompositions, args...)
+end
+
+# Convenience constructor without explicit RNG
+function GalaxyParameters(cns5_data::CNS5Data; kwargs...)
+    GalaxyParameters(Random.default_rng(), cns5_data; kwargs...)
+end
 
 ##############################################################################################################################
 ## NBody Core
