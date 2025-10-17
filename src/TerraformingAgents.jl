@@ -39,6 +39,8 @@ export NBodyData, load_nbody_data, get_nbody_position,
        calculate_reachable_destinations_nbody, spawn_if_candidate_planets_nbody!,
        spawnlife_mission!, galaxy_agent_step_nbody!, galaxy_model_step_nbody!
 
+export CNS5Data, load_cns5_catalog
+
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
 
