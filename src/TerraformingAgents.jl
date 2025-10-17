@@ -895,19 +895,21 @@ function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Flo
     ranges = max_coords .- min_coords
     padded_ranges = ranges .* (1 + 2 * padding_factor)
     
-    # Calculate spacing if not provided
+    # Round extent to integers to avoid floating point precision issues
+    adjusted_ranges = ceil.(Int, padded_ranges)
+    
+    # Calculate spacing - use 1.0 by default for clean divisibility
     if spacing === nothing
-        spacing = minimum(padded_ranges) / 20.0
+        spacing = 1.0
     end
     
-    # Calculate number of cells needed and derive exact extent from that
-    # This ensures extent = n_cells * spacing exactly
-    n_cells = ceil.(Int, padded_ranges ./ spacing)
-    adjusted_ranges = n_cells .* spacing
+    # Ensure extent is divisible by spacing by rounding up to nearest multiple
+    n_cells = ceil.(Int, adjusted_ranges ./ spacing)
+    final_extent = tuple((Float64(n) * spacing for n in n_cells)...)
     
-    @info "CNS5 extent calculation:" raw_extent=tuple(padded_ranges...) n_cells=tuple(n_cells...) adjusted_extent=tuple(adjusted_ranges...) spacing=spacing
+    @info "CNS5 extent calculation:" raw_extent=tuple(padded_ranges...) rounded_extent=tuple(Float64.(adjusted_ranges)...) final_extent=final_extent spacing=spacing
     
-    return tuple(adjusted_ranges...), spacing
+    return final_extent, spacing
 end
 
 """
@@ -1224,6 +1226,7 @@ function calculate_optimal_extent(nbody_data::NBodyData; padding_factor=0.1, spa
     # Create space offset from minimum coordinates
     space_offset = SVector{3,Float64}(min_coords...)
     
+    println("calculating OLD optimal extent")
     @info "Raw extent:\t$(tuple(padded_ranges...))"
     @info "Adjusted extent:\t$(tuple(adjusted_ranges...))"
     @info "Spacing:\t$spacing"
