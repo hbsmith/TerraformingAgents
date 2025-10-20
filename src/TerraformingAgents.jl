@@ -255,7 +255,7 @@ Defines the AgentBasedModel, Space, and Galaxy
 - `interaction_radius::Real = dt*lifespeed`: distance away at which `Life` can interact with a `Planet`.
 - `ool::Union{Vector{Int}, Int, Nothing} = nothing`: id of `Planet`(s) on which to initialize `Life`.
 - `nool::Int = 1`: the number of planets that are initialized with life
-- `spawn_rate::Real = 0.02`: the frequency at which to send out life from every living planet (in units of dt) (only used for `galaxy_agent_step_spawn_at_rate!`)
+- `spawn_rate::Real = 0.02`: the frequency at which to send out life from every living planet (in units of 1/dt) (only used for `galaxy_agent_step_spawn_at_rate!`)
 - `compmix_func::Function = average_compositions`: Function to use for generating terraformed `Planet`'s composition. Must take as input two valid composition vectors, and return one valid composition vector.  
 - `compmix_kwargs::Union{Dict{Symbol},Nothing} = nothing`: kwargs to pass to `compmix_func`.
 - `compatibility_func::Symbol = compositionally_similar_planets`: Name of function to use for deciding what `Planet`s are compatible for future terraformation. 
@@ -2840,11 +2840,13 @@ function smart_format(x::Real; sig_figs::Int=2)
     if abs_x == 0.0
         return "0.0"
     elseif 0.01 <= abs_x < 100.0
-        # Use regular notation for numbers between 0.01 and 100
-        return @sprintf("%.$(sig_figs)f", x)
+        # Use regular notation
+        fmt = Printf.Format("%.$(sig_figs)f")
+        return Printf.format(fmt, x)
     else
-        # Use scientific notation otherwise
-        return @sprintf("%.$(sig_figs-1)e", x)
+        # Use scientific notation (sig_figs - 1 for mantissa)
+        fmt = Printf.Format("%.$(sig_figs-1)e")
+        return Printf.format(fmt, x)
     end
 end
 
