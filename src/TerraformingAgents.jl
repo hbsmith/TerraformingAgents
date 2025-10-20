@@ -884,34 +884,33 @@ function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Flo
                                                 padding_factor::Float64 = 0.1,
                                                 spacing::Union{Real,Nothing} = nothing)
     
-    # Calculate positions at both start and end of simulation
+    # Calculate positions at both start and end
     positions_at_start = [p + v * t_start for (p, v) in zip(positions, velocities)]
     positions_at_end = [p + v * t_end for (p, v) in zip(positions, velocities)]
     all_positions = vcat(positions_at_start, positions_at_end)
     
-    # Find min/max coordinates across the entire simulation timespan
+    # Find min/max coordinates
     min_coords = [minimum(pos[i] for pos in all_positions) for i in 1:3]
     max_coords = [maximum(pos[i] for pos in all_positions) for i in 1:3]
     
-    # Calculate ranges with padding
+    # Calculate extent
     ranges = max_coords .- min_coords
     padded_ranges = ranges .* (1 + 2 * padding_factor)
-    
-    # Round extent to integers to avoid floating point precision issues
     adjusted_ranges = ceil.(Int, padded_ranges)
     
-    # Calculate spacing - use 1.0 by default for clean divisibility
     if spacing === nothing
         spacing = 1.0
     end
     
-    # Ensure extent is divisible by spacing
     n_cells = ceil.(Int, adjusted_ranges ./ spacing)
     final_extent = tuple((Float64(n) * spacing for n in n_cells)...)
     
-    @info "CNS5 extent calculation:" timespan=(t_start, t_end) raw_extent=tuple(padded_ranges...) final_extent=final_extent spacing=spacing
+    # Create offset to translate world coordinates to [0, extent]
+    space_offset = SVector{3,Float64}(min_coords...)
     
-    return final_extent, spacing
+    @info "CNS5 extent calculation:" timespan=(t_start, t_end) final_extent=final_extent spacing=spacing space_offset=space_offset
+    
+    return final_extent, spacing, space_offset  # Return the offset!
 end
 
 """
@@ -964,12 +963,7 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
     
     @info "Initializing GalaxyParameters from CNS5 data" n_stars=length(cns5_data.star_ids) t_offset=t_offset catalog_epoch=cns5_data.catalog_epoch
     
-    # Apply time offset to get starting positions
-    pos = [SVector{3,Float64}(p + v * t_offset) 
-           for (p, v) in zip(cns5_data.positions, cns5_data.velocities)]
-    vel = cns5_data.velocities
-    
-    # Calculate extent if not provided
+    # Calculate extent and space offset if not provided
     if extent === nothing
         # Determine simulation timespan
         if n_steps !== nothing
@@ -981,19 +975,31 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
             @warn "n_steps not provided - extent calculated for initial positions only. Planets may reach boundaries during simulation."
         end
         
-        extent, calculated_spacing = calculate_optimal_extent_from_positions(
+        # Get extent, spacing, and offset
+        extent, calculated_spacing, space_offset = calculate_optimal_extent_from_positions(
             cns5_data.positions, cns5_data.velocities, t_offset, t_end;
             padding_factor, spacing)
+        
+        # Apply time offset AND space offset to translate to [0, extent] coordinates
+        pos = [SVector{3,Float64}((p + v * t_offset) - space_offset) 
+               for (p, v) in zip(cns5_data.positions, cns5_data.velocities)]
         
         if spacing === nothing
             spacing = calculated_spacing
         end
     else
         @info "Using user-provided extent: $extent"
+        
+        # User provided extent - just apply time offset, no space offset
+        pos = [SVector{3,Float64}(p + v * t_offset) 
+               for (p, v) in zip(cns5_data.positions, cns5_data.velocities)]
+        
         if spacing === nothing
             spacing = 1.0
         end
     end
+    
+    vel = cns5_data.velocities
     
     # Set up SpaceArgs with spacing
     args = Dict{Symbol,Any}(kwargs)
@@ -2331,8 +2337,6 @@ Avoids using `Agents.nearby_ids` because of bug (see: https://github.com/JuliaDy
 """
 function galaxy_agent_step_spawn_at_rate!(life::Life, model)
 
-    @show life.pos
-
     if life.destination == nothing
         remove_agent!(life, model)
     elseif life.destination_distance < model.dt*hypot((life.vel)...)
@@ -2351,9 +2355,6 @@ end
 Custom `agent_step!` for Planet. Spawns life at a fixed rate. 
 """
 function galaxy_agent_step_spawn_at_rate!(planet::Planet, model)
-
-    @show planet.pos
-    @show planet.vel
 
     planet.alive && (planet.spawn_threshold += model.dt * model.spawn_rate)
 
@@ -2834,6 +2835,19 @@ end
 ## Interactive Plot utilities 
 ##############################################################################################################################
 
+function smart_format(x::Real; sig_figs::Int=2)
+    abs_x = abs(x)
+    if abs_x == 0.0
+        return "0.0"
+    elseif 0.01 <= abs_x < 100.0
+        # Use regular notation for numbers between 0.01 and 100
+        return @sprintf("%.$(sig_figs)f", x)
+    else
+        # Use scientific notation otherwise
+        return @sprintf("%.$(sig_figs-1)e", x)
+    end
+end
+
 """
 Overload Agents.jl's agent2string function with custom fields for Planets
 
@@ -2844,16 +2858,16 @@ function Agents.agent2string(agent::Planet)
     """
     Planet
     id = $(agent.id)
-    pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
-    vel = ($(join([@sprintf("%.2f", i) for i in agent.vel],", ")))
-    composition = [$(join([@sprintf("%.2f", i) for i in agent.composition],", "))]
-    initialcomposition = [$(join([@sprintf("%.2f", i) for i in agent.initialcomposition],", "))]
+    pos = ($(join([smart_format(i) for i in agent.pos],", ")))
+    vel = ($(join([smart_format(i) for i in agent.vel],", ")))
+    composition = [$(join([smart_format(i) for i in agent.composition],", "))]
+    initialcomposition = [$(join([smart_format(i) for i in agent.initialcomposition],", "))]
     alive = $(agent.alive)
     claimed = $(agent.claimed)
     parentplanets (†‡): $(length(agent.parentplanets) == 0 ? "No parentplanet" : agent.parentplanets[end].id)
     parentlifes (†‡): $(length(agent.parentlifes) == 0 ? "No parentlife" : agent.parentlifes[end].id)
-    parentcompositions (‡): $(length(agent.parentcompositions) == 0 ? "No parentcomposition" : "[$(join([@sprintf("%.2f", i) for i in agent.parentcompositions[end]],", "))]")
-    last_launch_timestep: $(@sprintf("%.2f", agent.last_launch_timestep))
+    parentcompositions (‡): $(length(agent.parentcompositions) == 0 ? "No parentcomposition" : "[$(join([smart_format(i) for i in agent.parentcompositions[end]],", "))]")
+    last_launch_timestep: $(smart_format(agent.last_launch_timestep))
     reached boundary: $(agent.reached_boundary)
     """
     ## Have to exclude this because it's taking up making the rest of the screen invisible
@@ -2871,15 +2885,15 @@ function Agents.agent2string(agent::Life)
     """
     Life
     id = $(agent.id)
-    pos = ($(join([@sprintf("%.2f", i) for i in agent.pos],", ")))
-    vel = ($(join([@sprintf("%.2f", i) for i in agent.vel],", ")))
+    pos = ($(join([smart_format(i) for i in agent.pos],", ")))
+    vel = ($(join([smart_format(i) for i in agent.vel],", ")))
     parentplanet (†): $(agent.parentplanet.id)
-    composition = [$(join([@sprintf("%.2f", i) for i in agent.composition],", "))]
+    composition = [$(join([smart_format(i) for i in agent.composition],", "))]
     destination (†): $(agent.destination.id)
     destination_distance: $(agent.destination_distance)
     ancestors (†): $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
-    departure_timestep: $(@sprintf("%.2f", agent.departure_timestep))
-    arrival_timestep: $(@sprintf("%.2f", agent.arrival_timestep))
+    departure_timestep: $(smart_format(agent.departure_timestep))
+    arrival_timestep: $(smart_format(agent.arrival_timestep))
     is_mission: $(agent.is_mission)
     """
     ## Have to exclude this because it's taking up making the rest of the screen invisible
