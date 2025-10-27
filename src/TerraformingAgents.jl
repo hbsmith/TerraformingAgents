@@ -608,13 +608,13 @@ Structure to hold processed CNS5 catalog data with positions and velocities.
 - `positions::Vector{SVector{3,Float64}}`: Cartesian positions in parsecs (ICRS-ish frame)
 - `velocities::Vector{SVector{3,Float64}}`: Cartesian velocities in pc/yr
 - `star_ids::Vector{Int}`: Original catalog row indices (1-based)
-- `catalog_epoch::Float64`: Reference epoch of the catalog (e.g., 2000.0 for J2000)
+- `catalog_epoch::Real`: Reference epoch of the catalog (e.g., 2000.0 for J2000)
 """
 struct CNS5Data
     positions::Vector{SVector{3,Float64}}
     velocities::Vector{SVector{3,Float64}}
     star_ids::Vector{Int}
-    catalog_epoch::Float64
+    catalog_epoch::Real
 end
 
 # Helper conversion functions
@@ -715,10 +715,10 @@ Load CNS5 catalog from VizieR TSV file and convert to positions/velocities.
 
 # Keyword Arguments
 - `sample_uncertainty::Bool = false`: If true, sample from observational error distributions
-- `rv_default_sigma::Float64 = 30.0`: Default RV uncertainty (km/s) for stars with missing RV
+- `rv_default_sigma::Real = 30.0`: Default RV uncertainty (km/s) for stars with missing RV
 - `max_stars::Union{Int,Nothing} = nothing`: Maximum number of stars to load (for testing)
 - `rng::AbstractRNG = Random.default_rng()`: Random number generator for uncertainty sampling
-- `catalog_epoch::Float64 = 2000.0`: Reference epoch of the catalog (J2000)
+- `catalog_epoch::Real = 2000.0`: Reference epoch of the catalog (J2000)
 
 # Returns
 `CNS5Data` structure containing positions, velocities, star IDs, and catalog epoch
@@ -736,10 +736,10 @@ cns5_data = load_cns5_catalog("cns5_tab_sep.tsv",
 """
 function load_cns5_catalog(csv_path::String;
                           sample_uncertainty::Bool = false,
-                          rv_default_sigma::Float64 = 30.0,
+                          rv_default_sigma::Real = 30.0,
                           max_stars::Union{Int,Nothing} = nothing,
                           rng::AbstractRNG = Random.default_rng(),
-                          catalog_epoch::Float64 = 2000.0)
+                          catalog_epoch::Real = 2000.0)
     
     println("Loading CNS5 catalog from: $csv_path")
     
@@ -869,19 +869,20 @@ Calculate optimal extent for simulation space based on position data and future 
 # Arguments
 - `positions::Vector{SVector{3,Float64}}`: Initial positions
 - `velocities::Vector{SVector{3,Float64}}`: Velocities
-- `t_offset::Float64`: Time offset to consider (for checking future/past extent)
-- `padding_factor::Float64 = 0.1`: Fraction of range to add as padding
+- `t_offset::Real`: Time offset to consider (for checking future/past extent)
+- `padding_factor::Real = 0.1`: Fraction of range to add as padding
 - `spacing::Union{Real,Nothing} = nothing`: Grid spacing (auto-calculated if nothing)
 
 # Returns
-- `extent::NTuple{3,Float64}`: Simulation space extent
+- `final_extent::NTuple{3,Float64}`: Simulation space extent
 - `spacing::Float64`: Grid spacing adjusted for divisibility
+- `space_offset::SVector{3,Float64}`: offset to translate world coordinates to [0, extent]
 """
 function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Float64}}, 
                                                 velocities::Vector{SVector{3,Float64}},
-                                                t_start::Float64,
-                                                t_end::Float64;
-                                                padding_factor::Float64 = 0.1,
+                                                t_start::Real,
+                                                t_end::Real;
+                                                padding_factor::Real = 0.1,
                                                 spacing::Union{Real,Nothing} = nothing)
     
     # Calculate positions at both start and end
@@ -900,6 +901,8 @@ function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Flo
     
     if spacing === nothing
         spacing = 1.0
+    else 
+        spacing = Float64(spacing)
     end
     
     n_cells = ceil.(Int, adjusted_ranges ./ spacing)
@@ -923,12 +926,12 @@ Constructor for initializing GalaxyParameters from CNS5 catalog data.
 - `cns5_data::CNS5Data`: Loaded CNS5 catalog data
 
 # Keyword Arguments
-- `t_offset::Float64 = 0.0`: Time offset in years from catalog epoch. Negative values 
+- `t_offset::Real = 0.0`: Time offset in years from catalog epoch. Negative values 
   go backward in time (e.g., -50000.0 starts 50k years before J2000)
 - `extent::Union{NTuple{3,<:Real}, Nothing} = nothing`: Simulation space extent 
   (auto-calculated if nothing)
 - `spacing::Union{Real, Nothing} = nothing`: Grid spacing (auto-calculated if nothing)
-- `padding_factor::Float64 = 0.1`: Padding factor for auto-calculated extent
+- `padding_factor::Real = 0.1`: Padding factor for auto-calculated extent
 - `maxcomp::Real = 10`: Maximum composition value
 - `compsize::Int = 10`: Length of composition vectors
 - `kwargs...`: Additional parameters passed to main GalaxyParameters constructor
@@ -951,12 +954,12 @@ run!(model, 500)
 ```
 """
 function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
-    t_offset::Float64 = 0.0,
+    t_offset::Real = 0.0,
     n_steps::Union{Int,Nothing} = nothing,
-    dt::Float64 = 100.0,
+    dt::Real = 100.0,
     extent::Union{NTuple{3,<:Real}, Nothing} = nothing,
     spacing::Union{Real, Nothing} = nothing,
-    padding_factor::Float64 = 0.1,
+    padding_factor::Real = 0.1,
     maxcomp::Real = 10,
     compsize::Int = 10,
     kwargs...)
