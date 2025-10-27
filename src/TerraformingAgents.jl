@@ -2558,6 +2558,7 @@ function unnest_agents(df_planets, ndims, compsize)
     # inspired from https://bkamins.github.io/julialang/2022/03/11/unnesting.html
     # Create a new dataframe with extracted position components
     pos_columns = DataFrame()
+    vel_columns = DataFrame()
     
     # Define dimension names programmatically
     dim_names = ["x", "y", "z"][1:ndims]
@@ -2568,8 +2569,8 @@ function unnest_agents(df_planets, ndims, compsize)
         vel_columns[!, Symbol("v_"*name)] = [p[i] for p in df_planets.vel]
     end
     
-    # Join the position columns to the original dataframe
-    df = hcat(df_planets, pos_columns)
+    # Join the position AND velocity columns to the original dataframe
+    df = hcat(df_planets, pos_columns, vel_columns) 
     
     # Do the same for composition (no change needed as it's already a Vector)
     df = transform(df, :composition => AsTable)
@@ -2577,7 +2578,7 @@ function unnest_agents(df_planets, ndims, compsize)
     rename!(df, new_names)
     
     # Remove original vector columns
-    select!(df, Not([:pos, :composition, :agent_type]))
+    select!(df, Not([:pos, :vel, :pos_x, :pos_y, :pos_z, :vel_x, :vel_y, :vel_z, :composition, :agent_type]))
     return df
 end
 
@@ -2598,8 +2599,7 @@ function unnest_life(df, ndims, compsize)
     df = transform(df, :composition => AsTable)
     new_names = Dict("x$i" => "comp_$(i)" for i in 1:compsize)
     rename!(df, new_names)
-
-    select!(df, Not([:composition, :agent_type]))
+    select!(df, Not([:vel, :pos_x, :pos_y, :pos_z, :vel_x, :vel_y, :vel_z, :composition, :agent_type]))
     return df
 end
 
@@ -2616,7 +2616,7 @@ function split_df_agent(df_agent, dims, compsize)
 
     # misspell for parsing reasons
     df_lifes = df_agent[ismissing.(df_agent.alive),:]
-    select!(df_lifes, Not([:alive, :claimed, :pos])) #parentplanets ids??
+    select!(df_lifes, Not([:alive, :claimed, :pos]))
     df_lifes = unnest_life(df_lifes, dims, compsize)
 
     return df_planets, df_lifes
