@@ -50,7 +50,6 @@ export NBodyData, load_nbody_data, get_nbody_position,
 export CNS5Data, load_cns5_catalog
 
 export run_simulation_with_checkpoints,
-       save_checkpoint,
        extract_planet_data,
        extract_life_data,
        consolidate_simulation,
@@ -58,7 +57,8 @@ export run_simulation_with_checkpoints,
        save_parameter_metadata,
        load_simulation_results,
        find_completed_simulations,
-       resume_parameter_sweep
+       resume_parameter_sweep,
+       consolidate_all_simulations
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -2942,7 +2942,7 @@ Extract data from all Planet agents in the model at a given timestep.
 # Returns
 - `DataFrame`: Contains all Planet agent data with individual columns for position, velocity components
 """
-function extract_planet_data(model, step::Int)
+function extract_planet_data(model, step::Int, params::Union{Dict,Nothing}=nothing)
     planets = [a for a in allagents(model) if a isa Planet]
     
     if isempty(planets)
@@ -3011,7 +3011,7 @@ Extract data from all Life agents in the model at a given timestep.
 # Returns
 - `DataFrame`: Contains all Life agent data with individual columns for position, velocity components
 """
-function extract_life_data(model, step::Int)
+function extract_life_data(model, step::Int, params::Union{Dict,Nothing}=nothing)
     life_agents = [a for a in allagents(model) if a isa Life]
     
     if isempty(life_agents)
@@ -3062,44 +3062,6 @@ function extract_life_data(model, step::Int)
     end
     
     return df
-end
-
-"""
-    save_checkpoint(model, checkpoint_dir::String, step::Int, steps_to_collect::Set{Int})
-
-Save the current state of the model to Arrow files.
-
-# Arguments
-- `model`: The Agents.jl model containing the simulation
-- `checkpoint_dir::String`: Directory where checkpoint files will be saved
-- `step::Int`: The current simulation timestep
-- `steps_to_collect::Set{Int}`: Steps to collect data
-"""
-function save_checkpoint(model, checkpoint_dir::String, step::Int, steps_to_collect::Set{Int})
-    # Only save if this step should be collected
-    if step ∉ steps_to_collect
-        return
-    end
-
-    df_planets = extract_planet_data(model, step)
-    df_life = extract_life_data(model, step)
-    
-    # Use zero-padded step numbers for proper sorting
-    step_str = lpad(step, 8, '0')
-    
-    if !isempty(df_planets)
-        Arrow.write(
-            joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
-            df_planets
-        )
-    end
-    
-    if !isempty(df_life)
-        Arrow.write(
-            joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
-            df_life
-        )
-    end
 end
 
 """
@@ -3450,6 +3412,10 @@ function run_parameter_sweep(
             consolidate_simulation(sim_id, output_dir; cleanup_checkpoints = cleanup_checkpoints)
         end
         println("Consolidation complete!")
+
+        # Consolidate all simulations into master files
+        println("\nCreating master CSV files...")
+        consolidate_all_simulations(output_dir; cleanup_individual = false)
     end
     
     println("\nParameter sweep complete!")
@@ -3563,6 +3529,74 @@ function resume_parameter_sweep(
     )
     
     return vcat(completed, new_completed)
+end
+
+"""
+    consolidate_all_simulations(output_dir::String; cleanup_individual::Bool = false)
+
+Consolidate all individual simulation CSVs into single master files.
+
+Creates:
+- `all_planets.csv` - All planet data from all simulations
+- `all_life.csv` - All life data from all simulations
+
+# Arguments
+- `output_dir::String`: Base output directory containing sim_XXXX folders
+- `cleanup_individual::Bool`: Whether to delete individual sim CSVs after consolidation (default: false)
+"""
+function consolidate_all_simulations(output_dir::String; cleanup_individual::Bool = false)
+    # Find all completed simulations
+    sim_dirs = filter(d -> startswith(d, "sim_"), readdir(output_dir))
+    
+    if isempty(sim_dirs)
+        @warn "No simulation directories found in $output_dir"
+        return
+    end
+    
+    println("Consolidating $(length(sim_dirs)) simulations...")
+    
+    # Collect all planet CSVs
+    all_planets = DataFrame[]
+    all_life = DataFrame[]
+    
+    for sim_dir in sort(sim_dirs)
+        sim_path = joinpath(output_dir, sim_dir)
+        
+        # Load planets
+        planets_file = joinpath(sim_path, "planets.csv")
+        if isfile(planets_file)
+            df = CSV.read(planets_file, DataFrame)
+            push!(all_planets, df)
+            if cleanup_individual
+                rm(planets_file)
+            end
+        end
+        
+        # Load life
+        life_file = joinpath(sim_path, "life.csv")
+        if isfile(life_file)
+            df = CSV.read(life_file, DataFrame)
+            push!(all_life, df)
+            if cleanup_individual
+                rm(life_file)
+            end
+        end
+    end
+    
+    # Write consolidated files
+    if !isempty(all_planets)
+        combined_planets = vcat(all_planets...)
+        CSV.write(joinpath(output_dir, "all_planets.csv"), combined_planets)
+        println("  Wrote all_planets.csv ($(nrow(combined_planets)) rows)")
+    end
+    
+    if !isempty(all_life)
+        combined_life = vcat(all_life...)
+        CSV.write(joinpath(output_dir, "all_life.csv"), combined_life)
+        println("  Wrote all_life.csv ($(nrow(combined_life)) rows)")
+    end
+    
+    println("Consolidation complete!")
 end
 
 end # module
