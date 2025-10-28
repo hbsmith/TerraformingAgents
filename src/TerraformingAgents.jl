@@ -2989,6 +2989,13 @@ function extract_planet_data(model, step::Int)
     df[!, :last_parentplanet_id] = [length(p.parentplanets) > 0 ? p.parentplanets[end].id : missing for p in planets]
     df[!, :last_parentlife_id] = [length(p.parentlifes) > 0 ? p.parentlifes[end].id : missing for p in planets]
     
+    # Add parameter columns if provided
+    if !isnothing(params)
+        for (key, value) in params
+            df[!, key] = fill(value, nrow(df))
+        end
+    end
+
     return df
 end
 
@@ -3046,6 +3053,13 @@ function extract_life_data(model, step::Int)
     # Add ancestor information (store IDs only)
     df[!, :n_ancestors] = [length(l.ancestors) for l in life_agents]
     df[!, :ancestor_ids] = [[a.id for a in l.ancestors] for l in life_agents]
+
+    # Add parameter columns if provided
+    if !isnothing(params)
+        for (key, value) in params
+            df[!, key] = fill(value, nrow(df))
+        end
+    end
     
     return df
 end
@@ -3118,7 +3132,8 @@ function run_simulation_with_checkpoints(
     output_dir::String,
     sim_id::String,
     agent_step!::Function,
-    model_step!::Function
+    model_step!::Function,
+    params::Dict = Dict() 
 )
     # Create checkpoint directory
     checkpoint_dir = joinpath(output_dir, "sim_$(sim_id)", "checkpoints")
@@ -3131,8 +3146,8 @@ function run_simulation_with_checkpoints(
     end
 
     # Save initial state (step 0)
-    df_planets = extract_planet_data(model, 0)
-    df_life = extract_life_data(model, 0)
+    df_planets = extract_planet_data(model, 0, params)
+    df_life = extract_life_data(model, 0, params)
 
     if !isempty(df_planets)
         Arrow.write(
@@ -3156,8 +3171,8 @@ function run_simulation_with_checkpoints(
                         (collect_terraformation_events && model.terraformed_on_step)
         
         if should_collect
-            df_planets = extract_planet_data(model, step)
-            df_life = extract_life_data(model, step)
+            df_planets = extract_planet_data(model, step, params)
+            df_life = extract_life_data(model, step, params)
             
             # Write immediately
             step_str = lpad(step, 8, '0')
@@ -3180,8 +3195,8 @@ function run_simulation_with_checkpoints(
 
     # Save final state if not already saved
     if nsteps ∉ steps_to_collect && !(collect_terraformation_events && model.terraformed_on_step)
-        df_planets = extract_planet_data(model, nsteps)
-        df_life = extract_life_data(model, nsteps)
+        df_planets = extract_planet_data(model, nsteps, params)
+        df_life = extract_life_data(model, nsteps, params)
         
         step_str = lpad(nsteps, 8, '0')
         
@@ -3288,11 +3303,17 @@ function save_parameter_metadata(
 )
     mkpath(output_dir)
     
+    # Add sim_id to each parameter combination
+    param_combos_with_ids = [
+        merge(OrderedDict("sim_id" => lpad(i, 4, '0')), OrderedDict(params)) 
+        for (i, params) in enumerate(param_combinations)
+    ]
+
     metadata = OrderedDict(
         "n_combinations" => length(param_combinations),
         "timestamp" => Dates.format(now(), "yyyy-mm-dd HH:MM:SS"),
         "extra_info" => extra_info,
-        "parameter_combinations" => param_combinations
+        "parameter_combinations" => param_combos_with_ids
     )
     
     # Write JSON
@@ -3403,7 +3424,8 @@ function run_parameter_sweep(
                 output_dir = output_dir,
                 sim_id = sim_id,
                 agent_step! = agent_step!,
-                model_step! = model_step!
+                model_step! = model_step!,
+                params = params 
             )
             println("Worker $(Distributed.myid()): Completed simulation $sim_id")
             return (success = true, sim_id = sim_id)
