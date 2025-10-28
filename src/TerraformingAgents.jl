@@ -2962,19 +2962,23 @@ function extract_planet_data(model, step::Int)
         last_launch_timestep = [p.last_launch_timestep for p in planets]
     )
     
-    # Add position components
+    # Add position components with x, y, z names
+    pos_names = [:x, :y, :z]
     for i in 1:D
-        df[!, Symbol("pos_$i")] = [p.pos[i] for p in planets]
+        df[!, pos_names[i]] = [p.pos[i] for p in planets]
     end
-    
-    # Add velocity components
+
+    # Add velocity components with v_x, v_y, v_z names
+    vel_names = [:v_x, :v_y, :v_z]
     for i in 1:D
-        df[!, Symbol("vel_$i")] = [p.vel[i] for p in planets]
+        df[!, vel_names[i]] = [p.vel[i] for p in planets]
     end
-    
-    # Add composition as array column
-    df[!, :composition] = [collect(Float64, p.composition) for p in planets]
-    df[!, :initialcomposition] = [collect(Float64, p.initialcomposition) for p in planets]
+
+    # Add composition as individual columns (comp_1, comp_2, ...)
+    compsize = length(planets[1].composition)
+    for i in 1:compsize
+        df[!, Symbol("comp_$i")] = [p.composition[i] for p in planets]
+    end
     
     # Add parent information (store IDs only, not object references)
     df[!, :n_parentplanets] = [length(p.parentplanets) for p in planets]
