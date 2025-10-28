@@ -4,7 +4,7 @@ module TerraformingAgents;
 
 using Agents, Random, Printf
 using Statistics: cor
-using DrWatson: @dict, @unpack
+using DrWatson: @dict, @unpack, dict_list
 using Suppressor: @suppress_err
 using LinearAlgebra: dot, diag, issymmetric, norm, tril!
 using Distributions: Uniform, Normal
@@ -14,6 +14,12 @@ using DataFrames
 using StatsBase
 using StaticArrays
 using CSV
+using Arrow
+using JSON
+using YAML
+using Glob
+using OrderedCollections
+using Dates
 
 export Planet, 
        Life, 
@@ -41,6 +47,17 @@ export NBodyData, load_nbody_data, get_nbody_position,
        spawnlife_mission!, galaxy_agent_step_nbody!, galaxy_model_step_nbody!
 
 export CNS5Data, load_cns5_catalog
+
+export run_simulation_with_checkpoints,
+       save_checkpoint,
+       extract_planet_data,
+       extract_life_data,
+       consolidate_simulation,
+       run_parameter_sweep,
+       save_parameter_metadata,
+       load_simulation_results,
+       find_completed_simulations,
+       resume_parameter_sweep
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -2904,6 +2921,544 @@ function Agents.agent2string(agent::Life)
     ## Have to exclude this because it's taking up making the rest of the screen invisible
     # ancestor_ids = $(length(agent.ancestors) == 0 ? "No ancestors" : [i.id for i in agent.ancestors])
     
+end
+
+##############################################################################################################################
+## Parallel Simulation & Data Collection Functions
+## These functions provide a clean interface for running parameter sweeps with incremental file writing
+##############################################################################################################################
+
+
+"""
+    extract_planet_data(model, step::Int) -> DataFrame
+
+Extract data from all Planet agents in the model at a given timestep.
+
+# Arguments
+- `model`: The Agents.jl model containing the simulation
+- `step::Int`: The current simulation timestep
+
+# Returns
+- `DataFrame`: Contains all Planet agent data with individual columns for position, velocity components
+"""
+function extract_planet_data(model, step::Int)
+    planets = [a for a in allagents(model) if a isa Planet]
+    
+    if isempty(planets)
+        return DataFrame()
+    end
+    
+    # Get dimension from first planet
+    D = length(planets[1].pos)
+    
+    df = DataFrame(
+        step = fill(step, length(planets)),
+        id = [p.id for p in planets],
+        alive = [p.alive for p in planets],
+        claimed = [p.claimed for p in planets],
+        spawn_threshold = [p.spawn_threshold for p in planets],
+        reached_boundary = [p.reached_boundary for p in planets],
+        last_launch_timestep = [p.last_launch_timestep for p in planets]
+    )
+    
+    # Add position components
+    for i in 1:D
+        df[!, Symbol("pos_$i")] = [p.pos[i] for p in planets]
+    end
+    
+    # Add velocity components
+    for i in 1:D
+        df[!, Symbol("vel_$i")] = [p.vel[i] for p in planets]
+    end
+    
+    # Add composition as array column
+    df[!, :composition] = [collect(Float64, p.composition) for p in planets]
+    df[!, :initialcomposition] = [collect(Float64, p.initialcomposition) for p in planets]
+    
+    # Add parent information (store IDs only, not object references)
+    df[!, :n_parentplanets] = [length(p.parentplanets) for p in planets]
+    df[!, :n_parentlifes] = [length(p.parentlifes) for p in planets]
+    df[!, :n_parentcompositions] = [length(p.parentcompositions) for p in planets]
+    
+    # Store last parent IDs if they exist
+    df[!, :last_parentplanet_id] = [length(p.parentplanets) > 0 ? p.parentplanets[end].id : missing for p in planets]
+    df[!, :last_parentlife_id] = [length(p.parentlifes) > 0 ? p.parentlifes[end].id : missing for p in planets]
+    
+    return df
+end
+
+"""
+    extract_life_data(model, step::Int) -> DataFrame
+
+Extract data from all Life agents in the model at a given timestep.
+
+# Arguments
+- `model`: The Agents.jl model containing the simulation
+- `step::Int`: The current simulation timestep
+
+# Returns
+- `DataFrame`: Contains all Life agent data with individual columns for position, velocity components
+"""
+function extract_life_data(model, step::Int)
+    life_agents = [a for a in allagents(model) if a isa Life]
+    
+    if isempty(life_agents)
+        return DataFrame()
+    end
+    
+    # Get dimension from first life agent
+    D = length(life_agents[1].pos)
+    
+    df = DataFrame(
+        step = fill(step, length(life_agents)),
+        id = [l.id for l in life_agents],
+        parentplanet_id = [l.parentplanet.id for l in life_agents],
+        destination_id = [l.destination.id for l in life_agents],
+        destination_distance = [l.destination_distance for l in life_agents],
+        departure_timestep = [l.departure_timestep for l in life_agents],
+        arrival_timestep = [l.arrival_timestep for l in life_agents],
+        is_mission = [l.is_mission for l in life_agents]
+    )
+    
+    # Add position components
+    for i in 1:D
+        df[!, Symbol("pos_$i")] = [l.pos[i] for l in life_agents]
+    end
+    
+    # Add velocity components
+    for i in 1:D
+        df[!, Symbol("vel_$i")] = [l.vel[i] for l in life_agents]
+    end
+    
+    # Add composition as array column
+    df[!, :composition] = [collect(Float64, l.composition) for l in life_agents]
+    
+    # Add ancestor information (store IDs only)
+    df[!, :n_ancestors] = [length(l.ancestors) for l in life_agents]
+    df[!, :ancestor_ids] = [[a.id for a in l.ancestors] for l in life_agents]
+    
+    return df
+end
+
+"""
+    save_checkpoint(model, checkpoint_dir::String, step::Int)
+
+Save the current state of the model to Arrow files.
+
+# Arguments
+- `model`: The Agents.jl model containing the simulation
+- `checkpoint_dir::String`: Directory where checkpoint files will be saved
+- `step::Int`: The current simulation timestep
+"""
+function save_checkpoint(model, checkpoint_dir::String, step::Int)
+    df_planets = extract_planet_data(model, step)
+    df_life = extract_life_data(model, step)
+    
+    # Use zero-padded step numbers for proper sorting
+    step_str = lpad(step, 8, '0')
+    
+    if !isempty(df_planets)
+        Arrow.write(
+            joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
+            df_planets
+        )
+    end
+    
+    if !isempty(df_life)
+        Arrow.write(
+            joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
+            df_life
+        )
+    end
+end
+
+"""
+    run_simulation_with_checkpoints(
+        model, 
+        nsteps::Int;
+        checkpoint_interval::Int = 100,
+        output_dir::String,
+        sim_id::String
+    ) -> String
+
+Run a simulation with periodic checkpointing to disk.
+
+# Arguments
+- `model`: The initialized Agents.jl model
+- `nsteps::Int`: Number of simulation steps to run
+- `checkpoint_interval::Int`: How often to save checkpoints (default: 100)
+- `output_dir::String`: Base output directory
+- `sim_id::String`: Unique identifier for this simulation
+
+# Returns
+- `String`: The simulation ID
+"""
+function run_simulation_with_checkpoints(
+    model, 
+    nsteps::Int;
+    checkpoint_interval::Int = 100,
+    output_dir::String,
+    sim_id::String,
+    agent_step!::Function,
+    model_step!::Function
+)
+    # Create checkpoint directory
+    checkpoint_dir = joinpath(output_dir, "sim_$(sim_id)", "checkpoints")
+    mkpath(checkpoint_dir)
+    
+    # Save initial state
+    save_checkpoint(model, checkpoint_dir, 0)
+    
+    for step in 1:nsteps
+        Agents.step!(model, agent_step!, model_step!)
+        
+        if step % checkpoint_interval == 0
+            save_checkpoint(model, checkpoint_dir, step)
+        end
+    end
+    
+    # Save final state if not already saved
+    if nsteps % checkpoint_interval != 0
+        save_checkpoint(model, checkpoint_dir, nsteps)
+    end
+    
+    return sim_id
+end
+
+"""
+    consolidate_simulation(
+        sim_id::String, 
+        output_dir::String; 
+        cleanup_checkpoints::Bool = false,
+        return_dataframes::Bool = false
+    ) -> Union{Nothing, NamedTuple}
+
+Consolidate all checkpoint files for a simulation into final CSV files.
+
+# Arguments
+- `sim_id::String`: Unique identifier for this simulation
+- `output_dir::String`: Base output directory
+- `cleanup_checkpoints::Bool`: Whether to delete Arrow checkpoint files after consolidation (default: false)
+- `return_dataframes::Bool`: Whether to return the consolidated DataFrames (default: false)
+
+# Returns
+- If `return_dataframes=true`: NamedTuple with `planets` and `life` DataFrames
+- If `return_dataframes=false`: Nothing
+"""
+function consolidate_simulation(
+    sim_id::String, 
+    output_dir::String; 
+    cleanup_checkpoints::Bool = false,
+    return_dataframes::Bool = false
+)
+    sim_dir = joinpath(output_dir, "sim_$(sim_id)")
+    checkpoint_dir = joinpath(sim_dir, "checkpoints")
+    
+    if !isdir(checkpoint_dir)
+        @warn "Checkpoint directory not found for simulation $sim_id"
+        return return_dataframes ? (planets = DataFrame(), life = DataFrame()) : nothing
+    end
+    
+    # Find all checkpoint files (sorted by filename ensures chronological order)
+    planet_files = sort(glob("planets_step_*.arrow", checkpoint_dir))
+    life_files = sort(glob("life_step_*.arrow", checkpoint_dir))
+    
+    # Consolidate planets
+    if !isempty(planet_files)
+        df_planets = vcat([DataFrame(Arrow.Table(f)) for f in planet_files]...)
+        CSV.write(joinpath(sim_dir, "planets.csv"), df_planets)
+    else
+        df_planets = DataFrame()
+    end
+    
+    # Consolidate life
+    if !isempty(life_files)
+        df_life = vcat([DataFrame(Arrow.Table(f)) for f in life_files]...)
+        CSV.write(joinpath(sim_dir, "life.csv"), df_life)
+    else
+        df_life = DataFrame()
+    end
+    
+    # Optional cleanup
+    if cleanup_checkpoints
+        for f in vcat(planet_files, life_files)
+            rm(f)
+        end
+    end
+    
+    if return_dataframes
+        return (planets = df_planets, life = df_life)
+    else
+        return nothing
+    end
+end
+
+"""
+    save_parameter_metadata(param_combinations::Vector{Dict}, output_dir::String, extra_info::Dict = Dict())
+
+Save parameter metadata to JSON and YAML files.
+
+# Arguments
+- `param_combinations::Vector{Dict}`: List of all parameter combinations
+- `output_dir::String`: Base output directory
+- `extra_info::Dict`: Additional metadata to save (e.g., nsteps, checkpoint_interval)
+"""
+function save_parameter_metadata(
+    param_combinations::Vector{Dict}, 
+    output_dir::String,
+    extra_info::Dict = Dict()
+)
+    mkpath(output_dir)
+    
+    metadata = OrderedDict(
+        "n_combinations" => length(param_combinations),
+        "timestamp" => Dates.format(now(), "yyyy-mm-dd HH:MM:SS"),
+        "extra_info" => extra_info,
+        "parameter_combinations" => param_combinations
+    )
+    
+    # Write JSON
+    open(joinpath(output_dir, "parameters.json"), "w") do f
+        JSON.print(f, metadata, 4)
+    end
+    
+    # Write YAML (more human-readable)
+    YAML.write_file(joinpath(output_dir, "parameters.yml"), metadata)
+    
+    return metadata
+end
+
+"""
+    run_parameter_sweep(
+        param_combinations::Vector,
+        initialize_model_func::Function,
+        output_dir::String;
+        nsteps::Int,
+        checkpoint_interval::Int = 100,
+        consolidate::Bool = true,
+        cleanup_checkpoints::Bool = false,
+        agent_step!::Function,
+        model_step!::Function,
+        extra_metadata::Dict = Dict()
+    ) -> Vector{String}
+
+Run a parameter sweep with parallel execution and incremental file writing.
+
+# Arguments
+- `param_combinations::Vector`: List of parameter dictionaries to sweep over
+- `initialize_model_func::Function`: Function that takes a parameter dict and returns an initialized model
+- `output_dir::String`: Base output directory for all results
+- `nsteps::Int`: Number of simulation steps to run for each parameter combination
+- `checkpoint_interval::Int`: How often to save checkpoints (default: 100)
+- `consolidate::Bool`: Whether to consolidate Arrow files to CSV after simulation (default: true)
+- `cleanup_checkpoints::Bool`: Whether to delete Arrow checkpoints after consolidation (default: false)
+- `agent_step!::Function`: Agent stepping function
+- `model_step!::Function`: Model stepping function
+- `extra_metadata::Dict`: Additional metadata to save with parameters
+
+# Returns
+- `Vector{String}`: List of simulation IDs that were completed
+
+# Example
+```julia
+param_grid = Dict(
+    :v_init => [0.1, 0.5],
+    :launch_rate => [1e-3, 1e-2]
+)
+param_combinations = dict_list(param_grid)
+
+function init_model(params)
+    return initialize_model_cns5(; N=200, params...)
+end
+
+results = run_parameter_sweep(
+    param_combinations,
+    init_model,
+    "output/my_sweep";
+    nsteps = 10_000,
+    checkpoint_interval = 100,
+    agent_step! = galaxy_agent_step_spawn_at_rate!,
+    model_step! = galaxy_model_step!
+)
+```
+"""
+function run_parameter_sweep(
+    param_combinations::Vector,
+    initialize_model_func::Function,
+    output_dir::String;
+    nsteps::Int,
+    checkpoint_interval::Int = 100,
+    consolidate::Bool = true,
+    cleanup_checkpoints::Bool = false,
+    agent_step!::Function,
+    model_step!::Function,
+    extra_metadata::Dict = Dict()
+)
+    # Save parameter metadata
+    metadata_info = merge(
+        Dict("nsteps" => nsteps, "checkpoint_interval" => checkpoint_interval),
+        extra_metadata
+    )
+    save_parameter_metadata(param_combinations, output_dir, metadata_info)
+    
+    # Run simulations in parallel
+    println("Starting parameter sweep with $(length(param_combinations)) combinations...")
+    println("Using $(Distributed.nworkers()) workers")
+    
+    results = Distributed.pmap(enumerate(param_combinations)) do (idx, params)
+        sim_id = lpad(idx, 4, '0')
+        
+        println("Worker $(Distributed.myid()): Starting simulation $sim_id")
+        
+        # Initialize model with user's function
+        model = initialize_model_func(params)
+        
+        # Run with checkpointing
+        try
+            run_simulation_with_checkpoints(
+                model, nsteps;
+                checkpoint_interval = checkpoint_interval,
+                output_dir = output_dir,
+                sim_id = sim_id,
+                agent_step! = agent_step!,
+                model_step! = model_step!
+            )
+            println("Worker $(Distributed.myid()): Completed simulation $sim_id")
+            return (success = true, sim_id = sim_id)
+        catch e
+            @warn "Simulation $sim_id failed with error: $e"
+            return (success = false, sim_id = sim_id, error = e)
+        end
+    end
+    
+    # Filter successful simulations
+    successful_sims = [r.sim_id for r in results if r.success]
+    failed_sims = [r.sim_id for r in results if !r.success]
+    
+    if !isempty(failed_sims)
+        @warn "$(length(failed_sims)) simulations failed: $failed_sims"
+    end
+    
+    # Post-process if requested
+    if consolidate && !isempty(successful_sims)
+        println("Consolidating $(length(successful_sims)) simulations to CSV...")
+        Distributed.pmap(successful_sims) do sim_id
+            consolidate_simulation(sim_id, output_dir; cleanup_checkpoints = cleanup_checkpoints)
+        end
+        println("Consolidation complete!")
+    end
+    
+    println("\nParameter sweep complete!")
+    println("Successful: $(length(successful_sims))/$(length(param_combinations))")
+    println("Output directory: $output_dir")
+    
+    return successful_sims
+end
+
+"""
+    find_completed_simulations(output_dir::String) -> Vector{String}
+
+Find all completed simulations in an output directory.
+
+# Arguments
+- `output_dir::String`: Base output directory
+
+# Returns
+- `Vector{String}`: List of simulation IDs that have been completed
+"""
+function find_completed_simulations(output_dir::String)
+    if !isdir(output_dir)
+        return String[]
+    end
+    
+    sim_dirs = readdir(output_dir)
+    completed = String[]
+    
+    for dir in sim_dirs
+        if startswith(dir, "sim_")
+            sim_id = replace(dir, "sim_" => "")
+            sim_path = joinpath(output_dir, dir)
+            
+            # Check if CSV files exist (indicates consolidation is complete)
+            if isfile(joinpath(sim_path, "planets.csv")) || isfile(joinpath(sim_path, "life.csv"))
+                push!(completed, sim_id)
+            end
+        end
+    end
+    
+    return completed
+end
+
+"""
+    load_simulation_results(sim_id::String, output_dir::String) -> NamedTuple
+
+Load the consolidated results for a specific simulation.
+
+# Arguments
+- `sim_id::String`: Simulation ID
+- `output_dir::String`: Base output directory
+
+# Returns
+- `NamedTuple`: Contains `planets` and `life` DataFrames
+"""
+function load_simulation_results(sim_id::String, output_dir::String)
+    sim_dir = joinpath(output_dir, "sim_$(sim_id)")
+    
+    planets_file = joinpath(sim_dir, "planets.csv")
+    life_file = joinpath(sim_dir, "life.csv")
+    
+    df_planets = isfile(planets_file) ? CSV.read(planets_file, DataFrame) : DataFrame()
+    df_life = isfile(life_file) ? CSV.read(life_file, DataFrame) : DataFrame()
+    
+    return (planets = df_planets, life = df_life)
+end
+
+"""
+    resume_parameter_sweep(
+        param_combinations::Vector{Dict},
+        initialize_model_func::Function,
+        output_dir::String;
+        kwargs...
+    ) -> Vector{String}
+
+Resume an incomplete parameter sweep by only running missing simulations.
+
+# Arguments
+Same as `run_parameter_sweep`
+
+# Returns
+- `Vector{String}`: List of simulation IDs that were completed (newly and previously)
+"""
+function resume_parameter_sweep(
+    param_combinations::Vector{Dict},
+    initialize_model_func::Function,
+    output_dir::String;
+    kwargs...
+)
+    completed = find_completed_simulations(output_dir)
+    println("Found $(length(completed)) completed simulations")
+    
+    # Determine which simulations need to be run
+    all_sim_ids = [lpad(i, 4, '0') for i in 1:length(param_combinations)]
+    remaining_indices = [i for (i, sim_id) in enumerate(all_sim_ids) if sim_id ∉ completed]
+    
+    if isempty(remaining_indices)
+        println("All simulations already complete!")
+        return completed
+    end
+    
+    println("Running $(length(remaining_indices)) remaining simulations...")
+    remaining_params = param_combinations[remaining_indices]
+    
+    # Run only the remaining simulations
+    new_completed = run_parameter_sweep(
+        remaining_params,
+        initialize_model_func,
+        output_dir;
+        kwargs...
+    )
+    
+    return vcat(completed, new_completed)
 end
 
 end # module
