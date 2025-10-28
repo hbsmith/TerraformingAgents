@@ -20,6 +20,7 @@ using YAML
 using Glob
 using OrderedCollections
 using Dates
+using Distributed
 
 export Planet, 
        Life, 
@@ -3194,17 +3195,17 @@ function consolidate_simulation(
 end
 
 """
-    save_parameter_metadata(param_combinations::Vector{Dict}, output_dir::String, extra_info::Dict = Dict())
+    save_parameter_metadata(param_combinations::Vector, output_dir::String, extra_info::Dict = Dict())
 
 Save parameter metadata to JSON and YAML files.
 
 # Arguments
-- `param_combinations::Vector{Dict}`: List of all parameter combinations
+- `param_combinations::Vector`: List of all parameter combinations
 - `output_dir::String`: Base output directory
 - `extra_info::Dict`: Additional metadata to save (e.g., nsteps, checkpoint_interval)
 """
 function save_parameter_metadata(
-    param_combinations::Vector{Dict}, 
+    param_combinations::Vector, 
     output_dir::String,
     extra_info::Dict = Dict()
 )
@@ -3415,7 +3416,7 @@ end
 
 """
     resume_parameter_sweep(
-        param_combinations::Vector{Dict},
+        param_combinations::Vector,
         initialize_model_func::Function,
         output_dir::String;
         kwargs...
@@ -3430,7 +3431,7 @@ Same as `run_parameter_sweep`
 - `Vector{String}`: List of simulation IDs that were completed (newly and previously)
 """
 function resume_parameter_sweep(
-    param_combinations::Vector{Dict},
+    param_combinations::Vector,
     initialize_model_func::Function,
     output_dir::String;
     kwargs...
