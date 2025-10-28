@@ -3130,17 +3130,28 @@ function run_simulation_with_checkpoints(
         push!(steps_to_collect, s)
     end
 
-    # Accumulate data between checkpoint writes
-    collected_planets = DataFrame[]
-    collected_life = DataFrame[]
+    # Save initial state (step 0)
+    df_planets = extract_planet_data(model, 0)
+    df_life = extract_life_data(model, 0)
 
-    # Save initial state
-    save_checkpoint(model, checkpoint_dir, 0, steps_to_collect)
+    if !isempty(df_planets)
+        Arrow.write(
+            joinpath(checkpoint_dir, "planets_step_00000000.arrow"),
+            df_planets
+        )
+    end
+
+    if !isempty(df_life)
+        Arrow.write(
+            joinpath(checkpoint_dir, "life_step_00000000.arrow"),
+            df_life
+        )
+    end
 
     for step in 1:nsteps
         Agents.step!(model, agent_step!, model_step!)
         
-        # Check if we should collect this step
+        # Check if we should collect and write this step
         should_collect = (step in steps_to_collect) || 
                         (collect_terraformation_events && model.terraformed_on_step)
         
@@ -3148,53 +3159,43 @@ function run_simulation_with_checkpoints(
             df_planets = extract_planet_data(model, step)
             df_life = extract_life_data(model, step)
             
+            # Write immediately
+            step_str = lpad(step, 8, '0')
+            
             if !isempty(df_planets)
-                push!(collected_planets, df_planets)
-            end
-            if !isempty(df_life)
-                push!(collected_life, df_life)
-            end
-        end
-        
-        # Write to disk at checkpoint intervals
-        if step % checkpoint_interval == 0
-            if !isempty(collected_planets)
-                combined_planets = vcat(collected_planets...)
-                step_str = lpad(step, 8, '0')
                 Arrow.write(
                     joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
-                    combined_planets
+                    df_planets
                 )
-                empty!(collected_planets)
             end
             
-            if !isempty(collected_life)
-                combined_life = vcat(collected_life...)
-                step_str = lpad(step, 8, '0')
+            if !isempty(df_life)
                 Arrow.write(
                     joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
-                    combined_life
+                    df_life
                 )
-                empty!(collected_life)
             end
         end
     end
 
-    # Write any remaining collected data
-    if !isempty(collected_planets) || !isempty(collected_life)
+    # Save final state if not already saved
+    if nsteps ∉ steps_to_collect && !(collect_terraformation_events && model.terraformed_on_step)
+        df_planets = extract_planet_data(model, nsteps)
+        df_life = extract_life_data(model, nsteps)
+        
         step_str = lpad(nsteps, 8, '0')
-        if !isempty(collected_planets)
-            combined_planets = vcat(collected_planets...)
+        
+        if !isempty(df_planets)
             Arrow.write(
                 joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
-                combined_planets
+                df_planets
             )
         end
-        if !isempty(collected_life)
-            combined_life = vcat(collected_life...)
+        
+        if !isempty(df_life)
             Arrow.write(
                 joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
-                combined_life
+                df_life
             )
         end
     end
