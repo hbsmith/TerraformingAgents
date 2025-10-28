@@ -3051,7 +3051,7 @@ function extract_life_data(model, step::Int)
 end
 
 """
-    save_checkpoint(model, checkpoint_dir::String, step::Int)
+    save_checkpoint(model, checkpoint_dir::String, step::Int, steps_to_collect::Set{Int})
 
 Save the current state of the model to Arrow files.
 
@@ -3059,8 +3059,14 @@ Save the current state of the model to Arrow files.
 - `model`: The Agents.jl model containing the simulation
 - `checkpoint_dir::String`: Directory where checkpoint files will be saved
 - `step::Int`: The current simulation timestep
+- `steps_to_collect::Set{Int}`: Steps to collect data
 """
-function save_checkpoint(model, checkpoint_dir::String, step::Int)
+function save_checkpoint(model, checkpoint_dir::String, step::Int, steps_to_collect::Set{Int})
+    # Only save if this step should be collected
+    if step ∉ steps_to_collect
+        return
+    end
+
     df_planets = extract_planet_data(model, step)
     df_life = extract_life_data(model, step)
     
@@ -3107,6 +3113,8 @@ function run_simulation_with_checkpoints(
     model, 
     nsteps::Int;
     checkpoint_interval::Int = 100,
+    collection_interval::Int = checkpoint_interval,
+    collect_terraformation_events::Bool = true,
     output_dir::String,
     sim_id::String,
     agent_step!::Function,
@@ -3115,21 +3123,80 @@ function run_simulation_with_checkpoints(
     # Create checkpoint directory
     checkpoint_dir = joinpath(output_dir, "sim_$(sim_id)", "checkpoints")
     mkpath(checkpoint_dir)
-    
+
+    # Determine which steps to collect data
+    steps_to_collect = Set{Int}([0])  # Always collect initial state
+    for s in collection_interval:collection_interval:nsteps
+        push!(steps_to_collect, s)
+    end
+
+    # Accumulate data between checkpoint writes
+    collected_planets = DataFrame[]
+    collected_life = DataFrame[]
+
     # Save initial state
-    save_checkpoint(model, checkpoint_dir, 0)
-    
+    save_checkpoint(model, checkpoint_dir, 0, steps_to_collect)
+
     for step in 1:nsteps
         Agents.step!(model, agent_step!, model_step!)
         
+        # Check if we should collect this step
+        should_collect = (step in steps_to_collect) || 
+                        (collect_terraformation_events && model.terraformed_on_step)
+        
+        if should_collect
+            df_planets = extract_planet_data(model, step)
+            df_life = extract_life_data(model, step)
+            
+            if !isempty(df_planets)
+                push!(collected_planets, df_planets)
+            end
+            if !isempty(df_life)
+                push!(collected_life, df_life)
+            end
+        end
+        
+        # Write to disk at checkpoint intervals
         if step % checkpoint_interval == 0
-            save_checkpoint(model, checkpoint_dir, step)
+            if !isempty(collected_planets)
+                combined_planets = vcat(collected_planets...)
+                step_str = lpad(step, 8, '0')
+                Arrow.write(
+                    joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
+                    combined_planets
+                )
+                empty!(collected_planets)
+            end
+            
+            if !isempty(collected_life)
+                combined_life = vcat(collected_life...)
+                step_str = lpad(step, 8, '0')
+                Arrow.write(
+                    joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
+                    combined_life
+                )
+                empty!(collected_life)
+            end
         end
     end
-    
-    # Save final state if not already saved
-    if nsteps % checkpoint_interval != 0
-        save_checkpoint(model, checkpoint_dir, nsteps)
+
+    # Write any remaining collected data
+    if !isempty(collected_planets) || !isempty(collected_life)
+        step_str = lpad(nsteps, 8, '0')
+        if !isempty(collected_planets)
+            combined_planets = vcat(collected_planets...)
+            Arrow.write(
+                joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
+                combined_planets
+            )
+        end
+        if !isempty(collected_life)
+            combined_life = vcat(collected_life...)
+            Arrow.write(
+                joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
+                combined_life
+            )
+        end
     end
     
     return sim_id
@@ -3298,6 +3365,8 @@ function run_parameter_sweep(
     output_dir::String;
     nsteps::Int,
     checkpoint_interval::Int = 100,
+    collection_interval::Int = checkpoint_interval,
+    collect_terraformation_events::Bool = true,
     consolidate::Bool = true,
     cleanup_checkpoints::Bool = false,
     agent_step!::Function,
@@ -3328,6 +3397,8 @@ function run_parameter_sweep(
             run_simulation_with_checkpoints(
                 model, nsteps;
                 checkpoint_interval = checkpoint_interval,
+                collection_interval = collection_interval,
+                collect_terraformation_events = collect_terraformation_events,
                 output_dir = output_dir,
                 sim_id = sim_id,
                 agent_step! = agent_step!,
