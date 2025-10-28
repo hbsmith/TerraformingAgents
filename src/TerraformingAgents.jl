@@ -3025,18 +3025,23 @@ function extract_life_data(model, step::Int)
         is_mission = [l.is_mission for l in life_agents]
     )
     
-    # Add position components
+    # Add position components with x, y, z names
+    pos_names = [:x, :y, :z]
     for i in 1:D
-        df[!, Symbol("pos_$i")] = [l.pos[i] for l in life_agents]
+        df[!, pos_names[i]] = [l.pos[i] for l in life_agents]
     end
-    
-    # Add velocity components
+
+    # Add velocity components with v_x, v_y, v_z names
+    vel_names = [:v_x, :v_y, :v_z]
     for i in 1:D
-        df[!, Symbol("vel_$i")] = [l.vel[i] for l in life_agents]
+        df[!, vel_names[i]] = [l.vel[i] for l in life_agents]
     end
-    
-    # Add composition as array column
-    df[!, :composition] = [collect(Float64, l.composition) for l in life_agents]
+
+    # Add composition as individual columns (comp_1, comp_2, ...)
+    compsize = length(life_agents[1].composition)
+    for i in 1:compsize
+        df[!, Symbol("comp_$i")] = [l.composition[i] for l in life_agents]
+    end
     
     # Add ancestor information (store IDs only)
     df[!, :n_ancestors] = [length(l.ancestors) for l in life_agents]
