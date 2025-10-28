@@ -3270,13 +3270,26 @@ function save_parameter_metadata(
         merge(OrderedDict("sim_id" => lpad(i, 4, '0')), OrderedDict(params)) 
         for (i, params) in enumerate(param_combinations)
     ]
-
+    
     metadata = OrderedDict(
         "n_combinations" => length(param_combinations),
         "timestamp" => Dates.format(now(), "yyyy-mm-dd HH:MM:SS"),
-        "extra_info" => extra_info,
         "parameter_combinations" => param_combos_with_ids
     )
+    
+    # Merge in extra_info at the top level (not nested)
+    for (key, value) in extra_info
+        # Convert functions to strings for JSON serialization
+        if value isa Function
+            metadata[key] = string(value)
+        elseif value isa Symbol
+            metadata[key] = string(value)
+        elseif value isa Vector{Symbol}
+            metadata[key] = string.(value)
+        else
+            metadata[key] = value
+        end
+    end
     
     # Write JSON
     open(joinpath(output_dir, "parameters.json"), "w") do f
