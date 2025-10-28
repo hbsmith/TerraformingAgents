@@ -911,7 +911,7 @@ function calculate_optimal_extent_from_positions(positions::Vector{SVector{3,Flo
     # Create offset to translate world coordinates to [0, extent]
     space_offset = SVector{3,Float64}(min_coords...)
     
-    @info "CNS5 extent calculation:" timespan=(t_start, t_end) final_extent=final_extent spacing=spacing space_offset=space_offset
+    @info "CNS5 extent calculation:" final_extent=final_extent spacing=spacing space_offset=space_offset
     
     return final_extent, spacing, space_offset  # Return the offset!
 end
@@ -964,7 +964,7 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
     compsize::Int = 10,
     kwargs...)
     
-    @info "Initializing GalaxyParameters from CNS5 data" n_stars=length(cns5_data.star_ids) t_offset=t_offset catalog_epoch=cns5_data.catalog_epoch
+    @info "Initializing GalaxyParameters from CNS5 data" n_stars=length(cns5_data.star_ids)
     
     # Calculate extent and space offset if not provided
     if extent === nothing
@@ -1016,7 +1016,7 @@ function GalaxyParameters(rng::AbstractRNG, cns5_data::CNS5Data;
     nplanets = length(cns5_data.star_ids)
     planetcompositions = random_compositions(rng, maxcomp, compsize, nplanets)
     
-    @info "CNS5 initialization complete" nplanets=nplanets extent=extent spacing=spacing
+    @info "CNS5 initialization complete"
     
     # Call main constructor (pass dt explicitly)
     return GalaxyParameters(; rng=rng, extent=extent, pos, vel, maxcomp, compsize, 
