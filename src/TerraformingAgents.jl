@@ -4164,35 +4164,56 @@ function migrate_old_to_new_format(
     for t_offset in t_offsets
         println("\nGenerating trajectories for t_offset = $t_offset...")
         
-        # Find a simulation with this t_offset
-        matching_sim = nothing
+        # Find ALL simulations with this t_offset
+        matching_sims = String[]
         for sim_dir in sim_dirs
             planets_csv = joinpath(old_output_dir, sim_dir, "planets.csv")
-            df_sample = CSV.read(planets_csv, DataFrame; limit=10)
-            if "t_offset" in names(df_sample) && df_sample.t_offset[1] == t_offset
-                matching_sim = sim_dir
-                break
+            if isfile(planets_csv)
+                df_sample = CSV.read(planets_csv, DataFrame; limit=10)
+                if "t_offset" in names(df_sample) && df_sample.t_offset[1] == t_offset
+                    push!(matching_sims, sim_dir)
+                end
             end
         end
         
-        if isnothing(matching_sim)
-            @warn "Could not find simulation with t_offset=$t_offset"
+        if isempty(matching_sims)
+            @warn "Could not find simulations with t_offset=$t_offset"
             continue
         end
         
-        # Read full planets file
-        planets_csv = joinpath(old_output_dir, matching_sim, "planets.csv")
-        df_planets = CSV.read(planets_csv, DataFrame)
+        println("  Found $(length(matching_sims)) simulations with this t_offset")
+        println("  Reading and merging trajectory data...")
         
-        # Extract trajectory data (id, step, x, y, z)
-        df_traj = select(df_planets, [:id, :step, :x, :y, :z])
+        # Collect trajectory data from ALL matching simulations
+        all_traj_data = DataFrame[]
         
-        # Write trajectory file
+        for (idx, sim_dir) in enumerate(matching_sims)
+            planets_csv = joinpath(old_output_dir, sim_dir, "planets.csv")
+            df_planets = CSV.read(planets_csv, DataFrame)
+            df_traj = select(df_planets, [:id, :step, :x, :y, :z])
+            push!(all_traj_data, df_traj)
+            
+            if idx % 5 == 0
+                print(".")
+            end
+        end
+        println()
+        
+        # Combine and get unique (id, step) combinations
+        println("  Combining and deduplicating...")
+        df_combined = vcat(all_traj_data...)
+        
+        # Remove duplicates (same planet at same step should have same position)
+        df_traj_unique = unique(df_combined, [:id, :step])
+        
+        # Sort for cleaner output
+        sort!(df_traj_unique, [:step, :id])
+        
         t_str = replace(string(Int(t_offset)), "-" => "-")
         traj_filename = "trajectories_t$t_str.arrow"
         traj_path = joinpath(ref_dir, traj_filename)
-        Arrow.write(traj_path, df_traj)
-        println("  Wrote $traj_filename ($(nrow(df_traj)) trajectory points)")
+        Arrow.write(traj_path, df_traj_unique)
+        println("  Wrote $traj_filename ($(nrow(df_traj_unique)) trajectory points)")
     end
     
     # Migrate individual simulations (extract events only)
