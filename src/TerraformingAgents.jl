@@ -50,15 +50,21 @@ export NBodyData, load_nbody_data, get_nbody_position,
 export CNS5Data, load_cns5_catalog
 
 export run_simulation_with_checkpoints,
-       extract_planet_data,
+       extract_planet_events,      # replaces extract_planet_data
+       extract_trajectory_data,    
+       extract_initial_planet_data, 
        extract_life_data,
+       extract_fixed_metadata,     
+       initialize_reference_data,  
        consolidate_simulation,
        run_parameter_sweep,
        save_parameter_metadata,
        load_simulation_results,
        find_completed_simulations,
        resume_parameter_sweep,
-       consolidate_all_simulations
+       consolidate_all_simulations,
+       export_to_compressed_csv,   
+       migrate_old_to_new_format   
 
 """
     direction(start::AbstractAgent, finish::AbstractAgent)
@@ -2929,74 +2935,332 @@ end
 ## These functions provide a clean interface for running parameter sweeps with incremental file writing
 ##############################################################################################################################
 
-
 """
-    extract_planet_data(model, step::Int) -> DataFrame
+    extract_planet_events(model, step, params) -> DataFrame
 
-Extract data from all Planet agents in the model at a given timestep.
+Extract planet data only when terraformation occurs.
+Returns a DataFrame with columns: id, step, comp_1...comp_N, alive, and parameter columns.
 
-# Arguments
-- `model`: The Agents.jl model containing the simulation
-- `step::Int`: The current simulation timestep
-
-# Returns
-- `DataFrame`: Contains all Planet agent data with individual columns for position, velocity components
+This is used instead of extract_planet_data to only capture terraformation events,
+significantly reducing data size.
 """
-function extract_planet_data(model, step::Int, params::Union{Dict,Nothing}=nothing)
-    planets = [a for a in allagents(model) if a isa Planet]
+function extract_planet_events(model, step, params)
+    planets = filter_agents(model, Planet)
     
-    if isempty(planets)
-        return DataFrame()
-    end
+    # Get composition size from first planet
+    compsize = length(first(planets).composition)
     
-    # Get dimension from first planet
-    D = length(planets[1].pos)
+    # Pre-allocate vectors
+    ids = Int[]
+    steps = Int[]
+    alives = Bool[]
+    compositions = [Float64[] for _ in 1:compsize]
     
-    df = DataFrame(
-        step = fill(step, length(planets)),
-        id = [p.id for p in planets],
-        alive = [p.alive for p in planets],
-        claimed = [p.claimed for p in planets],
-        spawn_threshold = [p.spawn_threshold for p in planets],
-        reached_boundary = [p.reached_boundary for p in planets],
-        last_launch_timestep = [p.last_launch_timestep for p in planets]
-    )
-    
-    # Add position components with x, y, z names
-    pos_names = [:x, :y, :z]
-    for i in 1:D
-        df[!, pos_names[i]] = [p.pos[i] for p in planets]
-    end
-
-    # Add velocity components with v_x, v_y, v_z names
-    vel_names = [:v_x, :v_y, :v_z]
-    for i in 1:D
-        df[!, vel_names[i]] = [p.vel[i] for p in planets]
-    end
-
-    # Add composition as individual columns (comp_1, comp_2, ...)
-    compsize = length(planets[1].composition)
-    for i in 1:compsize
-        df[!, Symbol("comp_$i")] = [p.composition[i] for p in planets]
-    end
-    
-    # Add parent information (store IDs only, not object references)
-    df[!, :n_parentplanets] = [length(p.parentplanets) for p in planets]
-    df[!, :n_parentlifes] = [length(p.parentlifes) for p in planets]
-    df[!, :n_parentcompositions] = [length(p.parentcompositions) for p in planets]
-    
-    # Store last parent IDs if they exist
-    df[!, :last_parentplanet_id] = [length(p.parentplanets) > 0 ? p.parentplanets[end].id : missing for p in planets]
-    df[!, :last_parentlife_id] = [length(p.parentlifes) > 0 ? p.parentlifes[end].id : missing for p in planets]
-    
-    # Add parameter columns if provided
-    if !isnothing(params)
-        for (key, value) in params
-            df[!, key] = fill(value, nrow(df))
+    for planet in planets
+        # Only include if this planet was just terraformed
+        # OR if it's step 0 and the planet is the initial alive planet
+        if (step > 0 && model.terraformed_on_step && planet.alive) ||
+           (step == 0 && planet.alive)
+            push!(ids, planet.id)
+            push!(steps, step)
+            push!(alives, planet.alive)
+            
+            for (i, comp_val) in enumerate(planet.composition)
+                push!(compositions[i], comp_val)
+            end
         end
     end
-
+    
+    # Create DataFrame
+    df = DataFrame(
+        id = ids,
+        step = steps,
+        alive = alives
+    )
+    
+    # Add composition columns
+    for i in 1:compsize
+        df[!, Symbol("comp_$i")] = compositions[i]
+    end
+    
+    # Add parameter columns
+    for (key, val) in params
+        df[!, key] = fill(val, nrow(df))
+    end
+    
     return df
+end
+
+"""
+    extract_trajectory_data(model, step) -> DataFrame
+
+Extract position data for all planets at a specific step.
+Returns DataFrame with columns: id, step, x, y, z
+
+This is used during reference data generation to create trajectory files.
+"""
+function extract_trajectory_data(model, step)
+    planets = filter_agents(model, Planet)
+    
+    ids = Int[]
+    steps = Int[]
+    xs = Float64[]
+    ys = Float64[]
+    zs = Float64[]
+    
+    for planet in planets
+        push!(ids, planet.id)
+        push!(steps, step)
+        push!(xs, planet.pos[1])
+        push!(ys, planet.pos[2])
+        push!(zs, planet.pos[3])
+    end
+    
+    return DataFrame(
+        id = ids,
+        step = steps,
+        x = xs,
+        y = ys,
+        z = zs
+    )
+end
+
+"""
+    extract_initial_planet_data(model) -> DataFrame
+
+Extract initial state of all planets.
+Returns DataFrame with columns: id, x, y, z, v_x, v_y, v_z, comp_1...comp_N
+"""
+function extract_initial_planet_data(model)
+    planets = filter_agents(model, Planet)
+    
+    # Get composition size from first planet
+    compsize = length(first(planets).composition)
+    
+    ids = Int[]
+    xs = Float64[]
+    ys = Float64[]
+    zs = Float64[]
+    v_xs = Float64[]
+    v_ys = Float64[]
+    v_zs = Float64[]
+    compositions = [Float64[] for _ in 1:compsize]
+    
+    for planet in planets
+        push!(ids, planet.id)
+        push!(xs, planet.pos[1])
+        push!(ys, planet.pos[2])
+        push!(zs, planet.pos[3])
+        push!(v_xs, planet.vel[1])
+        push!(v_ys, planet.vel[2])
+        push!(v_zs, planet.vel[3])
+        
+        for (i, comp_val) in enumerate(planet.composition)
+            push!(compositions[i], comp_val)
+        end
+    end
+    
+    df = DataFrame(
+        id = ids,
+        x = xs,
+        y = ys,
+        z = zs,
+        v_x = v_xs,
+        v_y = v_ys,
+        v_z = v_zs
+    )
+    
+    # Add composition columns
+    for i in 1:compsize
+        df[!, Symbol("comp_$i")] = compositions[i]
+    end
+    
+    return df
+end
+
+"""
+    initialize_reference_data(
+        param_combinations::Vector,
+        initialize_model_func::Function,
+        output_dir::String;
+        nsteps::Int,
+        collection_interval::Int,
+        agent_step!::Function,
+        model_step!::Function
+    )
+
+Generate reference data files before running parameter sweep.
+
+Creates:
+- `reference/planets_initial.arrow` - Initial planet states (positions, velocities, compositions)
+- `reference/trajectories_t{offset}.arrow` - Position trajectories for each unique t_offset value
+
+# Arguments
+- `param_combinations::Vector`: All parameter combinations for the sweep
+- `initialize_model_func::Function`: Function that creates a model from parameters
+- `output_dir::String`: Base output directory
+- `nsteps::Int`: Number of simulation steps
+- `collection_interval::Int`: How often to collect trajectory data
+- `agent_step!::Function`: Agent stepping function
+- `model_step!::Function`: Model stepping function
+"""
+function initialize_reference_data(
+    param_combinations::Vector,
+    initialize_model_func::Function,
+    output_dir::String;
+    nsteps::Int,
+    collection_interval::Int,
+    agent_step!::Function,
+    model_step!::Function
+)
+    println("\n" * "="^80)
+    println("Generating reference data files...")
+    println("="^80)
+    
+    # Create reference directory
+    ref_dir = joinpath(output_dir, "reference")
+    mkpath(ref_dir)
+    
+    # Extract unique t_offset values from parameter combinations
+    t_offsets = unique([get(p, :t_offset, nothing) for p in param_combinations])
+    filter!(x -> !isnothing(x), t_offsets)
+    
+    if isempty(t_offsets)
+        @warn "No t_offset parameter found in parameter combinations. Skipping trajectory generation."
+        t_offsets = [nothing]  # Generate one trajectory file without t_offset distinction
+    end
+    
+    println("Found $(length(t_offsets)) unique t_offset values: $t_offsets")
+    
+    # Generate planets_initial.arrow using first parameter combination
+    println("\nGenerating planets_initial.arrow...")
+    first_params = param_combinations[1]
+    model = initialize_model_func(first_params)
+    
+    df_initial = extract_initial_planet_data(model)
+    initial_path = joinpath(ref_dir, "planets_initial.arrow")
+    Arrow.write(initial_path, df_initial)
+    println("  Wrote $(nrow(df_initial)) planets to $initial_path")
+    
+    # Generate trajectory file for each unique t_offset
+    for t_offset in t_offsets
+        println("\nGenerating trajectories for t_offset = $t_offset...")
+        
+        # Find a parameter combination with this t_offset
+        matching_params = findfirst(p -> get(p, :t_offset, nothing) == t_offset, param_combinations)
+        if isnothing(matching_params)
+            @warn "Could not find parameters with t_offset=$t_offset. Skipping."
+            continue
+        end
+        
+        params = param_combinations[matching_params]
+        model = initialize_model_func(params)
+        
+        # Collect trajectory data
+        all_trajectories = DataFrame[]
+        
+        # Collect at step 0
+        df_step = extract_trajectory_data(model, 0)
+        push!(all_trajectories, df_step)
+        
+        # Run simulation and collect at intervals
+        for step in 1:nsteps
+            Agents.step!(model, agent_step!, model_step!, 1)
+            
+            if step % collection_interval == 0 || step == nsteps
+                df_step = extract_trajectory_data(model, step)
+                push!(all_trajectories, df_step)
+                
+                if step % 1000 == 0
+                    print(".")
+                end
+            end
+        end
+        println()
+        
+        # Combine and write
+        df_trajectories = vcat(all_trajectories...)
+        
+        # Create filename
+        if isnothing(t_offset)
+            traj_filename = "trajectories.arrow"
+        else
+            # Format t_offset for filename (e.g., -1000000 -> "t-1000000")
+            t_str = replace(string(Int(t_offset)), "-" => "-")
+            traj_filename = "trajectories_t$t_str.arrow"
+        end
+        
+        traj_path = joinpath(ref_dir, traj_filename)
+        Arrow.write(traj_path, df_trajectories)
+        println("  Wrote $(nrow(df_trajectories)) trajectory points to $traj_path")
+    end
+    
+    println("\nReference data generation complete!")
+    println("="^80 * "\n")
+end
+
+"""
+    extract_fixed_metadata(model) -> Dict
+
+Extract fixed parameters and metadata from a model automatically.
+
+This prevents manual duplication of parameters that are already in the model.
+Extracts information from model.properties and converts functions to strings.
+
+# Arguments
+- `model`: An initialized Agents.jl model
+
+# Returns
+- `Dict`: Dictionary of metadata extracted from the model
+"""
+function extract_fixed_metadata(model)
+    metadata = Dict{String, Any}()
+    
+    # Extract from model properties
+    if haskey(model.properties, :rng)
+        metadata["rng"] = string(typeof(model.properties[:rng]))
+    end
+    
+    if haskey(model.properties, :maxcomp)
+        metadata["maxcomp"] = model.properties[:maxcomp]
+    end
+    
+    if haskey(model.properties, :compsize)
+        metadata["compsize"] = model.properties[:compsize]
+    end
+    
+    if haskey(model.properties, :nool)
+        metadata["nool"] = model.properties[:nool]
+    end
+    
+    if haskey(model.properties, :dt)
+        metadata["dt"] = model.properties[:dt]
+    end
+    
+    if haskey(model.properties, :compmix_func)
+        func = model.properties[:compmix_func]
+        metadata["compmix_func"] = string(func)
+    end
+    
+    if haskey(model.properties, :compatibility_func)
+        func = model.properties[:compatibility_func]
+        metadata["compatibility_func"] = string(func)
+    end
+    
+    if haskey(model.properties, :destination_func)
+        func = model.properties[:destination_func]
+        metadata["destination_func"] = string(func)
+    end
+    
+    # Extract backend information if available
+    if haskey(model.properties, :backend)
+        metadata["backend"] = model.properties[:backend]
+    end
+    
+    # Count planets
+    metadata["n_planets"] = length(collect(filter_agents(model, Planet)))
+    
+    return metadata
 end
 
 """
@@ -3066,240 +3330,217 @@ end
 
 """
     run_simulation_with_checkpoints(
-        model, 
-        nsteps::Int;
-        checkpoint_interval::Int = 100,
-        output_dir::String,
-        sim_id::String
-    ) -> String
+        model, nsteps;
+        checkpoint_interval = 100,
+        collection_interval = 100,
+        collect_terraformation_events = true,
+        collect_life = false,
+        output_dir = "output",
+        sim_id = "0001",
+        agent_step! = galaxy_agent_step_spawn_at_rate!,
+        model_step! = galaxy_model_step!,
+        params = Dict()
+    )
 
-Run a simulation with periodic checkpointing to disk.
+Run a single simulation with incremental checkpoint writing.
+
+Now only writes planet events (terraformations) rather than full planet state at each step.
+Life collection is disabled by default but can be enabled.
 
 # Arguments
-- `model`: The initialized Agents.jl model
-- `nsteps::Int`: Number of simulation steps to run
-- `checkpoint_interval::Int`: How often to save checkpoints (default: 100)
+- `model`: Initialized Agents.jl model
+- `nsteps::Int`: Number of steps to run
+- `checkpoint_interval::Int`: How often to write checkpoint files (default: 100)
+- `collection_interval::Int`: How often to collect data (default: 100)
+- `collect_terraformation_events::Bool`: Whether to collect data when terraformation occurs (default: true)
+- `collect_life::Bool`: Whether to collect life agent data (default: false)
 - `output_dir::String`: Base output directory
-- `sim_id::String`: Unique identifier for this simulation
+- `sim_id::String`: Simulation identifier (e.g., "0001")
+- `agent_step!::Function`: Agent stepping function
+- `model_step!::Function`: Model stepping function
+- `params::Dict`: Parameter values for this simulation
 
 # Returns
-- `String`: The simulation ID
+- `NamedTuple`: Contains timing information
 """
 function run_simulation_with_checkpoints(
-    model, 
-    nsteps::Int;
-    checkpoint_interval::Int = 100,
-    collection_interval::Int = checkpoint_interval,
-    collect_terraformation_events::Bool = true,
-    output_dir::String,
-    sim_id::String,
-    agent_step!::Function,
-    model_step!::Function,
-    params::Dict = Dict() 
+    model, nsteps;
+    checkpoint_interval = 100,
+    collection_interval = 100,
+    collect_terraformation_events = true,
+    collect_life = false,
+    output_dir = "output",
+    sim_id = "0001",
+    agent_step! = galaxy_agent_step_spawn_at_rate!,
+    model_step! = galaxy_model_step!,
+    params = Dict()
 )
-    # Create checkpoint directory
-    checkpoint_dir = joinpath(output_dir, "sim_$(sim_id)", "checkpoints")
-    mkpath(checkpoint_dir)
-
-    # Determine which steps to collect data
-    steps_to_collect = Set{Int}([0])  # Always collect initial state
-    for s in collection_interval:collection_interval:nsteps
-        push!(steps_to_collect, s)
-    end
-
-    # Save initial state (step 0)
-    df_planets = extract_planet_data(model, 0, params)
-    df_life = extract_life_data(model, 0, params)
-
-    if !isempty(df_planets)
-        Arrow.write(
-            joinpath(checkpoint_dir, "planets_step_00000000.arrow"),
-            df_planets
-        )
-    end
-
-    if !isempty(df_life)
-        Arrow.write(
-            joinpath(checkpoint_dir, "life_step_00000000.arrow"),
-            df_life
-        )
-    end
-
-    for step in 1:nsteps
-        Agents.step!(model, agent_step!, model_step!)
-        
-        # Check if we should collect and write this step
-        should_collect = (step in steps_to_collect) || 
-                        (collect_terraformation_events && model.terraformed_on_step)
-        
-        if should_collect
-            df_planets = extract_planet_data(model, step, params)
-            df_life = extract_life_data(model, step, params)
-            
-            # Write immediately
-            step_str = lpad(step, 8, '0')
-            
-            if !isempty(df_planets)
-                Arrow.write(
-                    joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
-                    df_planets
-                )
-            end
-            
-            if !isempty(df_life)
-                Arrow.write(
-                    joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
-                    df_life
-                )
-            end
-        end
-    end
-
-    # Save final state if not already saved
-    if nsteps ∉ steps_to_collect && !(collect_terraformation_events && model.terraformed_on_step)
-        df_planets = extract_planet_data(model, nsteps, params)
-        df_life = extract_life_data(model, nsteps, params)
-        
-        step_str = lpad(nsteps, 8, '0')
-        
-        if !isempty(df_planets)
-            Arrow.write(
-                joinpath(checkpoint_dir, "planets_step_$(step_str).arrow"),
-                df_planets
-            )
-        end
-        
-        if !isempty(df_life)
-            Arrow.write(
-                joinpath(checkpoint_dir, "life_step_$(step_str).arrow"),
-                df_life
-            )
-        end
-    end
+    # Start timing
+    start_time = time()
     
-    return sim_id
-end
-
-"""
-    consolidate_simulation(
-        sim_id::String, 
-        output_dir::String; 
-        cleanup_checkpoints::Bool = false,
-        return_dataframes::Bool = false
-    ) -> Union{Nothing, NamedTuple}
-
-Consolidate all checkpoint files for a simulation into final CSV files.
-
-# Arguments
-- `sim_id::String`: Unique identifier for this simulation
-- `output_dir::String`: Base output directory
-- `cleanup_checkpoints::Bool`: Whether to delete Arrow checkpoint files after consolidation (default: false)
-- `return_dataframes::Bool`: Whether to return the consolidated DataFrames (default: false)
-
-# Returns
-- If `return_dataframes=true`: NamedTuple with `planets` and `life` DataFrames
-- If `return_dataframes=false`: Nothing
-"""
-function consolidate_simulation(
-    sim_id::String, 
-    output_dir::String; 
-    cleanup_checkpoints::Bool = false,
-    return_dataframes::Bool = false
-)
+    # Create directories
     sim_dir = joinpath(output_dir, "sim_$(sim_id)")
     checkpoint_dir = joinpath(sim_dir, "checkpoints")
+    mkpath(checkpoint_dir)
     
-    if !isdir(checkpoint_dir)
-        @warn "Checkpoint directory not found for simulation $sim_id"
-        return return_dataframes ? (planets = DataFrame(), life = DataFrame()) : nothing
-    end
+    # Storage for data between checkpoints
+    events_buffer = DataFrame[]
+    life_buffer = DataFrame[]
     
-    # Find all checkpoint files (sorted by filename ensures chronological order)
-    planet_files = sort(glob("planets_step_*.arrow", checkpoint_dir))
-    life_files = sort(glob("life_step_*.arrow", checkpoint_dir))
+    checkpoint_counter = 0
     
-    # Consolidate planets
-    if !isempty(planet_files)
-        df_planets = vcat([DataFrame(Arrow.Table(f)) for f in planet_files]...)
-        CSV.write(joinpath(sim_dir, "planets.csv"), df_planets)
-    else
-        df_planets = DataFrame()
-    end
-    
-    # Consolidate life
-    if !isempty(life_files)
-        df_life = vcat([DataFrame(Arrow.Table(f)) for f in life_files]...)
-        CSV.write(joinpath(sim_dir, "life.csv"), df_life)
-    else
-        df_life = DataFrame()
-    end
-    
-    # Optional cleanup
-    if cleanup_checkpoints
-        for f in vcat(planet_files, life_files)
-            rm(f)
+    # Helper function to write checkpoints
+    function write_checkpoint(step)
+        if !isempty(events_buffer)
+            df_events = vcat(events_buffer...)
+            checkpoint_path = joinpath(checkpoint_dir, "events_step_$(lpad(step, 6, '0')).arrow")
+            Arrow.write(checkpoint_path, df_events)
+            empty!(events_buffer)
+        end
+        
+        if collect_life && !isempty(life_buffer)
+            df_life = vcat(life_buffer...)
+            checkpoint_path = joinpath(checkpoint_dir, "life_step_$(lpad(step, 6, '0')).arrow")
+            Arrow.write(checkpoint_path, df_life)
+            empty!(life_buffer)
         end
     end
     
-    if return_dataframes
-        return (planets = df_planets, life = df_life)
-    else
-        return nothing
+    # Collect initial state (step 0) - includes initial alive planet if any
+    df_events = extract_planet_events(model, 0, params)
+    if nrow(df_events) > 0
+        push!(events_buffer, df_events)
     end
+    
+    if collect_life
+        df_life = extract_life_data(model, 0, params)
+        if nrow(df_life) > 0
+            push!(life_buffer, df_life)
+        end
+    end
+    
+    # Run simulation
+    for step in 1:nsteps
+        # Reset terraformation flag
+        model.terraformed_on_step = false
+        
+        # Step the model
+        Agents.step!(model, agent_step!, model_step!, 1)
+        
+        # Determine if we should collect data this step
+        should_collect = false
+        
+        # Collect at regular intervals
+        if step % collection_interval == 0
+            should_collect = true
+        end
+        
+        # Collect when terraformation events occur
+        if collect_terraformation_events && model.terraformed_on_step
+            should_collect = true
+        end
+        
+        # Collect at final step
+        if step == nsteps
+            should_collect = true
+        end
+        
+        # Collect data if needed (only events now)
+        if should_collect || model.terraformed_on_step
+            df_events = extract_planet_events(model, step, params)
+            if nrow(df_events) > 0
+                push!(events_buffer, df_events)
+            end
+            
+            if collect_life
+                df_life = extract_life_data(model, step, params)
+                if nrow(df_life) > 0
+                    push!(life_buffer, df_life)
+                end
+            end
+        end
+        
+        # Write checkpoint if interval reached
+        if step % checkpoint_interval == 0 || step == nsteps
+            write_checkpoint(step)
+            checkpoint_counter += 1
+        end
+    end
+    
+    end_time = time()
+    duration = end_time - start_time
+    
+    return (duration_seconds = duration, checkpoints_written = checkpoint_counter)
 end
 
 """
-    save_parameter_metadata(param_combinations::Vector, output_dir::String, extra_info::Dict = Dict())
+    save_parameter_metadata(
+        param_combinations::Vector,
+        output_dir::String,
+        metadata_info::Dict;
+        timing_info::Union{Dict, Nothing} = nothing
+    )
 
-Save parameter metadata to JSON and YAML files.
+Save parameter combinations and metadata to JSON and YAML files.
+
+Now includes auto-extracted metadata and timing information.
 
 # Arguments
-- `param_combinations::Vector`: List of all parameter combinations
-- `output_dir::String`: Base output directory
-- `extra_info::Dict`: Additional metadata to save (e.g., nsteps, checkpoint_interval)
+- `param_combinations::Vector`: List of parameter dictionaries
+- `output_dir::String`: Directory to save files
+- `metadata_info::Dict`: Metadata about the sweep (can be auto-extracted)
+- `timing_info::Union{Dict, Nothing}`: Optional timing information to include
 """
 function save_parameter_metadata(
-    param_combinations::Vector, 
+    param_combinations::Vector,
     output_dir::String,
-    extra_info::Dict = Dict()
+    metadata_info::Dict;
+    timing_info::Union{Dict, Nothing} = nothing
 )
     mkpath(output_dir)
     
-    # Add sim_id to each parameter combination
-    param_combos_with_ids = [
-        merge(OrderedDict("sim_id" => lpad(i, 4, '0')), OrderedDict(params)) 
-        for (i, params) in enumerate(param_combinations)
-    ]
+    # Add sim_id to each combination
+    params_with_ids = map(enumerate(param_combinations)) do (idx, params)
+        merged = copy(params)
+        merged[:sim_id] = lpad(idx, 4, '0')
+        merged
+    end
     
-    metadata = OrderedDict(
+    # Create metadata structure
+    metadata = OrderedDict{String, Any}(
         "n_combinations" => length(param_combinations),
-        "timestamp" => Dates.format(now(), "yyyy-mm-dd HH:MM:SS"),
-        "parameter_combinations" => param_combos_with_ids
+        "created_at" => string(Dates.now()),
+        "parameter_combinations" => params_with_ids
     )
     
-    # Merge in extra_info at the top level (not nested)
-    for (key, value) in extra_info
+    # Add user-provided metadata
+    for (key, val) in metadata_info
         # Convert functions to strings for JSON serialization
-        if value isa Function
-            metadata[key] = string(value)
-        elseif value isa Symbol
-            metadata[key] = string(value)
-        elseif value isa Vector{Symbol}
-            metadata[key] = string.(value)
+        if val isa Function
+            metadata[key] = string(val)
         else
-            metadata[key] = value
+            metadata[key] = val
         end
     end
     
-    # Write JSON
-    open(joinpath(output_dir, "parameters.json"), "w") do f
-        JSON.print(f, metadata, 4)
+    # Add timing information if provided
+    if !isnothing(timing_info)
+        metadata["timing"] = timing_info
     end
     
-    # Write YAML (more human-readable)
-    YAML.write_file(joinpath(output_dir, "parameters.yml"), metadata)
+    # Write JSON (machine-readable)
+    json_path = joinpath(output_dir, "parameters.json")
+    open(json_path, "w") do f
+        JSON.print(f, metadata, 2)
+    end
     
-    return metadata
+    # Write YAML (human-readable)
+    yaml_path = joinpath(output_dir, "parameters.yml")
+    YAML.write_file(yaml_path, metadata)
+    
+    println("Saved parameter metadata to:")
+    println("  $json_path")
+    println("  $yaml_path")
 end
 
 """
@@ -3307,79 +3548,94 @@ end
         param_combinations::Vector,
         initialize_model_func::Function,
         output_dir::String;
-        nsteps::Int,
+        nsteps::Int = 1000,
         checkpoint_interval::Int = 100,
+        collection_interval::Int = 100,
+        collect_terraformation_events::Bool = true,
+        collect_life::Bool = false,
         consolidate::Bool = true,
         cleanup_checkpoints::Bool = false,
-        agent_step!::Function,
-        model_step!::Function,
+        export_csv::Bool = true,
+        agent_step!::Function = galaxy_agent_step_spawn_at_rate!,
+        model_step!::Function = galaxy_model_step!,
         extra_metadata::Dict = Dict()
     ) -> Vector{String}
 
-Run a parameter sweep with parallel execution and incremental file writing.
+Run a parameter sweep with multiple simulations in parallel.
+
+Now includes reference data generation, timing tracking, auto-metadata extraction,
+and optional CSV export.
 
 # Arguments
-- `param_combinations::Vector`: List of parameter dictionaries to sweep over
-- `initialize_model_func::Function`: Function that takes a parameter dict and returns an initialized model
-- `output_dir::String`: Base output directory for all results
-- `nsteps::Int`: Number of simulation steps to run for each parameter combination
-- `checkpoint_interval::Int`: How often to save checkpoints (default: 100)
-- `consolidate::Bool`: Whether to consolidate Arrow files to CSV after simulation (default: true)
-- `cleanup_checkpoints::Bool`: Whether to delete Arrow checkpoints after consolidation (default: false)
+- `param_combinations::Vector`: List of parameter dictionaries to sweep
+- `initialize_model_func::Function`: Function that takes params and returns initialized model
+- `output_dir::String`: Base directory for output files
+- `nsteps::Int`: Number of simulation steps (default: 1000)
+- `checkpoint_interval::Int`: Steps between checkpoint writes (default: 100)
+- `collection_interval::Int`: Steps between data collection for trajectories (default: 100)
+- `collect_terraformation_events::Bool`: Collect when terraformation occurs (default: true)
+- `collect_life::Bool`: Whether to collect life agent data (default: false)
+- `consolidate::Bool`: Whether to consolidate checkpoints to CSV (default: true)
+- `cleanup_checkpoints::Bool`: Delete checkpoint files after consolidation (default: false)
+- `export_csv::Bool`: Export Arrow files to compressed CSV (default: true)
 - `agent_step!::Function`: Agent stepping function
 - `model_step!::Function`: Model stepping function
-- `extra_metadata::Dict`: Additional metadata to save with parameters
+- `extra_metadata::Dict`: Additional metadata to save (merged with auto-extracted)
 
 # Returns
-- `Vector{String}`: List of simulation IDs that were completed
-
-# Example
-```julia
-param_grid = Dict(
-    :v_init => [0.1, 0.5],
-    :launch_rate => [1e-3, 1e-2]
-)
-param_combinations = dict_list(param_grid)
-
-function init_model(params)
-    return initialize_model_cns5(; N=200, params...)
-end
-
-results = run_parameter_sweep(
-    param_combinations,
-    init_model,
-    "output/my_sweep";
-    nsteps = 10_000,
-    checkpoint_interval = 100,
-    agent_step! = galaxy_agent_step_spawn_at_rate!,
-    model_step! = galaxy_model_step!
-)
-```
+- `Vector{String}`: List of successfully completed simulation IDs
 """
 function run_parameter_sweep(
     param_combinations::Vector,
     initialize_model_func::Function,
     output_dir::String;
-    nsteps::Int,
+    nsteps::Int = 1000,
     checkpoint_interval::Int = 100,
-    collection_interval::Int = checkpoint_interval,
+    collection_interval::Int = 100,
     collect_terraformation_events::Bool = true,
+    collect_life::Bool = false,
     consolidate::Bool = true,
     cleanup_checkpoints::Bool = false,
-    agent_step!::Function,
-    model_step!::Function,
+    export_csv::Bool = true,
+    agent_step!::Function = galaxy_agent_step_spawn_at_rate!,
+    model_step!::Function = galaxy_model_step!,
     extra_metadata::Dict = Dict()
 )
-    # Save parameter metadata
-    metadata_info = merge(
-        Dict("nsteps" => nsteps, "checkpoint_interval" => checkpoint_interval),
-        extra_metadata
+    sweep_start_time = time()
+    
+    # Create output directory
+    mkpath(output_dir)
+    
+    # Auto-extract metadata from a sample model
+    println("Extracting metadata from model...")
+    sample_model = initialize_model_func(param_combinations[1])
+    auto_metadata = extract_fixed_metadata(sample_model)
+    
+    # Merge with user-provided metadata (user metadata takes precedence)
+    metadata_info = merge(auto_metadata, extra_metadata)
+    metadata_info["nsteps"] = nsteps
+    metadata_info["checkpoint_interval"] = checkpoint_interval
+    metadata_info["collection_interval"] = collection_interval
+    metadata_info["collect_life"] = collect_life
+    metadata_info["agent_step!"] = string(agent_step!)
+    metadata_info["model_step!"] = string(model_step!)
+    
+    # Generate reference data files (trajectories + initial state)
+    initialize_reference_data(
+        param_combinations,
+        initialize_model_func,
+        output_dir;
+        nsteps = nsteps,
+        collection_interval = collection_interval,
+        agent_step! = agent_step!,
+        model_step! = model_step!
     )
-    save_parameter_metadata(param_combinations, output_dir, metadata_info)
     
     # Run simulations in parallel
     println("Starting parameter sweep with $(length(param_combinations)) combinations...")
     println("Using $(Distributed.nworkers()) workers")
+    
+    sim_timings = Dict{String, Float64}()
     
     results = Distributed.pmap(enumerate(param_combinations)) do (idx, params)
         sim_id = lpad(idx, 4, '0')
@@ -3391,22 +3647,30 @@ function run_parameter_sweep(
         
         # Run with checkpointing
         try
-            run_simulation_with_checkpoints(
+            timing_result = run_simulation_with_checkpoints(
                 model, nsteps;
                 checkpoint_interval = checkpoint_interval,
                 collection_interval = collection_interval,
                 collect_terraformation_events = collect_terraformation_events,
+                collect_life = collect_life,
                 output_dir = output_dir,
                 sim_id = sim_id,
                 agent_step! = agent_step!,
                 model_step! = model_step!,
                 params = params 
             )
-            println("Worker $(Distributed.myid()): Completed simulation $sim_id")
-            return (success = true, sim_id = sim_id)
+            println("Worker $(Distributed.myid()): Completed simulation $sim_id in $(round(timing_result.duration_seconds, digits=1))s")
+            return (success = true, sim_id = sim_id, duration = timing_result.duration_seconds)
         catch e
             @warn "Simulation $sim_id failed with error: $e"
             return (success = false, sim_id = sim_id, error = e)
+        end
+    end
+    
+    # Collect timing information
+    for r in results
+        if r.success
+            sim_timings[r.sim_id] = r.duration
         end
     end
     
@@ -3418,22 +3682,45 @@ function run_parameter_sweep(
         @warn "$(length(failed_sims)) simulations failed: $failed_sims"
     end
     
+    sweep_end_time = time()
+    sweep_duration = sweep_end_time - sweep_start_time
+    
+    # Create timing info
+    timing_info = Dict(
+        "sweep_duration_seconds" => sweep_duration,
+        "sweep_start_time" => string(Dates.unix2datetime(sweep_start_time)),
+        "sweep_end_time" => string(Dates.unix2datetime(sweep_end_time)),
+        "simulation_durations" => sim_timings
+    )
+    
+    # Save metadata with timing
+    save_parameter_metadata(param_combinations, output_dir, metadata_info; timing_info = timing_info)
+    
     # Post-process if requested
     if consolidate && !isempty(successful_sims)
-        println("Consolidating $(length(successful_sims)) simulations to CSV...")
+        println("\nConsolidating $(length(successful_sims)) simulations...")
         Distributed.pmap(successful_sims) do sim_id
             consolidate_simulation(sim_id, output_dir; cleanup_checkpoints = cleanup_checkpoints)
         end
-        println("Consolidation complete!")
+        println("Individual simulation consolidation complete!")
 
         # Consolidate all simulations into master files
-        println("\nCreating master CSV files...")
+        println("\nCreating master event files...")
         consolidate_all_simulations(output_dir; cleanup_individual = false)
     end
     
+    # Export to CSV if requested
+    if export_csv
+        println("\nExporting Arrow files to compressed CSV...")
+        export_to_compressed_csv(output_dir)
+    end
+    
     println("\nParameter sweep complete!")
+    println("="^80)
     println("Successful: $(length(successful_sims))/$(length(param_combinations))")
+    println("Total time: $(round(sweep_duration/60, digits=1)) minutes")
     println("Output directory: $output_dir")
+    println("="^80)
     
     return successful_sims
 end
@@ -3545,17 +3832,77 @@ function resume_parameter_sweep(
 end
 
 """
+    consolidate_simulation(sim_id::String, output_dir::String; cleanup_checkpoints::Bool = false)
+
+Consolidate checkpoint Arrow files into single Arrow files per simulation.
+
+Now consolidates event checkpoints only (not full planet state).
+
+# Arguments
+- `sim_id::String`: Simulation ID (e.g., "0001")
+- `output_dir::String`: Base output directory
+- `cleanup_checkpoints::Bool`: Whether to delete checkpoint files after consolidation
+"""
+function consolidate_simulation(sim_id::String, output_dir::String; cleanup_checkpoints::Bool = false)
+    sim_dir = joinpath(output_dir, "sim_$(sim_id)")
+    checkpoint_dir = joinpath(sim_dir, "checkpoints")
+    
+    if !isdir(checkpoint_dir)
+        @warn "Checkpoint directory not found for sim $sim_id"
+        return
+    end
+    
+    # Consolidate planet events
+    event_files = sort(glob("events_step_*.arrow", checkpoint_dir))
+    if !isempty(event_files)
+        all_events = [Arrow.Table(f) |> DataFrame for f in event_files]
+        df_events = vcat(all_events...)
+        
+        events_path = joinpath(sim_dir, "planets_events.arrow")
+        Arrow.write(events_path, df_events)
+        
+        if cleanup_checkpoints
+            for f in event_files
+                rm(f)
+            end
+        end
+    end
+    
+    # Consolidate life data if it exists
+    life_files = sort(glob("life_step_*.arrow", checkpoint_dir))
+    if !isempty(life_files)
+        all_life = [Arrow.Table(f) |> DataFrame for f in life_files]
+        df_life = vcat(all_life...)
+        
+        life_path = joinpath(sim_dir, "life.arrow")
+        Arrow.write(life_path, df_life)
+        
+        if cleanup_checkpoints
+            for f in life_files
+                rm(f)
+            end
+        end
+    end
+    
+    # Remove checkpoint directory if empty
+    if cleanup_checkpoints && isempty(readdir(checkpoint_dir))
+        rm(checkpoint_dir)
+    end
+end
+
+"""
     consolidate_all_simulations(output_dir::String; cleanup_individual::Bool = false)
 
-Consolidate all individual simulation CSVs into single master files.
+Consolidate all individual simulation event files into single master files using streaming.
 
 Creates:
-- `all_planets.csv` - All planet data from all simulations
-- `all_life.csv` - All life data from all simulations
+- `all_planets_events.arrow` - All planet events from all simulations
+
+This version uses streaming to avoid loading all data into memory at once.
 
 # Arguments
 - `output_dir::String`: Base output directory containing sim_XXXX folders
-- `cleanup_individual::Bool`: Whether to delete individual sim CSVs after consolidation (default: false)
+- `cleanup_individual::Bool`: Whether to delete individual sim Arrow files after consolidation (default: false)
 """
 function consolidate_all_simulations(output_dir::String; cleanup_individual::Bool = false)
     # Find all completed simulations
@@ -3568,48 +3915,370 @@ function consolidate_all_simulations(output_dir::String; cleanup_individual::Boo
     
     println("Consolidating $(length(sim_dirs)) simulations...")
     
-    # Collect all planet CSVs
-    all_planets = DataFrame[]
-    all_life = DataFrame[]
+    # Streaming consolidation for planet events
+    all_events_path = joinpath(output_dir, "all_planets_events.arrow")
+    first_write = true
+    total_event_rows = 0
     
     for sim_dir in sort(sim_dirs)
         sim_path = joinpath(output_dir, sim_dir)
+        events_file = joinpath(sim_path, "planets_events.arrow")
         
-        # Load planets
-        planets_file = joinpath(sim_path, "planets.csv")
-        if isfile(planets_file)
-            df = CSV.read(planets_file, DataFrame)
-            push!(all_planets, df)
+        if isfile(events_file)
+            df = Arrow.Table(events_file) |> DataFrame
+            total_event_rows += nrow(df)
+            
+            # Append to master file
+            if first_write
+                Arrow.write(all_events_path, df)
+                first_write = false
+            else
+                # Read existing, append, rewrite
+                existing = Arrow.Table(all_events_path) |> DataFrame
+                combined = vcat(existing, df)
+                Arrow.write(all_events_path, combined)
+            end
+            
             if cleanup_individual
-                rm(planets_file)
+                rm(events_file)
             end
         end
+    end
+    
+    if total_event_rows > 0
+        println("  Wrote all_planets_events.arrow ($total_event_rows rows)")
+    end
+    
+    # Consolidate life data if any exists
+    all_life_path = joinpath(output_dir, "all_life.arrow")
+    first_write_life = true
+    total_life_rows = 0
+    
+    for sim_dir in sort(sim_dirs)
+        sim_path = joinpath(output_dir, sim_dir)
+        life_file = joinpath(sim_path, "life.arrow")
         
-        # Load life
-        life_file = joinpath(sim_path, "life.csv")
         if isfile(life_file)
-            df = CSV.read(life_file, DataFrame)
-            push!(all_life, df)
+            df = Arrow.Table(life_file) |> DataFrame
+            total_life_rows += nrow(df)
+            
+            if first_write_life
+                Arrow.write(all_life_path, df)
+                first_write_life = false
+            else
+                existing = Arrow.Table(all_life_path) |> DataFrame
+                combined = vcat(existing, df)
+                Arrow.write(all_life_path, combined)
+            end
+            
             if cleanup_individual
                 rm(life_file)
             end
         end
     end
     
-    # Write consolidated files
-    if !isempty(all_planets)
-        combined_planets = vcat(all_planets...)
-        CSV.write(joinpath(output_dir, "all_planets.csv"), combined_planets)
-        println("  Wrote all_planets.csv ($(nrow(combined_planets)) rows)")
-    end
-    
-    if !isempty(all_life)
-        combined_life = vcat(all_life...)
-        CSV.write(joinpath(output_dir, "all_life.csv"), combined_life)
-        println("  Wrote all_life.csv ($(nrow(combined_life)) rows)")
+    if total_life_rows > 0
+        println("  Wrote all_life.arrow ($total_life_rows rows)")
     end
     
     println("Consolidation complete!")
+end
+
+"""
+    export_to_compressed_csv(output_dir::String)
+
+Export all Arrow files to compressed CSV format (.csv.gz).
+
+Exports:
+- reference/planets_initial.arrow → planets_initial.csv.gz
+- reference/trajectories_*.arrow → trajectories_*.csv.gz
+- sim_*/planets_events.arrow → sim_*/planets_events.csv.gz
+- sim_*/life.arrow → sim_*/life.csv.gz (if exists)
+- all_planets_events.arrow → all_planets_events.csv.gz
+- all_life.arrow → all_life.csv.gz (if exists)
+
+# Arguments
+- `output_dir::String`: Base output directory
+"""
+function export_to_compressed_csv(output_dir::String)
+    println("\nExporting Arrow files to compressed CSV...")
+    
+    # Export reference files
+    ref_dir = joinpath(output_dir, "reference")
+    if isdir(ref_dir)
+        println("  Exporting reference files...")
+        
+        # Export planets_initial
+        initial_arrow = joinpath(ref_dir, "planets_initial.arrow")
+        if isfile(initial_arrow)
+            df = Arrow.Table(initial_arrow) |> DataFrame
+            csv_path = joinpath(ref_dir, "planets_initial.csv.gz")
+            CSV.write(csv_path, df; compress=true)
+            println("    Wrote $(basename(csv_path)) ($(nrow(df)) rows)")
+        end
+        
+        # Export all trajectory files
+        traj_files = glob("trajectories_*.arrow", ref_dir)
+        for traj_file in traj_files
+            df = Arrow.Table(traj_file) |> DataFrame
+            csv_filename = replace(basename(traj_file), ".arrow" => ".csv.gz")
+            csv_path = joinpath(ref_dir, csv_filename)
+            CSV.write(csv_path, df; compress=true)
+            println("    Wrote $(csv_filename) ($(nrow(df)) rows)")
+        end
+    end
+    
+    # Export individual simulation files
+    sim_dirs = filter(d -> startswith(d, "sim_"), readdir(output_dir))
+    println("  Exporting $(length(sim_dirs)) individual simulations...")
+    
+    for sim_dir in sort(sim_dirs)
+        sim_path = joinpath(output_dir, sim_dir)
+        
+        # Export planets_events
+        events_arrow = joinpath(sim_path, "planets_events.arrow")
+        if isfile(events_arrow)
+            df = Arrow.Table(events_arrow) |> DataFrame
+            csv_path = joinpath(sim_path, "planets_events.csv.gz")
+            CSV.write(csv_path, df; compress=true)
+        end
+        
+        # Export life if exists
+        life_arrow = joinpath(sim_path, "life.arrow")
+        if isfile(life_arrow)
+            df = Arrow.Table(life_arrow) |> DataFrame
+            csv_path = joinpath(sim_path, "life.csv.gz")
+            CSV.write(csv_path, df; compress=true)
+        end
+    end
+    
+    # Export consolidated files
+    println("  Exporting consolidated files...")
+    
+    all_events_arrow = joinpath(output_dir, "all_planets_events.arrow")
+    if isfile(all_events_arrow)
+        df = Arrow.Table(all_events_arrow) |> DataFrame
+        csv_path = joinpath(output_dir, "all_planets_events.csv.gz")
+        CSV.write(csv_path, df; compress=true)
+        println("    Wrote all_planets_events.csv.gz ($(nrow(df)) rows)")
+    end
+    
+    all_life_arrow = joinpath(output_dir, "all_life.arrow")
+    if isfile(all_life_arrow)
+        df = Arrow.Table(all_life_arrow) |> DataFrame
+        csv_path = joinpath(output_dir, "all_life.csv.gz")
+        CSV.write(csv_path, df; compress=true)
+        println("    Wrote all_life.csv.gz ($(nrow(df)) rows)")
+    end
+    
+    println("CSV export complete!")
+end
+
+"""
+    migrate_old_to_new_format(
+        old_output_dir::String,
+        new_output_dir::String;
+        collection_interval::Int = 100
+    )
+
+Migrate old bulky CSV format to new normalized Arrow + CSV format.
+
+Reads existing planets.csv files and splits them into:
+- reference/planets_initial.arrow
+- reference/trajectories_t{offset}.arrow
+- sim_*/planets_events.arrow
+
+# Arguments
+- `old_output_dir::String`: Directory with old format (contains all_planets.csv or sim_*/planets.csv)
+- `new_output_dir::String`: Directory for new format output
+- `collection_interval::Int`: Interval used in original data collection (needed to reconstruct trajectories)
+"""
+function migrate_old_to_new_format(
+    old_output_dir::String,
+    new_output_dir::String;
+    collection_interval::Int = 100
+)
+    println("\n" * "="^80)
+    println("Migrating old format to new format")
+    println("="^80)
+    println("Source: $old_output_dir")
+    println("Destination: $new_output_dir")
+    println("="^80 * "\n")
+    
+    mkpath(new_output_dir)
+    ref_dir = joinpath(new_output_dir, "reference")
+    mkpath(ref_dir)
+    
+    # Find all simulation directories
+    sim_dirs = filter(d -> startswith(d, "sim_"), readdir(old_output_dir))
+    
+    if isempty(sim_dirs)
+        error("No simulation directories found in $old_output_dir")
+    end
+    
+    println("Found $(length(sim_dirs)) simulations to migrate")
+    
+    # Read first simulation to extract initial state and determine parameters
+    first_sim = sort(sim_dirs)[1]
+    first_planets_csv = joinpath(old_output_dir, first_sim, "planets.csv")
+    
+    if !isfile(first_planets_csv)
+        error("Could not find planets.csv in $first_sim")
+    end
+    
+    println("\nExtracting reference data from first simulation...")
+    df_first = CSV.read(first_planets_csv, DataFrame)
+    
+    # Extract planets_initial (step 0 data)
+    df_initial = df_first[df_first.step .== 0, :]
+    
+    # Determine composition columns
+    comp_cols = filter(col -> startswith(string(col), "comp_"), names(df_initial))
+    
+    # Create initial state file
+    initial_cols = [:id, :x, :y, :z, :v_x, :v_y, :v_z]
+    append!(initial_cols, Symbol.(comp_cols))
+    df_initial_clean = select(df_initial, initial_cols)
+    
+    initial_path = joinpath(ref_dir, "planets_initial.arrow")
+    Arrow.write(initial_path, df_initial_clean)
+    println("  Wrote planets_initial.arrow ($(nrow(df_initial_clean)) planets)")
+    
+    # Extract unique t_offset values across all simulations
+    println("\nDetermining unique t_offset values...")
+    t_offsets = Set()
+    
+    for sim_dir in sim_dirs
+        planets_csv = joinpath(old_output_dir, sim_dir, "planets.csv")
+        if isfile(planets_csv)
+            # Read just first few rows to get t_offset
+            df_sample = CSV.read(planets_csv, DataFrame; limit=10)
+            if "t_offset" in names(df_sample)
+                push!(t_offsets, df_sample.t_offset[1])
+            end
+        end
+    end
+    
+    t_offsets = sort(collect(t_offsets))
+    println("  Found $(length(t_offsets)) unique t_offset values: $t_offsets")
+    
+    # Generate trajectory files for each t_offset
+    for t_offset in t_offsets
+        println("\nGenerating trajectories for t_offset = $t_offset...")
+        
+        # Find a simulation with this t_offset
+        matching_sim = nothing
+        for sim_dir in sim_dirs
+            planets_csv = joinpath(old_output_dir, sim_dir, "planets.csv")
+            df_sample = CSV.read(planets_csv, DataFrame; limit=10)
+            if "t_offset" in names(df_sample) && df_sample.t_offset[1] == t_offset
+                matching_sim = sim_dir
+                break
+            end
+        end
+        
+        if isnothing(matching_sim)
+            @warn "Could not find simulation with t_offset=$t_offset"
+            continue
+        end
+        
+        # Read full planets file
+        planets_csv = joinpath(old_output_dir, matching_sim, "planets.csv")
+        df_planets = CSV.read(planets_csv, DataFrame)
+        
+        # Extract trajectory data (id, step, x, y, z)
+        df_traj = select(df_planets, [:id, :step, :x, :y, :z])
+        
+        # Write trajectory file
+        t_str = replace(string(Int(t_offset)), "-" => "-")
+        traj_filename = "trajectories_t$t_str.arrow"
+        traj_path = joinpath(ref_dir, traj_filename)
+        Arrow.write(traj_path, df_traj)
+        println("  Wrote $traj_filename ($(nrow(df_traj)) trajectory points)")
+    end
+    
+    # Migrate individual simulations (extract events only)
+    println("\nMigrating individual simulations...")
+    
+    for (idx, sim_dir) in enumerate(sort(sim_dirs))
+        println("  Processing $(sim_dir) ($(idx)/$(length(sim_dirs)))...")
+        
+        old_sim_path = joinpath(old_output_dir, sim_dir)
+        new_sim_path = joinpath(new_output_dir, sim_dir)
+        mkpath(new_sim_path)
+        
+        # Read planets.csv
+        planets_csv = joinpath(old_sim_path, "planets.csv")
+        if !isfile(planets_csv)
+            @warn "    Skipping $(sim_dir) - no planets.csv found"
+            continue
+        end
+        
+        df_planets = CSV.read(planets_csv, DataFrame)
+        
+        # Extract events (where alive status changed)
+        # For migration, we'll include step 0 for any alive planet, and any later step where alive is true
+        df_events = DataFrame()
+        
+        for planet_id in unique(df_planets.id)
+            df_planet = df_planets[df_planets.id .== planet_id, :]
+            sort!(df_planet, :step)
+            
+            # Check if planet is ever alive
+            if any(df_planet.alive)
+                # Find first step where alive is true
+                first_alive_idx = findfirst(df_planet.alive)
+                if !isnothing(first_alive_idx)
+                    event_row = df_planet[first_alive_idx, :]
+                    push!(df_events, event_row, cols=:union)
+                end
+            end
+        end
+        
+        # Select relevant columns for events
+        event_cols = [:id, :step, :alive]
+        append!(event_cols, Symbol.(comp_cols))
+        
+        # Add parameter columns if they exist
+        param_cols = filter(col -> !(col in [:id, :step, :x, :y, :z, :v_x, :v_y, :v_z, :alive, :claimed] || startswith(string(col), "comp_")), names(df_events))
+        append!(event_cols, param_cols)
+        
+        df_events_clean = select(df_events, event_cols)
+        
+        # Write events file
+        events_path = joinpath(new_sim_path, "planets_events.arrow")
+        Arrow.write(events_path, df_events_clean)
+        println("    Wrote planets_events.arrow ($(nrow(df_events_clean)) events)")
+        
+        # Migrate life.csv if it exists
+        life_csv = joinpath(old_sim_path, "life.csv")
+        if isfile(life_csv)
+            df_life = CSV.read(life_csv, DataFrame)
+            life_path = joinpath(new_sim_path, "life.arrow")
+            Arrow.write(life_path, df_life)
+            println("    Wrote life.arrow ($(nrow(df_life)) rows)")
+        end
+    end
+    
+    # Copy metadata files
+    println("\nCopying metadata files...")
+    for meta_file in ["parameters.json", "parameters.yml"]
+        old_path = joinpath(old_output_dir, meta_file)
+        new_path = joinpath(new_output_dir, meta_file)
+        if isfile(old_path)
+            cp(old_path, new_path; force=true)
+            println("  Copied $meta_file")
+        end
+    end
+    
+    # Export to CSV
+    println("\nExporting to compressed CSV...")
+    export_to_compressed_csv(new_output_dir)
+    
+    println("\n" * "="^80)
+    println("Migration complete!")
+    println("New format saved to: $new_output_dir")
+    println("="^80)
 end
 
 end # module
