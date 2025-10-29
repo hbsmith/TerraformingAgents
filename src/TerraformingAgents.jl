@@ -4078,25 +4078,23 @@ end
     migrate_old_to_new_format(
         old_output_dir::String,
         new_output_dir::String;
-        collection_interval::Int = 100
+        collection_interval::Int = 100,
+        migrate_life::Bool = false
     )
 
 Migrate old bulky CSV format to new normalized Arrow + CSV format.
 
-Reads existing planets.csv files and splits them into:
-- reference/planets_initial.arrow
-- reference/trajectories_t{offset}.arrow
-- sim_*/planets_events.arrow
-
 # Arguments
-- `old_output_dir::String`: Directory with old format (contains all_planets.csv or sim_*/planets.csv)
+- `old_output_dir::String`: Directory with old format
 - `new_output_dir::String`: Directory for new format output
-- `collection_interval::Int`: Interval used in original data collection (needed to reconstruct trajectories)
+- `collection_interval::Int`: Interval used in original data collection
+- `migrate_life::Bool`: Whether to migrate life.csv files (default: false)
 """
 function migrate_old_to_new_format(
     old_output_dir::String,
     new_output_dir::String;
-    collection_interval::Int = 100
+    collection_interval::Int = 100,
+    migrate_life::Bool = false,
 )
     println("\n" * "="^80)
     println("Migrating old format to new format")
@@ -4239,9 +4237,25 @@ function migrate_old_to_new_format(
         event_cols = [:id, :step, :alive]
         append!(event_cols, Symbol.(comp_cols))
         
-        # Add parameter columns if they exist
-        param_cols = filter(col -> !(col in [:id, :step, :x, :y, :z, :v_x, :v_y, :v_z, :alive, :claimed] || startswith(string(col), "comp_")), names(df_events))
-        append!(event_cols, param_cols)
+        # Add parameter columns if they exist (excluding columns already in event_cols and non-relevant columns)
+        existing_cols_set = Set(event_cols)
+        exclude_cols = Set([:id, :step, :x, :y, :z, :v_x, :v_y, :v_z, :alive, :claimed, 
+                           :spawn_threshold, :reached_boundary, :last_launch_timestep,
+                           :n_parentplanets, :n_parentlifes, :n_parentcompositions,
+                           :last_parentplanet_id, :last_parentlife_id])
+        
+        param_cols = filter(names(df_events)) do col
+            col_sym = Symbol(col)
+            # Keep if: not already in event_cols, not in exclude list, not a comp column
+            return !(col_sym in existing_cols_set) && 
+                   !(col_sym in exclude_cols) && 
+                   !startswith(string(col), "comp_")
+        end
+        
+        append!(event_cols, Symbol.(param_cols))
+        
+        # Remove any duplicates just to be safe
+        event_cols = unique(event_cols)
         
         df_events_clean = select(df_events, event_cols)
         
@@ -4251,12 +4265,16 @@ function migrate_old_to_new_format(
         println("    Wrote planets_events.arrow ($(nrow(df_events_clean)) events)")
         
         # Migrate life.csv if it exists
-        life_csv = joinpath(old_sim_path, "life.csv")
-        if isfile(life_csv)
-            df_life = CSV.read(life_csv, DataFrame)
-            life_path = joinpath(new_sim_path, "life.arrow")
-            Arrow.write(life_path, df_life)
-            println("    Wrote life.arrow ($(nrow(df_life)) rows)")
+        if migrate_life
+            life_csv = joinpath(old_sim_path, "life.csv")
+            if isfile(life_csv)
+                df_life = CSV.read(life_csv, DataFrame)
+                life_path = joinpath(new_sim_path, "life.arrow")
+                Arrow.write(life_path, df_life)
+                println("    Wrote life.arrow ($(nrow(df_life)) rows)")
+            end
+        else
+            println("    Skipping life migration")
         end
     end
     
