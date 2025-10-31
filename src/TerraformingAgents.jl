@@ -2988,6 +2988,7 @@ function extract_planet_events(model, step, params)
         df[!, key] = fill(val, nrow(df))
     end
     
+    sort!(df, [:step, :id])
     return df
 end
 
@@ -3065,7 +3066,9 @@ function extract_initial_planet_data(model)
         df[!, Symbol("comp_$i")] = compositions[i]
     end
     
+    sort!(df, :id)
     return df
+
 end
 
 """
@@ -3146,20 +3149,32 @@ function initialize_reference_data(
         params = param_combinations[matching_params]
         model = initialize_model_func(params)
         
-        # Collect trajectory data
-        all_trajectories = DataFrame[]
+        # Collect trajectory data - split into interval and terraformation
+        interval_trajectories = DataFrame[]
+        terraformation_trajectories = DataFrame[]
         
-        # Collect at step 0
+        # Collect at step 0 (goes in both)
         df_step = extract_trajectory_data(model, 0)
-        push!(all_trajectories, df_step)
+        push!(interval_trajectories, df_step)
+        push!(terraformation_trajectories, df_step)
         
         # Run simulation and collect at intervals
         for step in 1:nsteps
             Agents.step!(model, agent_step!, model_step!, 1)
             
-            if step % collection_interval == 0 || step == nsteps
+            is_interval = (step % collection_interval == 0) || (step == nsteps)
+            is_terraformation = model.terraformed_on_step
+            
+            if is_interval || is_terraformation
                 df_step = extract_trajectory_data(model, step)
-                push!(all_trajectories, df_step)
+                
+                if is_interval
+                    push!(interval_trajectories, df_step)
+                end
+                
+                if is_terraformation
+                    push!(terraformation_trajectories, df_step)
+                end
                 
                 if step % 1000 == 0
                     print(".")
@@ -3168,21 +3183,31 @@ function initialize_reference_data(
         end
         println()
         
-        # Combine and write
-        df_trajectories = vcat(all_trajectories...)
+        # Combine and write BOTH files
+        df_traj_interval = vcat(interval_trajectories...)
+        sort!(df_traj_interval, [:step, :id])
         
-        # Create filename
+        df_traj_terra = vcat(terraformation_trajectories...)
+        sort!(df_traj_terra, [:step, :id])
+        
+        # Create filenames
         if isnothing(t_offset)
-            traj_filename = "trajectories.arrow"
+            traj_interval_filename = "trajectories_interval.arrow"
+            traj_terra_filename = "trajectories_terraformation.arrow"
         else
-            # Format t_offset for filename (e.g., -1000000 -> "t-1000000")
             t_str = replace(string(Int(t_offset)), "-" => "-")
-            traj_filename = "trajectories_t$t_str.arrow"
+            traj_interval_filename = "trajectories_t$(t_str)_interval.arrow"
+            traj_terra_filename = "trajectories_t$(t_str)_terraformation.arrow"
         end
         
-        traj_path = joinpath(ref_dir, traj_filename)
-        Arrow.write(traj_path, df_trajectories)
-        println("  Wrote $(nrow(df_trajectories)) trajectory points to $traj_path")
+        traj_interval_path = joinpath(ref_dir, traj_interval_filename)
+        traj_terra_path = joinpath(ref_dir, traj_terra_filename)
+        
+        Arrow.write(traj_interval_path, df_traj_interval)
+        Arrow.write(traj_terra_path, df_traj_terra)
+        
+        println("  Wrote $traj_interval_filename ($(nrow(df_traj_interval)) points)")
+        println("  Wrote $traj_terra_filename ($(nrow(df_traj_terra)) points)")
     end
     
     println("\nReference data generation complete!")
@@ -3847,6 +3872,7 @@ function consolidate_simulation(sim_id::String, output_dir::String; cleanup_chec
     if !isempty(event_files)
         all_events = [Arrow.Table(f) |> DataFrame for f in event_files]
         df_events = vcat(all_events...)
+        sort!(df_events, [:step, :id])
         
         events_path = joinpath(sim_dir, "planets_events.arrow")
         Arrow.write(events_path, df_events)
@@ -3926,6 +3952,7 @@ function consolidate_all_simulations(output_dir::String; cleanup_individual::Boo
                 # Read existing, append, rewrite
                 existing = Arrow.Table(all_events_path) |> DataFrame
                 combined = vcat(existing, df)
+                sort!(combined, [:step, :id])
                 Arrow.write(all_events_path, combined)
             end
             
@@ -3958,6 +3985,7 @@ function consolidate_all_simulations(output_dir::String; cleanup_individual::Boo
             else
                 existing = Arrow.Table(all_life_path) |> DataFrame
                 combined = vcat(existing, df)
+                sort!(combined, [:step, :id])
                 Arrow.write(all_life_path, combined)
             end
             
@@ -4008,7 +4036,8 @@ function export_to_compressed_csv(output_dir::String)
         end
         
         # Export all trajectory files
-        traj_files = glob("trajectories_*.arrow", ref_dir)
+        traj_files = glob("trajectories_*_interval.arrow", ref_dir)
+        append!(traj_files, glob("trajectories_*_terraformation.arrow", ref_dir))
         for traj_file in traj_files
             df = Arrow.Table(traj_file) |> DataFrame
             csv_filename = replace(basename(traj_file), ".arrow" => ".csv.gz")
@@ -4127,6 +4156,7 @@ function migrate_old_to_new_format(
     initial_cols = [:id]
     append!(initial_cols, Symbol.(comp_cols))
     df_initial_clean = select(df_initial, initial_cols)
+    sort!(df_initial_clean, :id)
     
     initial_path = joinpath(ref_dir, "planets_initial.arrow")
     Arrow.write(initial_path, df_initial_clean)
@@ -4269,6 +4299,7 @@ function migrate_old_to_new_format(
         event_cols = unique(event_cols)
         
         df_events_clean = select(df_events, event_cols)
+        sort!(df_events_clean, [:step, :id])
         
         # Write events file
         events_path = joinpath(new_sim_path, "planets_events.arrow")
@@ -4342,7 +4373,8 @@ fix_migrated_directory(
 """
 function fix_migrated_directory(
     old_output_dir::String,
-    new_output_dir::String
+    new_output_dir::String;
+    collection_interval::Int = 100  # ADD THIS - needed to determine interval steps
 )
     println("\n" * "="^80)
     println("Fixing migrated directory structure")
@@ -4383,6 +4415,7 @@ function fix_migrated_directory(
     initial_cols = [:id]
     append!(initial_cols, Symbol.(comp_cols))
     df_initial = select(df_step0, initial_cols)
+    sort!(df_initial, :id)
     
     initial_path = joinpath(ref_dir, "planets_initial.arrow")
     Arrow.write(initial_path, df_initial)
@@ -4437,30 +4470,48 @@ function fix_migrated_directory(
         println()
         println("    Found $(length(unique_steps)) unique steps")
         
-        # STEP 2: Read ONE simulation and extract only the unique steps
+        # STEP 2: Split steps into interval vs terraformation
+        println("    Splitting steps into interval vs terraformation...")
+        max_step = maximum(unique_steps)
+        interval_steps = Set(filter(s -> s % collection_interval == 0 || s == 0 || s == max_step, unique_steps))
+        terraformation_steps = unique_steps  # All unique steps (includes overlap with intervals)
+        
+        println("    Interval steps: $(length(interval_steps))")
+        println("    Terraformation steps: $(length(terraformation_steps))")
+        
+        # STEP 3: Read ONE simulation and extract both sets of steps
         println("    Reading trajectory data from representative simulation...")
         representative_sim = matching_sims[1]
         planets_csv = joinpath(old_output_dir, representative_sim, "planets.csv")
         
         df_planets = CSV.read(planets_csv, DataFrame)
         
-        # Filter to only the unique steps
-        df_traj = df_planets[in.(df_planets.step, Ref(unique_steps)), :]
-        df_traj = select(df_traj, [:id, :step, :x, :y, :z, :v_x, :v_y, :v_z])
+        # Filter and create interval trajectories
+        df_traj_interval = df_planets[in.(df_planets.step, Ref(interval_steps)), :]
+        df_traj_interval = select(df_traj_interval, [:id, :step, :x, :y, :z, :v_x, :v_y, :v_z])
+        sort!(df_traj_interval, [:step, :id])
         
-        println("    Extracted $(nrow(df_traj)) trajectory points")
+        # Filter and create terraformation trajectories
+        df_traj_terra = df_planets[in.(df_planets.step, Ref(terraformation_steps)), :]
+        df_traj_terra = select(df_traj_terra, [:id, :step, :x, :y, :z, :v_x, :v_y, :v_z])
+        sort!(df_traj_terra, [:step, :id])
         
-        # Sort
-        println("    Sorting...")
-        sort!(df_traj, [:step, :id])
+        println("    Interval: $(nrow(df_traj_interval)) trajectory points")
+        println("    Terraformation: $(nrow(df_traj_terra)) trajectory points")
         
-        # Write trajectory file
+        # Write BOTH trajectory files
         t_str = replace(string(Int(t_offset)), "-" => "-")
-        traj_filename = "trajectories_t$t_str.arrow"
-        traj_path = joinpath(ref_dir, traj_filename)
+        traj_interval_filename = "trajectories_t$(t_str)_interval.arrow"
+        traj_terra_filename = "trajectories_t$(t_str)_terraformation.arrow"
         
-        Arrow.write(traj_path, df_traj)
-        println("    ✓ Wrote $traj_filename ($(nrow(df_traj)) trajectory points)")
+        traj_interval_path = joinpath(ref_dir, traj_interval_filename)
+        traj_terra_path = joinpath(ref_dir, traj_terra_filename)
+        
+        Arrow.write(traj_interval_path, df_traj_interval)
+        Arrow.write(traj_terra_path, df_traj_terra)
+        
+        println("    ✓ Wrote $traj_interval_filename ($(nrow(df_traj_interval)) points)")
+        println("    ✓ Wrote $traj_terra_filename ($(nrow(df_traj_terra)) points)")
     end
     
     # ============================================================================
