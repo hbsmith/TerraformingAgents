@@ -3007,6 +3007,9 @@ function extract_trajectory_data(model, step)
     xs = Float64[]
     ys = Float64[]
     zs = Float64[]
+    v_xs = Float64[]
+    v_ys = Float64[]
+    v_zs = Float64[]
     
     for planet in planets
         push!(ids, planet.id)
@@ -3014,6 +3017,9 @@ function extract_trajectory_data(model, step)
         push!(xs, planet.pos[1])
         push!(ys, planet.pos[2])
         push!(zs, planet.pos[3])
+        push!(v_xs, planet.vel[1])
+        push!(v_ys, planet.vel[2])
+        push!(v_zs, planet.vel[3])
     end
     
     return DataFrame(
@@ -3021,7 +3027,10 @@ function extract_trajectory_data(model, step)
         step = steps,
         x = xs,
         y = ys,
-        z = zs
+        z = zs,
+        v_x = v_xs,
+        v_y = v_ys,
+        v_z = v_zs
     )
 end
 
@@ -3038,37 +3047,18 @@ function extract_initial_planet_data(model)
     compsize = length(first(planets).composition)
     
     ids = Int[]
-    xs = Float64[]
-    ys = Float64[]
-    zs = Float64[]
-    v_xs = Float64[]
-    v_ys = Float64[]
-    v_zs = Float64[]
     compositions = [Float64[] for _ in 1:compsize]
     
     for planet in planets
         push!(ids, planet.id)
-        push!(xs, planet.pos[1])
-        push!(ys, planet.pos[2])
-        push!(zs, planet.pos[3])
-        push!(v_xs, planet.vel[1])
-        push!(v_ys, planet.vel[2])
-        push!(v_zs, planet.vel[3])
         
         for (i, comp_val) in enumerate(planet.composition)
             push!(compositions[i], comp_val)
         end
     end
     
-    df = DataFrame(
-        id = ids,
-        x = xs,
-        y = ys,
-        z = zs,
-        v_x = v_xs,
-        v_y = v_ys,
-        v_z = v_zs
-    )
+    # Only include id and composition (positions/velocities vary by t_offset)
+    df = DataFrame(id = ids)
     
     # Add composition columns
     for i in 1:compsize
@@ -4133,8 +4123,8 @@ function migrate_old_to_new_format(
     # Determine composition columns
     comp_cols = filter(col -> startswith(string(col), "comp_"), names(df_initial))
     
-    # Create initial state file
-    initial_cols = [:id, :x, :y, :z, :v_x, :v_y, :v_z]
+    # Create initial state file (only id and composition, no positions/velocities)
+    initial_cols = [:id]
     append!(initial_cols, Symbol.(comp_cols))
     df_initial_clean = select(df_initial, initial_cols)
     
@@ -4190,7 +4180,7 @@ function migrate_old_to_new_format(
         for (idx, sim_dir) in enumerate(matching_sims)
             planets_csv = joinpath(old_output_dir, sim_dir, "planets.csv")
             df_planets = CSV.read(planets_csv, DataFrame)
-            df_traj = select(df_planets, [:id, :step, :x, :y, :z])
+            df_traj = select(df_planets, [:id, :step, :x, :y, :z, :v_x, :v_y, :v_z])
             push!(all_traj_data, df_traj)
             
             if idx % 5 == 0
@@ -4310,6 +4300,10 @@ function migrate_old_to_new_format(
         end
     end
     
+    # Consolidate all events into master file
+    println("\nConsolidating all simulation events...")
+    consolidate_all_simulations(new_output_dir; cleanup_individual = false)
+    
     # Export to CSV
     println("\nExporting to compressed CSV...")
     export_to_compressed_csv(new_output_dir)
@@ -4317,6 +4311,181 @@ function migrate_old_to_new_format(
     println("\n" * "="^80)
     println("Migration complete!")
     println("New format saved to: $new_output_dir")
+    println("="^80)
+end
+
+# Temporary one off function to fix issues with the original migration function. 
+#  can be deleted once already migrated data is fixed.
+"""
+    fix_migrated_directory(
+        old_output_dir::String,
+        migrated_dir::String
+    )
+
+Fix an already-migrated directory to correct:
+1. planets_initial.arrow - remove positions/velocities, keep only [id, comp_1...comp_N]
+2. trajectories_*.arrow - add velocities [id, step, x, y, z, v_x, v_y, v_z]
+3. Generate missing all_planets_events.arrow consolidation file
+4. Re-export all corrected Arrow files to compressed CSV
+
+# Arguments
+- `old_output_dir::String`: Original directory with old format planets.csv files
+- `migrated_dir::String`: Already-migrated directory to fix
+
+# Example
+```julia
+fix_migrated_directory(
+    "output/cns5_sweep_2025-10-28_173041",
+    "output/migrated_sweep/cns5_sweep_2025-10-28_173041"
+)
+```
+"""
+function fix_migrated_directory(
+    old_output_dir::String,
+    new_output_dir::String
+)
+    println("\n" * "="^80)
+    println("Fixing migrated directory structure")
+    println("="^80)
+    println("Source: $old_output_dir")
+    println("Destination: $new_output_dir")
+    println("="^80 * "\n")
+    
+    ref_dir = joinpath(new_output_dir, "reference")
+    
+    if !isdir(ref_dir)
+        error("Reference directory not found: $ref_dir")
+    end
+    
+    # ============================================================================
+    # FIX 1: Regenerate planets_initial (only id + composition)
+    # ============================================================================
+    
+    println("FIX 1: Regenerating planets_initial.arrow (id + composition only)...")
+    
+    sim_dirs = filter(d -> startswith(d, "sim_"), readdir(old_output_dir))
+    if isempty(sim_dirs)
+        error("No simulation directories found in $old_output_dir")
+    end
+    
+    first_sim = sort(sim_dirs)[1]
+    first_planets_csv = joinpath(old_output_dir, first_sim, "planets.csv")
+    
+    if !isfile(first_planets_csv)
+        error("Could not find planets.csv in $first_sim")
+    end
+    
+    df_planets = CSV.read(first_planets_csv, DataFrame)
+    df_step0 = df_planets[df_planets.step .== 0, :]
+    
+    comp_cols = filter(col -> startswith(string(col), "comp_"), names(df_step0))
+    
+    initial_cols = [:id]
+    append!(initial_cols, Symbol.(comp_cols))
+    df_initial = select(df_step0, initial_cols)
+    
+    initial_path = joinpath(ref_dir, "planets_initial.arrow")
+    Arrow.write(initial_path, df_initial)
+    println("  ✓ Wrote planets_initial.arrow ($(nrow(df_initial)) planets, id + $(length(comp_cols)) composition columns)")
+    
+    # ============================================================================
+    # FIX 2: Regenerate trajectory files (STREAMING VERSION)
+    # ============================================================================
+    
+    println("\nFIX 2: Regenerating trajectory files (with velocities, streaming)...")
+    
+    # Find all unique t_offset values
+    t_offset_sims = Dict()
+    
+    for sim_dir in sim_dirs
+        planets_csv = joinpath(old_output_dir, sim_dir, "planets.csv")
+        if isfile(planets_csv)
+            df_sample = CSV.read(planets_csv, DataFrame; limit=10)
+            if "t_offset" in names(df_sample)
+                t_off = df_sample.t_offset[1]
+                if !haskey(t_offset_sims, t_off)
+                    t_offset_sims[t_off] = String[]
+                end
+                push!(t_offset_sims[t_off], sim_dir)
+            end
+        end
+    end
+    
+    t_offsets = sort(collect(keys(t_offset_sims)))
+    println("  Found $(length(t_offsets)) unique t_offset values: $t_offsets")
+    
+    for t_offset in t_offsets
+        matching_sims = t_offset_sims[t_offset]
+        
+        println("\n  Processing t_offset = $t_offset ($(length(matching_sims)) simulations)...")
+        
+        # STEP 1: Collect unique steps across all simulations (memory efficient)
+        println("    Collecting unique steps...")
+        unique_steps = Set{Int}()
+        
+        for (idx, sim_dir) in enumerate(matching_sims)
+            planets_csv = joinpath(old_output_dir, sim_dir, "planets.csv")
+            
+            # Only read the 'step' column to save memory
+            df_steps = CSV.read(planets_csv, DataFrame; select=["step"])
+            union!(unique_steps, df_steps.step)
+            
+            if idx % 10 == 0
+                print(".")
+            end
+        end
+        println()
+        println("    Found $(length(unique_steps)) unique steps")
+        
+        # STEP 2: Read ONE simulation and extract only the unique steps
+        println("    Reading trajectory data from representative simulation...")
+        representative_sim = matching_sims[1]
+        planets_csv = joinpath(old_output_dir, representative_sim, "planets.csv")
+        
+        df_planets = CSV.read(planets_csv, DataFrame)
+        
+        # Filter to only the unique steps
+        df_traj = df_planets[in.(df_planets.step, Ref(unique_steps)), :]
+        df_traj = select(df_traj, [:id, :step, :x, :y, :z, :v_x, :v_y, :v_z])
+        
+        println("    Extracted $(nrow(df_traj)) trajectory points")
+        
+        # Sort
+        println("    Sorting...")
+        sort!(df_traj, [:step, :id])
+        
+        # Write trajectory file
+        t_str = replace(string(Int(t_offset)), "-" => "-")
+        traj_filename = "trajectories_t$t_str.arrow"
+        traj_path = joinpath(ref_dir, traj_filename)
+        
+        Arrow.write(traj_path, df_traj)
+        println("    ✓ Wrote $traj_filename ($(nrow(df_traj)) trajectory points)")
+    end
+    
+    # ============================================================================
+    # FIX 3: Generate consolidated all_planets_events.arrow
+    # ============================================================================
+    
+    println("\nFIX 3: Generating consolidated all_planets_events.arrow...")
+    consolidate_all_simulations(new_output_dir; cleanup_individual = false)
+    
+    # ============================================================================
+    # FIX 4: Re-export all Arrow files to compressed CSV
+    # ============================================================================
+    
+    println("\nFIX 4: Exporting all Arrow files to compressed CSV...")
+    export_to_compressed_csv(new_output_dir)
+    
+    println("\n" * "="^80)
+    println("Directory fixes complete!")
+    println("Updated files in: $new_output_dir")
+    println("="^80)
+    println("\nFixed:")
+    println("  ✓ planets_initial.arrow - now only [id, comp_1...comp_N]")
+    println("  ✓ trajectories_*.arrow - now includes [v_x, v_y, v_z]")
+    println("  ✓ all_planets_events.arrow - consolidated from all simulations")
+    println("  ✓ All .csv.gz files regenerated with correct structure")
     println("="^80)
 end
 
